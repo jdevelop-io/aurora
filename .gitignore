@@ -1,3 +1,6 @@
+# Claude
+.claude/settings.local.json
+
 # Build artifacts
 /target/
 **/*.rs.bk
