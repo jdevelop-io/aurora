@@ -28,7 +28,6 @@ indicatif = "0.18"
 
 # WASM plugins
 wasmtime = "39"
-wit-bindgen = "0.48"
 
 # Serialization (for cache, config)
 serde = { version = "1", features = ["derive"] }

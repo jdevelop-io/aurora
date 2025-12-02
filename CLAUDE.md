@@ -13,7 +13,7 @@ The project is organized as a Cargo workspace with 5 crates:
 - **crates/core** (`aurora-core`): Core types and traits (Beam, Beamfile, Variable, Condition, Hook, errors)
 - **crates/parser** (`aurora-parser`): Beamfile DSL parser using nom 8 combinators
 - **crates/engine** (`aurora-engine`): Execution engine with DAG resolution, scheduler, parallel executor, command runner, and build cache
-- **crates/plugin** (`aurora-plugin`): WASM plugin system using wasmtime (Phase 4 - stubs only)
+- **crates/plugin** (`aurora-plugin`): WASM plugin system using wasmtime 39
 - **crates/cli** (`aurora-cli`): Command-line interface using clap
 
 ### Key Design Decisions
@@ -23,6 +23,7 @@ The project is organized as a Cargo workspace with 5 crates:
 - **Parallelism**: Uses `tokio` async runtime with semaphore-based concurrency control
 - **Cache**: Uses `blake3` for fast file hashing to skip unchanged beams
 - **Cross-platform**: Abstracts shell execution (bash/sh on Unix, PowerShell/cmd on Windows)
+- **Plugins**: Uses `wasmtime` 39 for WebAssembly plugin execution with sandboxed capabilities
 
 ## Common Commands
 
@@ -128,6 +129,10 @@ default = "target"
 - DAG implementation: `crates/engine/src/dag.rs`
 - Parallel executor: `crates/engine/src/executor.rs`
 - Build cache: `crates/engine/src/cache.rs`
+- Variable interpolation: `crates/core/src/interpolation.rs`
+- Plugin runtime: `crates/plugin/src/runtime.rs`
+- Plugin manifest: `crates/plugin/src/manifest.rs`
+- Plugin host functions: `crates/plugin/src/host.rs`
 
 ## Current Status
 
@@ -147,5 +152,13 @@ default = "target"
   - `${ctx.key}` - Extra context values
   - `$$` - Escaped literal dollar sign
   - Automatic interpolation of commands, env vars, and working_dir
-- **Phase 4 (Pending)**: WASM plugin system with wasmtime
+- **Phase 4 (Complete)**: WASM plugin system with wasmtime 39
+  - `PluginRuntime` for managing WASM plugins
+  - `Plugin` and `PluginInstance` for loading and executing plugins
+  - `PluginManifest` with JSON configuration (plugin.json)
+  - `PluginCapabilities` for permission control (fs, network, env)
+  - Host functions: `aurora_log`, `aurora_get_var`, `aurora_set_var`, `aurora_get_env`
+  - Plugin exports: `plugin_name`, `plugin_version`, `on_beam_start`, `on_beam_complete`, `transform_command`
+  - Memory management via `alloc`/`dealloc` exports
+  - `PluginState` for variable and log management
 - **Phase 5 (Pending)**: Watch mode, rich terminal UI, documentation
