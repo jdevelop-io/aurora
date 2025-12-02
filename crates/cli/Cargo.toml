@@ -1,0 +1,26 @@
+[package]
+name = "aurora-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "CLI for Aurora build system"
+
+[[bin]]
+name = "aurora"
+path = "src/main.rs"
+
+[dependencies]
+aurora-core = { workspace = true }
+aurora-parser = { workspace = true }
+aurora-engine = { workspace = true }
+aurora-plugin = { workspace = true }
+clap = { workspace = true }
+console = { workspace = true }
+indicatif = { workspace = true }
+tokio = { workspace = true }
+miette = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

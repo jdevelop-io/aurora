@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(./target/release/aurora:*)",
+      "Bash(/home/jeandenis.vidot@SAFTI.local/Github/jdevelop-io/aurora/target/release/aurora list:*)",
+      "Bash(/home/jeandenis.vidot@SAFTI.local/Github/jdevelop-io/aurora/target/release/aurora validate:*)",
+      "Bash(/home/jeandenis.vidot@SAFTI.local/Github/jdevelop-io/aurora/target/release/aurora build:*)",
+      "Bash(/home/jeandenis.vidot@SAFTI.local/Github/jdevelop-io/aurora/target/release/aurora test)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo clippy:*)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,22 @@
+[package]
+name = "aurora-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Execution engine for Aurora build system"
+
+[dependencies]
+aurora-core = { workspace = true }
+tokio = { workspace = true }
+petgraph = { workspace = true }
+blake3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+which = { workspace = true }
+dirs = { workspace = true }
+num_cpus = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

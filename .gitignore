@@ -1,0 +1,41 @@
+# Build artifacts
+/target/
+**/*.rs.bk
+
+# Cargo
+Cargo.lock
+.cargo/
+
+# Aurora cache
+.aurora/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+lcov.info
+*.profraw
+*.profdata
+
+# Documentation (generated)
+/target/doc/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test artifacts
+*.tmp
+*.temp

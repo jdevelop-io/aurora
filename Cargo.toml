@@ -1,0 +1,58 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Aurora Maintainers <aurora@jdevelop.io>"]
+license = "MIT"
+repository = "https://github.com/jdevelop-io/aurora"
+description = "A next-generation task automation and build system"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Parser (nom combinators)
+nom = "8"
+nom_locate = "5"
+
+# DAG
+petgraph = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+console = "0.16"
+indicatif = "0.18"
+
+# WASM plugins
+wasmtime = "39"
+wit-bindgen = "0.48"
+
+# Serialization (for cache, config)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+miette = { version = "7", features = ["fancy"] }
+
+# Cross-platform
+which = "8"
+dirs = "6"
+
+# File watching (for watch mode)
+notify = "8"
+
+# Hashing (for cache)
+blake3 = "1"
+
+# Parallelism
+num_cpus = "1"
+
+# Internal crates
+aurora-core = { path = "crates/core" }
+aurora-parser = { path = "crates/parser" }
+aurora-engine = { path = "crates/engine" }
+aurora-plugin = { path = "crates/plugin" }

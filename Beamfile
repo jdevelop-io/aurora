@@ -1,0 +1,316 @@
+# Aurora Project Beamfile
+# Build automation for the Aurora project itself
+
+variable "profile" {
+    default = "release"
+    description = "Build profile (debug or release)"
+}
+
+# =============================================================================
+# Build targets
+# =============================================================================
+
+beam "build" {
+    description = "Build the project"
+    depends_on = ["fmt-check", "lint"]
+
+    run {
+        commands = [
+            "cargo build --all-features"
+        ]
+    }
+
+    outputs = ["target/debug/aurora"]
+}
+
+beam "release" {
+    description = "Build release binary"
+    depends_on = ["test"]
+
+    run {
+        commands = [
+            "cargo build --release --all-features"
+        ]
+    }
+
+    outputs = ["target/release/aurora"]
+}
+
+# =============================================================================
+# Quality checks
+# =============================================================================
+
+beam "fmt" {
+    description = "Format code with rustfmt"
+
+    run {
+        commands = [
+            "cargo fmt --all"
+        ]
+    }
+}
+
+beam "fmt-check" {
+    description = "Check code formatting"
+
+    run {
+        commands = [
+            "cargo fmt --all -- --check"
+        ]
+    }
+}
+
+beam "lint" {
+    description = "Run clippy lints"
+
+    run {
+        commands = [
+            "cargo clippy --all-targets --all-features -- -D warnings"
+        ]
+    }
+}
+
+beam "check" {
+    description = "Quick compilation check"
+
+    run {
+        commands = [
+            "cargo check --all-targets --all-features"
+        ]
+    }
+}
+
+# =============================================================================
+# Testing
+# =============================================================================
+
+beam "test" {
+    description = "Run all tests"
+    depends_on = ["check"]
+
+    run {
+        commands = [
+            "cargo test --all-features"
+        ]
+    }
+}
+
+beam "test-verbose" {
+    description = "Run tests with verbose output"
+
+    run {
+        commands = [
+            "cargo test --all-features -- --nocapture"
+        ]
+    }
+}
+
+# =============================================================================
+# Documentation
+# =============================================================================
+
+beam "doc" {
+    description = "Build documentation"
+
+    env {
+        RUSTDOCFLAGS = "-Dwarnings"
+    }
+
+    run {
+        commands = [
+            "cargo doc --no-deps --all-features"
+        ]
+    }
+
+    outputs = ["target/doc"]
+}
+
+beam "doc-open" {
+    description = "Build and open documentation"
+    depends_on = ["doc"]
+
+    run {
+        commands = [
+            "cargo doc --no-deps --all-features --open"
+        ]
+    }
+}
+
+# =============================================================================
+# Security & Dependencies
+# =============================================================================
+
+beam "deny" {
+    description = "Run cargo-deny checks"
+
+    run {
+        commands = [
+            "cargo deny check advisories",
+            "cargo deny check bans",
+            "cargo deny check licenses",
+            "cargo deny check sources"
+        ]
+    }
+}
+
+beam "audit" {
+    description = "Run security audit"
+
+    run {
+        commands = [
+            "cargo audit"
+        ]
+    }
+}
+
+beam "outdated" {
+    description = "Check for outdated dependencies"
+
+    run {
+        commands = [
+            "cargo outdated -R"
+        ]
+    }
+}
+
+# =============================================================================
+# Cleaning
+# =============================================================================
+
+beam "clean" {
+    description = "Clean build artifacts"
+
+    run {
+        commands = [
+            "cargo clean"
+        ]
+    }
+}
+
+beam "clean-all" {
+    description = "Clean everything including cache"
+
+    run {
+        commands = [
+            "cargo clean",
+            "rm -rf .aurora"
+        ]
+    }
+}
+
+# =============================================================================
+# CI targets
+# =============================================================================
+
+beam "ci" {
+    description = "Run full CI pipeline"
+    depends_on = ["fmt-check", "lint", "test", "doc"]
+
+    run {
+        commands = [
+            "echo CI pipeline completed successfully"
+        ]
+    }
+}
+
+beam "ci-full" {
+    description = "Run full CI with security checks"
+    depends_on = ["ci", "deny"]
+
+    run {
+        commands = [
+            "echo Full CI pipeline completed successfully"
+        ]
+    }
+}
+
+# =============================================================================
+# Development helpers
+# =============================================================================
+
+beam "dev" {
+    description = "Quick development build"
+
+    run {
+        commands = [
+            "cargo build"
+        ]
+    }
+}
+
+beam "run-help" {
+    description = "Build and show aurora help"
+    depends_on = ["dev"]
+
+    run {
+        commands = [
+            "cargo run -- --help"
+        ]
+    }
+}
+
+beam "install" {
+    description = "Install aurora locally"
+    depends_on = ["release"]
+
+    run {
+        commands = [
+            "cargo install --path crates/cli"
+        ]
+    }
+}
+
+beam "uninstall" {
+    description = "Uninstall aurora"
+
+    run {
+        commands = [
+            "cargo uninstall aurora-cli"
+        ]
+    }
+}
+
+# =============================================================================
+# Coverage
+# =============================================================================
+
+beam "coverage" {
+    description = "Generate code coverage report"
+
+    run {
+        commands = [
+            "cargo llvm-cov --all-features --lcov --output-path lcov.info"
+        ]
+    }
+
+    outputs = ["lcov.info"]
+}
+
+beam "coverage-html" {
+    description = "Generate HTML coverage report"
+
+    run {
+        commands = [
+            "cargo llvm-cov --all-features --html"
+        ]
+    }
+
+    outputs = ["target/llvm-cov/html"]
+}
+
+# =============================================================================
+# Benchmarks
+# =============================================================================
+
+beam "bench" {
+    description = "Run benchmarks"
+
+    run {
+        commands = [
+            "cargo bench --all-features"
+        ]
+    }
+}
+
+# Default target
+default = "build"

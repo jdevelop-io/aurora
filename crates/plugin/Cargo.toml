@@ -1,0 +1,12 @@
+[package]
+name = "aurora-plugin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "WASM plugin system for Aurora build system"
+
+[dependencies]
+aurora-core = { workspace = true }
+wasmtime = { workspace = true }
+thiserror = { workspace = true }
