@@ -8,6 +8,8 @@ mod scheduler;
 
 pub use cache::BuildCache;
 pub use dag::DependencyGraph;
-pub use executor::Executor;
-pub use runner::CommandRunner;
+pub use executor::{
+    BeamCallback, BeamEvent, ExecutionReport, Executor, ExecutorBuilder, SkipReason,
+};
+pub use runner::{CommandRunner, OutputCallback};
 pub use scheduler::{ExecutionLevel, ExecutionPlan, Scheduler};
