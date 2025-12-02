@@ -98,6 +98,24 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+
+    /// Watch files and re-run beam on changes
+    Watch {
+        /// Beam to execute on changes
+        beam: String,
+
+        /// Maximum parallel jobs
+        #[arg(short = 'j', long, default_value = "0")]
+        parallel: usize,
+
+        /// Disable cache
+        #[arg(long)]
+        no_cache: bool,
+
+        /// Clear screen before each run
+        #[arg(short, long)]
+        clear: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -158,6 +176,13 @@ async fn run(cli: Cli) -> Result<()> {
         },
 
         Some(Commands::Init { .. }) => unreachable!("Init is handled earlier"),
+
+        Some(Commands::Watch {
+            beam,
+            parallel,
+            no_cache,
+            clear,
+        }) => commands::watch::execute(&beamfile_path, &beam, parallel, !no_cache, clear).await,
 
         None => {
             // Run default or specified target

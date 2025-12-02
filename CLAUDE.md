@@ -49,6 +49,10 @@ cargo build --release
 # Test aurora on itself (from project root after creating Beamfile)
 ./target/release/aurora list
 ./target/release/aurora validate
+
+# Watch mode - rebuild on file changes
+./target/release/aurora watch build
+./target/release/aurora watch build --clear  # Clear screen between builds
 ```
 
 ## Beamfile DSL Syntax
@@ -133,6 +137,8 @@ default = "target"
 - Plugin runtime: `crates/plugin/src/runtime.rs`
 - Plugin manifest: `crates/plugin/src/manifest.rs`
 - Plugin host functions: `crates/plugin/src/host.rs`
+- Watch mode: `crates/cli/src/commands/watch.rs`
+- Terminal output: `crates/cli/src/output.rs`
 
 ## Current Status
 
@@ -161,4 +167,14 @@ default = "target"
   - Plugin exports: `plugin_name`, `plugin_version`, `on_beam_start`, `on_beam_complete`, `transform_command`
   - Memory management via `alloc`/`dealloc` exports
   - `PluginState` for variable and log management
-- **Phase 5 (Pending)**: Watch mode, rich terminal UI, documentation
+- **Phase 5 (Complete)**: Watch mode, rich terminal UI
+  - `aurora watch <beam>` command for file watching
+  - Uses `notify` crate for cross-platform file system events
+  - Debounced rebuilds to handle rapid file changes
+  - Watches beam `inputs` patterns automatically
+  - Rich terminal UI with `console` and `indicatif`:
+    - Progress spinners for long-running operations
+    - Progress bars for multi-step tasks
+    - Colored output with status icons (✓, ✗, ○, ⚠)
+    - Multi-progress support for parallel operations
+  - Clear screen option (`-c`) between rebuilds
