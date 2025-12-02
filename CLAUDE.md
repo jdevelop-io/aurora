@@ -70,6 +70,8 @@ beam "target" {
 
   env {
     KEY = "value"
+    # Variables can be interpolated
+    MESSAGE = "Hello, ${var.name}!"
   }
 
   pre_hook {
@@ -77,7 +79,12 @@ beam "target" {
   }
 
   run {
-    commands = ["command1", "command2"]
+    # Variable interpolation supported:
+    # - ${var.name} - Beamfile variables
+    # - ${env.NAME} - Environment variables
+    # - ${beam.name} - Current beam name
+    # - $$ - Literal dollar sign
+    commands = ["echo Building ${beam.name}", "echo Version: ${var.version}"]
     shell = "bash"
     working_dir = "."
     fail_fast = true
@@ -132,6 +139,13 @@ default = "target"
   - `BeamCallback` system for real-time event notifications
   - `OutputCallback` for streaming command output
   - `ExecutorBuilder` pattern for configuration
-- **Phase 3 (Pending)**: Variable interpolation (`${var.name}`)
+- **Phase 3 (Complete)**: Variable interpolation (`${var.name}`)
+  - `InterpolationContext` for managing variable scope
+  - `${var.name}` - Beamfile variable references
+  - `${env.NAME}` - Environment variable references
+  - `${beam.name}` - Current beam name reference
+  - `${ctx.key}` - Extra context values
+  - `$$` - Escaped literal dollar sign
+  - Automatic interpolation of commands, env vars, and working_dir
 - **Phase 4 (Pending)**: WASM plugin system with wasmtime
 - **Phase 5 (Pending)**: Watch mode, rich terminal UI, documentation

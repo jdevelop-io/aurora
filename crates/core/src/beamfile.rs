@@ -69,6 +69,16 @@ impl Beamfile {
     pub fn variable_names(&self) -> Vec<&str> {
         self.variables.keys().map(|s| s.as_str()).collect()
     }
+
+    /// Returns an iterator over all variables.
+    pub fn variables(&self) -> impl Iterator<Item = (&String, &Variable)> {
+        self.variables.iter()
+    }
+
+    /// Returns an iterator over all beams.
+    pub fn beams(&self) -> impl Iterator<Item = (&String, &Beam)> {
+        self.beams.iter()
+    }
 }
 
 impl Default for Beamfile {

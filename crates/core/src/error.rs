@@ -45,6 +45,9 @@ pub enum AuroraError {
     #[error("Plugin error: {0}")]
     Plugin(String),
 
+    #[error("Interpolation error: {message}")]
+    Interpolation { message: String },
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }

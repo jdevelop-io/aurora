@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use aurora_core::{AuroraError, Beamfile, Result};
+use aurora_core::{AuroraError, Beamfile, InterpolationContext, Result, interpolate};
 use tokio::sync::{Mutex, RwLock, Semaphore};
 
 use crate::cache::BuildCache;
@@ -327,36 +327,36 @@ async fn execute_beam_inner(state: &ExecutorState, beam_name: &str) -> Result<Be
         return Ok(BeamResult::Executed);
     }
 
+    // Build interpolation context
+    let ctx = build_interpolation_context(state, beam_name);
+
+    // Interpolate and merge environment variables
+    let interpolated_env = interpolate_env(&beam.env, &ctx)?;
+
     // Execute pre-hooks
     for hook in &beam.pre_hooks {
-        let run_block = aurora_core::RunBlock::new(
-            hook.commands
-                .iter()
-                .map(aurora_core::Command::new)
-                .collect(),
-        );
+        let run_block = interpolate_run_block_from_hook(hook, &ctx)?;
         state
             .runner
-            .execute_run_block(&run_block, &beam.env)
+            .execute_run_block(&run_block, &interpolated_env)
             .await?;
     }
 
     // Execute main run block
     if let Some(ref run) = beam.run {
-        state.runner.execute_run_block(run, &beam.env).await?;
+        let interpolated_run = interpolate_run_block(run, &ctx)?;
+        state
+            .runner
+            .execute_run_block(&interpolated_run, &interpolated_env)
+            .await?;
     }
 
     // Execute post-hooks
     for hook in &beam.post_hooks {
-        let run_block = aurora_core::RunBlock::new(
-            hook.commands
-                .iter()
-                .map(aurora_core::Command::new)
-                .collect(),
-        );
+        let run_block = interpolate_run_block_from_hook(hook, &ctx)?;
         state
             .runner
-            .execute_run_block(&run_block, &beam.env)
+            .execute_run_block(&run_block, &interpolated_env)
             .await?;
     }
 
@@ -418,6 +418,83 @@ fn emit_event(state: &ExecutorState, event: BeamEvent) {
     if let Some(ref callback) = state.callback {
         callback(event);
     }
+}
+
+/// Builds the interpolation context for a beam execution.
+fn build_interpolation_context(state: &ExecutorState, beam_name: &str) -> InterpolationContext {
+    let mut ctx = InterpolationContext::new().with_beam_name(beam_name);
+
+    // Add all Beamfile variables
+    for (name, var) in state.beamfile.variables() {
+        if let Some(ref default) = var.default {
+            ctx = ctx.with_variable(name.clone(), default.clone());
+        }
+    }
+
+    // Add working directory as extra context
+    ctx = ctx.with_extra(
+        "working_dir",
+        state.working_dir.to_string_lossy().to_string(),
+    );
+
+    ctx
+}
+
+/// Interpolates environment variables.
+fn interpolate_env(
+    env: &HashMap<String, String>,
+    ctx: &InterpolationContext,
+) -> Result<HashMap<String, String>> {
+    let mut result = HashMap::with_capacity(env.len());
+    for (key, value) in env {
+        let interpolated_value = interpolate(value, ctx)?;
+        result.insert(key.clone(), interpolated_value);
+    }
+    Ok(result)
+}
+
+/// Interpolates a RunBlock.
+fn interpolate_run_block(
+    run: &aurora_core::RunBlock,
+    ctx: &InterpolationContext,
+) -> Result<aurora_core::RunBlock> {
+    let interpolated_commands: Result<Vec<aurora_core::Command>> = run
+        .commands
+        .iter()
+        .map(|cmd| {
+            let interpolated = interpolate(&cmd.command, ctx)?;
+            Ok(aurora_core::Command::new(interpolated))
+        })
+        .collect();
+
+    let mut result = aurora_core::RunBlock::new(interpolated_commands?);
+
+    // Interpolate working_dir if present
+    if let Some(ref wd) = run.working_dir {
+        result.working_dir = Some(interpolate(wd, ctx)?);
+    }
+
+    result.shell = run.shell.clone();
+    result.fail_fast = run.fail_fast;
+
+    Ok(result)
+}
+
+/// Interpolates a hook into a RunBlock.
+fn interpolate_run_block_from_hook(
+    hook: &aurora_core::Hook,
+    ctx: &InterpolationContext,
+) -> Result<aurora_core::RunBlock> {
+    let interpolated_commands: Result<Vec<aurora_core::Command>> = hook
+        .commands
+        .iter()
+        .map(|cmd| {
+            let interpolated = interpolate(cmd, ctx)?;
+            Ok(aurora_core::Command::new(interpolated))
+        })
+        .collect();
+
+    Ok(aurora_core::RunBlock::new(interpolated_commands?))
 }
 
 /// Builder for creating an Executor with custom configuration.
@@ -588,6 +665,79 @@ mod tests {
 
         // All beams should execute successfully (10 independent + "all" = 11)
         assert_eq!(report.executed.len(), 11);
+        assert!(report.failed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_variable_interpolation() {
+        let dir = tempdir().unwrap();
+        let cache_dir = dir.path().join(".aurora/cache");
+
+        let mut beamfile = Beamfile::new(dir.path().join("Beamfile"));
+
+        // Add a variable
+        beamfile.add_variable(aurora_core::Variable::new("greeting").with_default("Hello"));
+        beamfile.add_variable(aurora_core::Variable::new("name").with_default("World"));
+
+        // Add a beam that uses variables
+        let beam = Beam::new("greet").with_run(aurora_core::RunBlock::from_strings(vec![
+            "echo ${var.greeting}, ${var.name}!".to_string(),
+        ]));
+        beamfile.add_beam(beam);
+
+        let executor = Executor::new(beamfile, dir.path(), cache_dir)
+            .unwrap()
+            .with_cache(false);
+
+        let report = executor.execute("greet").await.unwrap();
+
+        assert_eq!(report.executed.len(), 1);
+        assert!(report.failed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_beam_name_interpolation() {
+        let dir = tempdir().unwrap();
+        let cache_dir = dir.path().join(".aurora/cache");
+
+        let mut beamfile = Beamfile::new(dir.path().join("Beamfile"));
+
+        // Add a beam that uses ${beam.name}
+        let beam = Beam::new("my-beam").with_run(aurora_core::RunBlock::from_strings(vec![
+            "echo Running: ${beam.name}".to_string(),
+        ]));
+        beamfile.add_beam(beam);
+
+        let executor = Executor::new(beamfile, dir.path(), cache_dir)
+            .unwrap()
+            .with_cache(false);
+
+        let report = executor.execute("my-beam").await.unwrap();
+
+        assert_eq!(report.executed.len(), 1);
+        assert!(report.failed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_env_interpolation() {
+        let dir = tempdir().unwrap();
+        let cache_dir = dir.path().join(".aurora/cache");
+
+        let mut beamfile = Beamfile::new(dir.path().join("Beamfile"));
+
+        // Add a beam that uses ${env.HOME}
+        let beam = Beam::new("env-test").with_run(aurora_core::RunBlock::from_strings(vec![
+            "echo Home: ${env.HOME}".to_string(),
+        ]));
+        beamfile.add_beam(beam);
+
+        let executor = Executor::new(beamfile, dir.path(), cache_dir)
+            .unwrap()
+            .with_cache(false);
+
+        let report = executor.execute("env-test").await.unwrap();
+
+        assert_eq!(report.executed.len(), 1);
         assert!(report.failed.is_empty());
     }
 }
