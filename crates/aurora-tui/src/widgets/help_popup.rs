@@ -60,6 +60,7 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
             Line::from(" y          Copier les logs dans le clipboard"),
             Line::from(" ?          Fermer cette aide"),
             Line::from(" q          Annuler et quitter"),
+            Line::from(" r          Re-lancer le beam (si Failed/Cancelled)"),
         ],
         HelpContext::LogView => vec![
             Line::from(Span::styled(

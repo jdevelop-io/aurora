@@ -50,7 +50,7 @@ pub fn render_status_bar(f: &mut Frame, area: Rect, ctx: StatusContext) {
                 format!(" ✔ Done  {} ", bar)
             };
             (
-                format!("{}[↑↓/jk] beam  [y] copier  [?] aide  [q] quitter ", prefix),
+                format!("{}[↑↓/jk] beam  [y] copier  [r] re-run  [?] aide  [q] quitter ", prefix),
                 Color::Green,
             )
         }
@@ -62,7 +62,7 @@ pub fn render_status_bar(f: &mut Frame, area: Rect, ctx: StatusContext) {
                 format!(" ✕ Failed  {} ", bar)
             };
             (
-                format!("{}[↑↓/jk] beam  [y] copier  [?] aide  [q] quitter ", prefix),
+                format!("{}[↑↓/jk] beam  [y] copier  [r] re-run  [?] aide  [q] quitter ", prefix),
                 Color::Red,
             )
         }
