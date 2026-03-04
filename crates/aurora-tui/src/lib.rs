@@ -116,6 +116,11 @@ pub async fn run_execution_tui(
                                 let _ = exec.handle_key(key);
                             }
                             KeyCode::Char('G') => {
+                                let current_total = {
+                                    let beam = &exec.beams[log_state.beam_index];
+                                    beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
+                                };
+                                log_state.scroll = current_total.saturating_sub(1) as u16;
                                 log_state.scroll_locked = false;
                             }
                             KeyCode::PageUp | KeyCode::PageDown => {

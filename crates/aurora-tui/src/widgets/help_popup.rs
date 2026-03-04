@@ -58,7 +58,6 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
             Line::from(" PgUp/Dn    Scroller les logs par page"),
             Line::from(" G          Aller au bas des logs"),
             Line::from(" y          Copier les logs dans le clipboard"),
-            Line::from(" r          Re-lancer le beam (si Failed/Done)"),
             Line::from(" ?          Fermer cette aide"),
             Line::from(" q          Annuler et quitter"),
         ],
