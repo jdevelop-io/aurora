@@ -1,3 +1,4 @@
+use aurora_core::scheduler::BeamStatus;
 use crate::app::{ExecutionState, FocusPanel, LogViewState};
 use crate::execution::{beam_list, log_panel};
 use ratatui::{
@@ -30,13 +31,24 @@ pub fn render_execution(
     let beam = &exec.beams[log_state.beam_index];
     log_panel::render_log_panel(f, beam, log_state, split[1], !beams_focused);
 
+    let total = exec.beams.len();
+    let done_count = exec.beams.iter().filter(|b| {
+        matches!(
+            b.status,
+            BeamStatus::Success { .. }
+                | BeamStatus::Failed { .. }
+                | BeamStatus::Skipped { .. }
+                | BeamStatus::Cancelled
+        )
+    }).count();
+
     crate::widgets::status_bar::render_status_bar(
         f,
         outer[1],
         crate::widgets::status_bar::StatusContext::Execution {
             done: exec.done.is_some(),
-            done_count: 0,
-            total: exec.beams.len(),
+            done_count,
+            total,
         },
     );
 
