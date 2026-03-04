@@ -1,7 +1,9 @@
 pub mod app;
+pub mod execution;
 pub mod execution_view;
 pub mod picker;
 pub mod picker_view;
+pub mod widgets;
 
 use anyhow::Result;
 use app::{App, AppMode};
