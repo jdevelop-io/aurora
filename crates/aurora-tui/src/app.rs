@@ -68,6 +68,7 @@ pub enum PickerAction {
 pub enum ExecutionAction {
     Quit,
     OpenLogView { beam_index: usize },
+    Rerun { root: String, pre_success: Vec<String> },
 }
 
 #[derive(Debug, PartialEq)]
@@ -242,6 +243,56 @@ impl ExecutionState {
         }
     }
 
+    /// Calcule les beams à relancer depuis le beam sélectionné.
+    /// Retourne (root_name, to_rerun, pre_success).
+    pub fn compute_rerun(&self, selected: usize) -> (String, Vec<String>, Vec<String>) {
+        let root_name = self.beams[selected].name.clone();
+        let mut to_rerun = vec![];
+        let mut pre_success = vec![];
+
+        let mut stack = vec![selected];
+        let mut visited: Vec<usize> = vec![];
+
+        while let Some(idx) = stack.pop() {
+            if visited.contains(&idx) {
+                continue;
+            }
+            visited.push(idx);
+            let beam = &self.beams[idx];
+            match &beam.status {
+                BeamStatus::Failed { .. } | BeamStatus::Cancelled => {
+                    to_rerun.push(beam.name.clone());
+                }
+                BeamStatus::Success { .. } | BeamStatus::Skipped { .. } => {
+                    pre_success.push(beam.name.clone());
+                }
+                _ => {}
+            }
+            for dep_name in &beam.depends_on {
+                if let Some(dep_idx) = self.beams.iter().position(|b| &b.name == dep_name) {
+                    if !visited.contains(&dep_idx) {
+                        stack.push(dep_idx);
+                    }
+                }
+            }
+        }
+
+        (root_name, to_rerun, pre_success)
+    }
+
+    /// Remet les beams listés à Pending et vide leurs logs. Reset aussi exec.done.
+    pub fn reset_for_rerun(&mut self, names: &[String]) {
+        for beam in self.beams.iter_mut() {
+            if names.contains(&beam.name) {
+                beam.status = BeamStatus::Pending;
+                beam.stdout.clear();
+                beam.stderr.clear();
+                beam.started_at = None;
+            }
+        }
+        self.done = None;
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<ExecutionAction> {
         match key.code {
             KeyCode::Tab => {
@@ -255,6 +306,17 @@ impl ExecutionState {
             KeyCode::Enter => Some(ExecutionAction::OpenLogView {
                 beam_index: self.selected,
             }),
+            KeyCode::Char('r') => {
+                if self.done.is_some() {
+                    let beam = &self.beams[self.selected];
+                    if matches!(beam.status, BeamStatus::Failed { .. } | BeamStatus::Cancelled) {
+                        let (root, to_rerun, pre_success) = self.compute_rerun(self.selected);
+                        self.reset_for_rerun(&to_rerun);
+                        return Some(ExecutionAction::Rerun { root, pre_success });
+                    }
+                }
+                None
+            }
             _ => None,
         }
     }
