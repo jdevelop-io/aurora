@@ -33,7 +33,11 @@ pub fn render_execution(
     crate::widgets::status_bar::render_status_bar(
         f,
         outer[1],
-        crate::widgets::status_bar::StatusContext::Execution { done: exec.done.is_some() },
+        crate::widgets::status_bar::StatusContext::Execution {
+            done: exec.done.is_some(),
+            done_count: 0,
+            total: exec.beams.len(),
+        },
     );
 
     if show_help {
