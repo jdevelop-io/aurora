@@ -4,7 +4,7 @@ pub mod picker;
 pub mod widgets;
 
 use anyhow::Result;
-use app::{ExecutionState, LogViewState, PickerAction, PickerState};
+use app::{ExecutionState, FocusPanel, LogViewState, PickerAction, PickerState};
 use aurora_core::scheduler::SchedulerEvent;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -79,14 +79,33 @@ pub async fn run_execution_tui(
                             }
                             KeyCode::Char('?') => show_help = true,
                             KeyCode::Down | KeyCode::Char('j') => {
-                                exec.select_next();
-                                log_state.beam_index = exec.selected;
-                                log_state.scroll_locked = false;
+                                match exec.focus {
+                                    FocusPanel::Beams => {
+                                        exec.select_next();
+                                        log_state.beam_index = exec.selected;
+                                        log_state.scroll_locked = false;
+                                    }
+                                    FocusPanel::Logs => {
+                                        let height = terminal.size()?.height;
+                                        log_state.handle_key(key, total_lines, height);
+                                    }
+                                }
                             }
                             KeyCode::Up | KeyCode::Char('k') => {
-                                exec.select_prev();
-                                log_state.beam_index = exec.selected;
-                                log_state.scroll_locked = false;
+                                match exec.focus {
+                                    FocusPanel::Beams => {
+                                        exec.select_prev();
+                                        log_state.beam_index = exec.selected;
+                                        log_state.scroll_locked = false;
+                                    }
+                                    FocusPanel::Logs => {
+                                        let height = terminal.size()?.height;
+                                        log_state.handle_key(key, total_lines, height);
+                                    }
+                                }
+                            }
+                            KeyCode::Tab => {
+                                exec.handle_key(key);
                             }
                             KeyCode::Char('G') => {
                                 log_state.scroll_locked = false;
