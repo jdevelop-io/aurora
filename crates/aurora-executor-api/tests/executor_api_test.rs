@@ -9,6 +9,7 @@ fn test_execution_input_fields() {
         env: HashMap::from([("KEY".to_string(), "val".to_string())]),
         working_dir: PathBuf::from("/tmp"),
         config: serde_json::json!({}),
+        output_tx: None,
     };
     assert_eq!(input.commands.len(), 1);
     assert_eq!(input.env.get("KEY").unwrap(), "val");

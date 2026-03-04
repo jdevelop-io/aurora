@@ -6,6 +6,10 @@ use std::path::{Path, PathBuf};
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CacheEntry {
     inputs_hash: String,
+    #[serde(default)]
+    stdout: Vec<String>,
+    #[serde(default)]
+    stderr: Vec<String>,
 }
 
 pub struct BeamCache {
@@ -36,10 +40,35 @@ impl BeamCache {
     }
 
     pub fn save(&self, beam_name: &str, inputs_hash: &str) -> Result<()> {
-        let entry = CacheEntry { inputs_hash: inputs_hash.to_string() };
+        self.save_with_logs(beam_name, inputs_hash, &[], &[])
+    }
+
+    pub fn save_with_logs(
+        &self,
+        beam_name: &str,
+        inputs_hash: &str,
+        stdout: &[String],
+        stderr: &[String],
+    ) -> Result<()> {
+        let entry = CacheEntry {
+            inputs_hash: inputs_hash.to_string(),
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+        };
         let content = serde_json::to_string_pretty(&entry)?;
         fs::write(self.entry_path(beam_name), content)?;
         Ok(())
+    }
+
+    /// Retourne (stdout, stderr) depuis le cache, ou ([], []) si absent.
+    pub fn load_logs(&self, beam_name: &str) -> (Vec<String>, Vec<String>) {
+        let Ok(content) = fs::read_to_string(self.entry_path(beam_name)) else {
+            return (vec![], vec![]);
+        };
+        let Ok(entry) = serde_json::from_str::<CacheEntry>(&content) else {
+            return (vec![], vec![]);
+        };
+        (entry.stdout, entry.stderr)
     }
 
     pub fn invalidate(&self, beam_name: &str) -> Result<()> {

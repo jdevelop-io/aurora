@@ -2,8 +2,15 @@ use aurora_core::scheduler::{Scheduler, SchedulerEvent, BeamStatus};
 use aurora_core::ast::{Beam, Run};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+
+fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
+    let mut m: HashMap<String, Arc<dyn Executor>> = HashMap::new();
+    m.insert("local".into(), Arc::new(LocalExecutor::new()));
+    m
+}
 
 fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
     Beam {
@@ -29,9 +36,8 @@ async fn test_scheduler_simple() {
         make_beam("a", vec![], vec!["echo a"]),
         make_beam("b", vec!["a"], vec!["echo b"]),
     ];
-    let executor: Arc<dyn Executor> = Arc::new(LocalExecutor::new());
     let (tx, mut rx) = mpsc::channel(32);
-    let scheduler = Scheduler::new(beams, executor, tx, None, std::path::PathBuf::from("/tmp"));
+    let scheduler = Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new());
     scheduler.run("b").await.unwrap();
 
     let mut events = vec![];
@@ -53,9 +59,8 @@ async fn test_scheduler_failed_cancels_dependents() {
         make_beam("a", vec![], vec!["false"]),
         make_beam("b", vec!["a"], vec!["echo b"]),
     ];
-    let executor: Arc<dyn Executor> = Arc::new(LocalExecutor::new());
     let (tx, mut rx) = mpsc::channel(32);
-    Scheduler::new(beams, executor, tx, None, std::path::PathBuf::from("/tmp")).run("b").await.unwrap();
+    Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new()).run("b").await.unwrap();
 
     let mut events = vec![];
     while let Ok(evt) = rx.try_recv() { events.push(evt); }

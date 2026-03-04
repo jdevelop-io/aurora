@@ -10,6 +10,7 @@ async fn test_execute_echo() {
         env: HashMap::new(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
+        output_tx: None,
     };
     let output = executor.execute(input).await.unwrap();
     assert_eq!(output.exit_code, 0);
@@ -27,6 +28,7 @@ async fn test_execute_multi_commands() {
         env: HashMap::new(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
+        output_tx: None,
     };
     let output = executor.execute(input).await.unwrap();
     assert_eq!(output.exit_code, 0);
@@ -43,6 +45,7 @@ async fn test_execute_failing_command() {
         env: HashMap::new(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
+        output_tx: None,
     };
     let output = executor.execute(input).await.unwrap();
     assert_ne!(output.exit_code, 0);
@@ -56,6 +59,7 @@ async fn test_env_vars_passed() {
         env: HashMap::from([("MY_VAR".to_string(), "aurora_test".to_string())]),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
+        output_tx: None,
     };
     let output = executor.execute(input).await.unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();

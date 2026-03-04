@@ -35,6 +35,24 @@ pub fn parse(input: &str) -> Result<BeamFile> {
         }
     }
 
+    // Résoudre les var_ref dans les configs d'executor
+    let vars: HashMap<String, String> = bf.variables.iter()
+        .map(|v| (v.name.clone(), v.default.clone()))
+        .collect();
+    for beam in &mut bf.beams {
+        if let Some(run) = &mut beam.run {
+            if let Some(exec_cfg) = &mut run.executor {
+                for val in exec_cfg.config.values_mut() {
+                    if let Some(var_name) = val.strip_prefix("var.") {
+                        if let Some(resolved) = vars.get(var_name) {
+                            *val = resolved.clone();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(bf)
 }
 

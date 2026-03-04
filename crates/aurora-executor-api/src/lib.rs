@@ -2,6 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionInput {
@@ -10,6 +11,10 @@ pub struct ExecutionInput {
     pub working_dir: PathBuf,
     /// Executor-specific configuration (e.g. {"image": "ubuntu:22.04"} for docker)
     pub config: serde_json::Value,
+    /// Canal optionnel pour streamer les lignes de sortie en temps réel.
+    /// `(line, is_stderr)`
+    #[serde(skip)]
+    pub output_tx: Option<mpsc::Sender<(String, bool)>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

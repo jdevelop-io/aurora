@@ -12,6 +12,7 @@ async fn test_docker_echo() {
         env: HashMap::new(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({ "image": "alpine:3.19" }),
+        output_tx: None,
     };
     let output = executor.execute(input).await.unwrap();
     assert_eq!(output.exit_code, 0);
@@ -28,6 +29,7 @@ async fn test_docker_env_vars() {
         env: HashMap::from([("MY_VAR".to_string(), "aurora_docker".to_string())]),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({ "image": "alpine:3.19" }),
+        output_tx: None,
     };
     let output = executor.execute(input).await.unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
