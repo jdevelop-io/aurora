@@ -11,24 +11,10 @@ use ratatui::{
 const SPINNER_FRAMES: &[&str] = &["⣇", "⣦", "⣴", "⣸", "⢹", "⠻", "⠟", "⡏"];
 
 pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: Rect, focused: bool) {
-    let done_count = state
-        .beams
-        .iter()
-        .filter(|b| {
-            matches!(
-                b.status,
-                BeamStatus::Success { .. }
-                    | BeamStatus::Failed { .. }
-                    | BeamStatus::Skipped { .. }
-                    | BeamStatus::Cancelled
-            )
-        })
-        .count();
-
     let title = match state.done {
-        Some(true) => format!(" Aurora ✔ Done [{}/{}] ", done_count, state.beams.len()),
-        Some(false) => format!(" Aurora ✕ Failed [{}/{}] ", done_count, state.beams.len()),
-        None => format!(" Aurora  Running... [{}/{}] ", done_count, state.beams.len()),
+        Some(true) => " Aurora ✔ Done ".to_string(),
+        Some(false) => " Aurora ✕ Failed ".to_string(),
+        None => " Aurora  Running... ".to_string(),
     };
 
     let items: Vec<ListItem> = state
