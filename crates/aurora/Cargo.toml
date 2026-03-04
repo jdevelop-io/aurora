@@ -16,3 +16,7 @@ aurora-tui = { path = "../aurora-tui" }
 aurora-executor-api = { path = "../aurora-executor-api" }
 aurora-executor-local = { path = "../aurora-executor-local" }
 aurora-executor-docker = { path = "../aurora-executor-docker" }
+extism = "1"
+dirs = "5"
+async-trait = { workspace = true }
+serde_json = { workspace = true }
