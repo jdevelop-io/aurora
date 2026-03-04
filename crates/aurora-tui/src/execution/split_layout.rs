@@ -47,6 +47,7 @@ pub fn render_execution(
         outer[1],
         crate::widgets::status_bar::StatusContext::Execution {
             done: exec.done.is_some(),
+            success: exec.done == Some(true),
             done_count,
             total,
         },

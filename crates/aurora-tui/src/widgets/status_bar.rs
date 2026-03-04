@@ -4,7 +4,7 @@ const BAR_WIDTH: usize = 16;
 
 pub enum StatusContext {
     Picker,
-    Execution { done: bool, done_count: usize, total: usize },
+    Execution { done: bool, success: bool, done_count: usize, total: usize },
     LogView,
 }
 
@@ -30,7 +30,7 @@ pub fn render_status_bar(f: &mut Frame, area: Rect, ctx: StatusContext) {
             " [↑↓] nav  [Space] sélec  [Tab] deps  [Enter] lancer  [?] aide  [q] quitter ".to_string(),
             Color::DarkGray,
         ),
-        StatusContext::Execution { done: false, done_count, total } => {
+        StatusContext::Execution { done: false, done_count, total, .. } => {
             let bar = build_progress_bar(done_count, total);
             let prefix = if bar.is_empty() { String::new() } else { format!(" {} ", bar) };
             (
@@ -38,10 +38,9 @@ pub fn render_status_bar(f: &mut Frame, area: Rect, ctx: StatusContext) {
                 Color::DarkGray,
             )
         }
-        StatusContext::Execution { done: true, done_count, total } => {
+        StatusContext::Execution { done: true, success, done_count, total } => {
             let bar = build_progress_bar(done_count, total);
             let prefix = if bar.is_empty() { String::new() } else { format!(" {} ", bar) };
-            let success = done_count == total;
             (
                 format!("{}[↑↓/jk] beam  [y] copier  [?] aide  [q] quitter ", prefix),
                 if success { Color::Green } else { Color::Red },
