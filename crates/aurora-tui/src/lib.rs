@@ -4,7 +4,7 @@ pub mod picker;
 pub mod widgets;
 
 use anyhow::Result;
-use app::{ExecutionState, FocusPanel, LogViewState, PickerAction, PickerState};
+use app::{ExecutionAction, ExecutionState, FocusPanel, LogViewState, PickerAction, PickerState};
 use aurora_core::scheduler::SchedulerEvent;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -19,8 +19,9 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 pub async fn run_execution_tui(
-    beam_names: Vec<String>,
+    beam_info: Vec<(String, Vec<String>)>,
     mut rx: mpsc::Receiver<SchedulerEvent>,
+    rerun: impl Fn(String, Vec<String>) -> mpsc::Receiver<SchedulerEvent>,
 ) -> Result<()> {
     tokio::task::block_in_place(move || {
         enable_raw_mode()?;
@@ -29,7 +30,7 @@ pub async fn run_execution_tui(
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
-        let mut exec = ExecutionState::new(beam_names.into_iter().map(|n| (n, vec![])).collect());
+        let mut exec = ExecutionState::new(beam_info);
         let mut log_state = LogViewState::new(0, 0);
         let mut show_help = false;
         let mut tick: u64 = 0;
@@ -133,6 +134,12 @@ pub async fn run_execution_tui(
                             }
                             KeyCode::Char('y') => {
                                 copy_logs_to_clipboard(&exec.beams[exec.selected]);
+                            }
+                            KeyCode::Char('r') => {
+                                if let Some(ExecutionAction::Rerun { root, pre_success }) = exec.handle_key(key) {
+                                    log_state = LogViewState::new(exec.selected, 0);
+                                    rx = rerun(root, pre_success);
+                                }
                             }
                             _ => {}
                         }

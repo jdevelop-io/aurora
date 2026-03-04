@@ -1,7 +1,7 @@
 mod plugins;
 
 use anyhow::{bail, Result};
-use aurora_core::{env::evaluate, parser::parse, scheduler::Scheduler};
+use aurora_core::{env::evaluate, parser::parse, scheduler::{Scheduler, SchedulerEvent}};
 use aurora_executor_api::Executor;
 use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
@@ -95,19 +95,19 @@ async fn main() -> Result<()> {
 
     let (tx, rx) = mpsc::channel(128);
     // Exclure le beam virtuel __multi__ de la liste affichée dans la TUI
-    let beam_names: Vec<String> = beam_file.beams.iter()
+    let beam_info: Vec<(String, Vec<String>)> = beam_file.beams.iter()
         .filter(|b| b.name != "__multi__")
-        .map(|b| b.name.clone())
+        .map(|b| (b.name.clone(), b.depends_on.clone()))
         .collect();
 
     let beams = beam_file.beams.clone();
     let scheduler = Scheduler::new(
         beams,
-        executors,
+        executors.clone(),
         tx,
         beam_file.config.as_ref().and_then(|c| c.max_parallelism),
-        working_dir,
-        env,
+        working_dir.clone(),
+        env.clone(),
     );
 
     let target_clone = target.clone();
@@ -117,7 +117,31 @@ async fn main() -> Result<()> {
         }
     });
 
-    aurora_tui::run_execution_tui(beam_names, rx).await?;
+    let rerun_beams = beam_file.beams.clone();
+    let rerun_executors = executors.clone();
+    let rerun_max_par = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
+    let rerun_working_dir = working_dir.clone();
+    let rerun_env = env.clone();
+
+    let rerun = move |root: String, pre_success: Vec<String>| -> mpsc::Receiver<SchedulerEvent> {
+        let (tx, rx) = mpsc::channel(128);
+        let scheduler = Scheduler::new(
+            rerun_beams.clone(),
+            rerun_executors.clone(),
+            tx,
+            rerun_max_par,
+            rerun_working_dir.clone(),
+            rerun_env.clone(),
+        );
+        tokio::runtime::Handle::current().spawn(async move {
+            if let Err(e) = scheduler.run(&root, &pre_success).await {
+                eprintln!("Scheduler error: {}", e);
+            }
+        });
+        rx
+    };
+
+    aurora_tui::run_execution_tui(beam_info, rx, rerun).await?;
 
     Ok(())
 }
