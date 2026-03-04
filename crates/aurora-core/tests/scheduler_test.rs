@@ -38,7 +38,7 @@ async fn test_scheduler_simple() {
     ];
     let (tx, mut rx) = mpsc::channel(32);
     let scheduler = Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new());
-    scheduler.run("b").await.unwrap();
+    scheduler.run("b", &[]).await.unwrap();
 
     let mut events = vec![];
     while let Ok(evt) = rx.try_recv() { events.push(evt); }
@@ -60,7 +60,7 @@ async fn test_scheduler_failed_cancels_dependents() {
         make_beam("b", vec!["a"], vec!["echo b"]),
     ];
     let (tx, mut rx) = mpsc::channel(32);
-    Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new()).run("b").await.unwrap();
+    Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new()).run("b", &[]).await.unwrap();
 
     let mut events = vec![];
     while let Ok(evt) = rx.try_recv() { events.push(evt); }

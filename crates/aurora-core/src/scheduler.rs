@@ -65,7 +65,7 @@ impl Scheduler {
         }
     }
 
-    pub async fn run(self, root: &str) -> Result<bool> {
+    pub async fn run(self, root: &str, pre_success: &[String]) -> Result<bool> {
         let deps: Vec<(String, Vec<String>)> = self.beams.values()
             .map(|b| (b.name.clone(), b.depends_on.clone()))
             .collect();
@@ -79,6 +79,10 @@ impl Scheduler {
         for level in &levels {
             let mut set = JoinSet::new();
             for beam_name in level {
+                // Beam déjà réussi — silencieux, dépendants débloqués normalement
+                if pre_success.contains(beam_name) {
+                    continue;
+                }
                 if cancelled.contains(beam_name) {
                     let _ = self.tx.send(SchedulerEvent::BeamCompleted {
                         name: beam_name.clone(),

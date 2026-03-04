@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
 
     let target_clone = target.clone();
     tokio::spawn(async move {
-        if let Err(e) = scheduler.run(&target_clone).await {
+        if let Err(e) = scheduler.run(&target_clone, &[]).await {
             eprintln!("Scheduler error: {}", e);
         }
     });
