@@ -1,0 +1,9 @@
+/home/jeandenis.vidot@SAFTI.local/Github/jdevelop-io/aurora/target/debug/deps/socket2-2777903940dfe188.d: /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/lib.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sockaddr.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/socket.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sockref.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sys/unix.rs
+
+/home/jeandenis.vidot@SAFTI.local/Github/jdevelop-io/aurora/target/debug/deps/libsocket2-2777903940dfe188.rmeta: /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/lib.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sockaddr.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/socket.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sockref.rs /home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sys/unix.rs
+
+/home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/lib.rs:
+/home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sockaddr.rs:
+/home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/socket.rs:
+/home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sockref.rs:
+/home/jeandenis.vidot@SAFTI.local/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/socket2-0.6.2/src/sys/unix.rs:
