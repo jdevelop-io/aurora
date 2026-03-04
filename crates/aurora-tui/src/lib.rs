@@ -1,19 +1,18 @@
 pub mod app;
 pub mod execution;
-pub mod execution_view;
 pub mod picker;
-pub mod picker_view;
 pub mod widgets;
 
 use anyhow::Result;
-use app::{App, AppMode};
+use app::{ExecutionState, LogViewState, PickerAction, PickerState};
 use aurora_core::scheduler::SchedulerEvent;
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use picker_view::{PickerBeam, PickerState};
+use execution::split_layout;
+use picker::view as picker_view;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::time::Duration;
@@ -23,48 +22,81 @@ pub async fn run_execution_tui(
     beam_names: Vec<String>,
     mut rx: mpsc::Receiver<SchedulerEvent>,
 ) -> Result<()> {
-    // block_in_place : crossterm utilise epoll en bloquant — incompatible avec le
-    // runtime tokio sans cette directive. Permet aux autres tâches tokio (scheduler)
-    // de continuer sur d'autres threads pendant que la TUI bloque ce thread.
     tokio::task::block_in_place(move || {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
-        let mut app = App::new(beam_names);
+
+        let mut exec = ExecutionState::new(beam_names);
+        let mut log_state = LogViewState::new(0, 0);
+        let mut show_help = false;
         let mut tick: u64 = 0;
 
         let result = (|| -> Result<()> {
             loop {
+                // Drainer les events scheduler
                 while let Ok(evt) = rx.try_recv() {
                     let is_done = matches!(evt, SchedulerEvent::AllDone { .. });
-                    app.apply_event(evt);
+                    exec.apply_event(evt);
                     if is_done {
                         break;
                     }
                 }
 
-                terminal.draw(|f| execution_view::render_execution(f, &app, tick))?;
+                // Auto-scroll si pas verrouillé
+                let total_lines = {
+                    let beam = &exec.beams[log_state.beam_index];
+                    beam.stdout.len()
+                        + beam.stderr.len()
+                        + if beam.stderr.is_empty() { 0 } else { 1 }
+                };
+                log_state.auto_scroll(total_lines);
+
+                terminal.draw(|f| {
+                    split_layout::render_execution(f, &exec, &log_state, tick, show_help);
+                })?;
                 tick += 1;
 
                 if event::poll(Duration::from_millis(50))? {
                     if let Event::Key(key) = event::read()? {
+                        // Help popup capture tout
+                        if show_help {
+                            match key.code {
+                                KeyCode::Char('?') | KeyCode::Esc => show_help = false,
+                                _ => {}
+                            }
+                            continue;
+                        }
+
                         match key.code {
                             KeyCode::Char('q') => return Ok(()),
-                            KeyCode::Down | KeyCode::Char('j') => app.select_next(),
-                            KeyCode::Up | KeyCode::Char('k') => app.select_prev(),
-                            KeyCode::Enter => {
-                                app.mode = if app.mode == AppMode::LogView {
-                                    AppMode::Running
-                                } else {
-                                    AppMode::LogView
-                                };
+                            KeyCode::Char('c')
+                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                            {
+                                return Ok(());
                             }
-                            KeyCode::Esc => {
-                                if app.mode == AppMode::LogView {
-                                    app.mode = AppMode::Running;
-                                }
+                            KeyCode::Char('?') => show_help = true,
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                exec.select_next();
+                                log_state.beam_index = exec.selected;
+                                log_state.scroll_locked = false;
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                exec.select_prev();
+                                log_state.beam_index = exec.selected;
+                                log_state.scroll_locked = false;
+                            }
+                            KeyCode::Char('G') => {
+                                log_state.scroll_locked = false;
+                            }
+                            KeyCode::PageUp | KeyCode::PageDown => {
+                                let height = terminal.size()?.height;
+                                log_state.handle_key(key, total_lines, height);
+                            }
+                            KeyCode::Char('y') => {
+                                copy_logs_to_clipboard(&exec.beams[exec.selected]);
                             }
                             _ => {}
                         }
@@ -81,8 +113,7 @@ pub async fn run_execution_tui(
 
 pub fn run_picker(
     beam_info: Vec<(String, Option<String>, Vec<String>)>,
-) -> Result<Option<String>> {
-    // Même raison : appelé depuis un contexte async (main), doit déclarer le blocage.
+) -> Result<Option<Vec<String>>> {
     tokio::task::block_in_place(|| {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -90,51 +121,17 @@ pub fn run_picker(
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
-        let mut state = PickerState {
-            beams: beam_info
-                .into_iter()
-                .map(|(name, desc, deps)| PickerBeam {
-                    name,
-                    description: desc,
-                    depends_on: deps,
-                })
-                .collect(),
-            selected: 0,
-            search: String::new(),
-            show_deps: false,
-        };
+        let mut state = PickerState::new(beam_info);
 
-        let result = (|| -> Result<Option<String>> {
+        let result = (|| -> Result<Option<Vec<String>>> {
             loop {
                 terminal.draw(|f| picker_view::render_picker(f, &state))?;
-
                 if event::poll(Duration::from_millis(100))? {
                     if let Event::Key(key) = event::read()? {
-                        let filtered_count = state.filtered().len();
-                        match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => return Ok(None),
-                            KeyCode::Enter => {
-                                return Ok(state.selected_beam().map(|b| b.name.clone()));
-                            }
-                            KeyCode::Down | KeyCode::Char('j') => {
-                                state.selected =
-                                    (state.selected + 1).min(filtered_count.saturating_sub(1));
-                            }
-                            KeyCode::Up | KeyCode::Char('k') => {
-                                state.selected = state.selected.saturating_sub(1);
-                            }
-                            KeyCode::Char('/') => {
-                                state.search.clear();
-                            }
-                            KeyCode::Backspace => {
-                                state.search.pop();
-                                state.selected = 0;
-                            }
-                            KeyCode::Char(c) => {
-                                state.search.push(c);
-                                state.selected = 0;
-                            }
-                            _ => {}
+                        match state.handle_key(key) {
+                            Some(PickerAction::Launch(names)) => return Ok(Some(names)),
+                            Some(PickerAction::Quit) => return Ok(None),
+                            None => {}
                         }
                     }
                 }
@@ -145,4 +142,16 @@ pub fn run_picker(
         let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
         result
     })
+}
+
+fn copy_logs_to_clipboard(beam: &app::BeamView) {
+    let content = beam.all_logs().join("\n");
+    match arboard::Clipboard::new() {
+        Ok(mut cb) => {
+            let _ = cb.set_text(content);
+        }
+        Err(_) => {
+            // Clipboard non disponible (SSH sans X11) — silencieux
+        }
+    }
 }
