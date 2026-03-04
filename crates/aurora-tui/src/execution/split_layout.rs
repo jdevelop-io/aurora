@@ -1,4 +1,4 @@
-use crate::app::{ExecutionState, LogViewState};
+use crate::app::{ExecutionState, FocusPanel, LogViewState};
 use crate::execution::{beam_list, log_panel};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
@@ -24,10 +24,11 @@ pub fn render_execution(
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(outer[0]);
 
-    beam_list::render_beam_list(f, exec, tick, split[0]);
+    let beams_focused = exec.focus == FocusPanel::Beams;
+    beam_list::render_beam_list(f, exec, tick, split[0], beams_focused);
 
     let beam = &exec.beams[log_state.beam_index];
-    log_panel::render_log_panel(f, beam, log_state, split[1]);
+    log_panel::render_log_panel(f, beam, log_state, split[1], !beams_focused);
 
     crate::widgets::status_bar::render_status_bar(
         f,

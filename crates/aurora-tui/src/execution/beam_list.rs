@@ -10,7 +10,7 @@ use ratatui::{
 
 const SPINNER_FRAMES: &[&str] = &["⣇", "⣦", "⣴", "⣸", "⢹", "⠻", "⠟", "⡏"];
 
-pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: Rect) {
+pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: Rect, focused: bool) {
     let done_count = state
         .beams
         .iter()
@@ -60,7 +60,17 @@ pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: 
         })
         .collect();
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
+    let border_style = if focused {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+    let list = List::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(border_style),
+    );
     f.render_widget(list, area);
 }
 

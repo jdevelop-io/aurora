@@ -7,7 +7,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_log_panel(f: &mut Frame, beam: &BeamView, log_state: &LogViewState, area: Rect) {
+pub fn render_log_panel(f: &mut Frame, beam: &BeamView, log_state: &LogViewState, area: Rect, focused: bool) {
     let mut lines: Vec<Line> = beam
         .stdout
         .iter()
@@ -30,8 +30,18 @@ pub fn render_log_panel(f: &mut Frame, beam: &BeamView, log_state: &LogViewState
     };
     let title = format!(" {} — Logs{} ", beam.name, auto_indicator);
 
+    let border_style = if focused {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
     let paragraph = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title(title))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(border_style),
+        )
         .wrap(Wrap { trim: false })
         .scroll((log_state.scroll, 0));
     f.render_widget(paragraph, area);
