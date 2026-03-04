@@ -1,0 +1,10 @@
+[package]
+name = "aurora-executor-local"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
+async-trait = "0.1"
+aurora-executor-api = { path = "../aurora-executor-api" }

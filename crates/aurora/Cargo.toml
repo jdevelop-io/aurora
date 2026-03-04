@@ -1,0 +1,18 @@
+[package]
+name = "aurora"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "aurora"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+aurora-core = { path = "../aurora-core" }
+aurora-tui = { path = "../aurora-tui" }
+aurora-executor-api = { path = "../aurora-executor-api" }
+aurora-executor-local = { path = "../aurora-executor-local" }
+aurora-executor-docker = { path = "../aurora-executor-docker" }
