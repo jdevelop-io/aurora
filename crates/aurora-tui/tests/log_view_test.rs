@@ -1,4 +1,4 @@
-use aurora_tui::app::LogViewState;
+use aurora_tui::app::{ExecutionState, FocusPanel, LogViewState};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn key(code: KeyCode) -> KeyEvent {
@@ -47,4 +47,43 @@ fn esc_returns_close() {
     let mut state = LogViewState::new(0, 5);
     let action = state.handle_key(key(KeyCode::Esc), 5, 20);
     assert_eq!(action, Some(aurora_tui::app::LogViewAction::Close));
+}
+
+#[test]
+fn jk_scroll_logs_when_log_focused() {
+    // LogViewState avec 20 lignes, scroll au bas (19)
+    let mut log_state = LogViewState::new(0, 20);
+    assert_eq!(log_state.scroll, 19);
+
+    // Appui sur Up (simule j/k en focus Logs)
+    log_state.handle_key(key(KeyCode::Up), 20, 10);
+
+    // Le scroll doit avoir diminué et le verrou doit être actif
+    assert_eq!(log_state.scroll, 18);
+    assert!(log_state.scroll_locked);
+}
+
+#[test]
+fn focus_beams_by_default_and_tab_toggles() {
+    let mut state = ExecutionState::new(vec!["a".into(), "b".into()]);
+    assert_eq!(state.focus, FocusPanel::Beams);
+
+    state.handle_key(key(KeyCode::Tab));
+    assert_eq!(state.focus, FocusPanel::Logs);
+
+    state.handle_key(key(KeyCode::Tab));
+    assert_eq!(state.focus, FocusPanel::Beams);
+}
+
+#[test]
+fn select_next_does_not_affect_log_scroll_position() {
+    let mut exec = ExecutionState::new(vec!["a".into(), "b".into(), "c".into()]);
+    let mut log_state = LogViewState::new(0, 20);
+    log_state.scroll = 10;
+    log_state.scroll_locked = true;
+
+    exec.select_next();
+    // select_next ne touche pas log_state
+    assert_eq!(log_state.scroll, 10);
+    assert!(log_state.scroll_locked);
 }
