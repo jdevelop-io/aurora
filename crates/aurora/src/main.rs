@@ -117,7 +117,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let rerun_beams = beam_file.beams.clone();
+    let rerun_beams: Vec<_> = beam_file.beams.iter().filter(|b| b.name != "__multi__").cloned().collect();
     let rerun_executors = executors.clone();
     let rerun_max_par = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
     let rerun_working_dir = working_dir.clone();
