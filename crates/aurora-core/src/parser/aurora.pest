@@ -1,0 +1,68 @@
+// Whitespace and comments are silent
+WHITESPACE = _{ " " | "\t" | "\r" | "\n" }
+COMMENT    = _{ "#" ~ (!"\n" ~ ANY)* ~ ("\n" | EOI) }
+
+// Primitives
+ident        = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "-")* }
+number       = @{ ASCII_DIGIT+ }
+string_inner = @{ (!"\"" ~ !"\\" ~ ANY | "\\" ~ ANY)* }
+string       = ${ "\"" ~ string_inner ~ "\"" }
+
+// List of strings: ["a", "b"]
+string_list = { "[" ~ (string ~ ("," ~ string)* ~ ","?)? ~ "]" }
+
+// Top-level file
+beamfile = { SOI ~ block* ~ EOI }
+block    = { aurora_block | variable_block | environment_block | beam_block }
+
+// aurora { version = "1"  default = "qa"  max_parallelism = 8 }
+aurora_block       = { "aurora" ~ "{" ~ aurora_field* ~ "}" }
+aurora_field       = { aurora_version | aurora_default | aurora_parallelism }
+aurora_version     = { "version"         ~ "=" ~ string }
+aurora_default     = { "default"         ~ "=" ~ string }
+aurora_parallelism = { "max_parallelism" ~ "=" ~ number }
+
+// variable "name" { default = "val"  description = "..." }
+variable_block  = { "variable" ~ string ~ "{" ~ variable_field* ~ "}" }
+variable_field  = { var_default | var_description }
+var_default     = { "default"     ~ "=" ~ string }
+var_description = { "description" ~ "=" ~ string }
+
+// environment { NAME = shell("...") | NAME = "..." }
+environment_block = { "environment" ~ "{" ~ env_var* ~ "}" }
+env_var           = { ident ~ "=" ~ env_value }
+env_value         = { shell_call | string }
+shell_call        = { "shell" ~ "(" ~ string ~ ")" }
+
+// beam "name" { ... }
+beam_block = { "beam" ~ string ~ "{" ~ beam_field* ~ "}" }
+beam_field = {
+    beam_description |
+    beam_depends_on  |
+    beam_inputs      |
+    beam_outputs     |
+    beam_skip_if     |
+    beam_condition   |
+    beam_run
+}
+beam_description = { "description" ~ "=" ~ string }
+beam_depends_on  = { "depends_on"  ~ "=" ~ string_list }
+beam_inputs      = { "inputs"      ~ "=" ~ string_list }
+beam_outputs     = { "outputs"     ~ "=" ~ string_list }
+beam_skip_if     = { "skip_if"     ~ "=" ~ string }
+
+// condition { any = [...] | all = [...] }
+beam_condition   = { "condition" ~ "{" ~ condition_body ~ "}" }
+condition_body   = { condition_any | condition_all }
+condition_any    = { "any" ~ "=" ~ "[" ~ condition_clause* ~ "]" }
+condition_all    = { "all" ~ "=" ~ "[" ~ condition_clause* ~ "]" }
+condition_clause = { "{" ~ clause_shell ~ "}" ~ ","? }
+clause_shell     = { "shell" ~ "=" ~ string }
+
+// run { commands = [...]  executor "name" { ... } }
+beam_run       = { "run" ~ "{" ~ run_field* ~ "}" }
+run_field      = { run_commands | run_executor }
+run_commands   = { "commands" ~ "=" ~ string_list }
+run_executor   = { "executor" ~ string ~ "{" ~ executor_field* ~ "}" }
+executor_field = { ident ~ "=" ~ (string | var_ref) }
+var_ref        = @{ "var." ~ ident }
