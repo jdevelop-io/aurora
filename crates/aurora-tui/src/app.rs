@@ -46,6 +46,14 @@ impl BeamView {
     }
 }
 
+// ── FocusPanel ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FocusPanel {
+    Beams,
+    Logs,
+}
+
 // ── Actions retournées par handle_key ────────────────────────────
 
 #[derive(Debug, PartialEq)]
@@ -191,6 +199,7 @@ pub struct ExecutionState {
     pub beams: Vec<BeamView>,
     pub selected: usize,
     pub done: Option<bool>,
+    pub focus: FocusPanel,
 }
 
 impl ExecutionState {
@@ -199,6 +208,7 @@ impl ExecutionState {
             beams: beam_names.into_iter().map(BeamView::new).collect(),
             selected: 0,
             done: None,
+            focus: FocusPanel::Beams,
         }
     }
 
@@ -230,8 +240,15 @@ impl ExecutionState {
         }
     }
 
-    pub fn handle_key(&self, key: KeyEvent) -> Option<ExecutionAction> {
+    pub fn handle_key(&mut self, key: KeyEvent) -> Option<ExecutionAction> {
         match key.code {
+            KeyCode::Tab => {
+                self.focus = match self.focus {
+                    FocusPanel::Beams => FocusPanel::Logs,
+                    FocusPanel::Logs => FocusPanel::Beams,
+                };
+                None
+            }
             KeyCode::Char('q') => Some(ExecutionAction::Quit),
             KeyCode::Enter => Some(ExecutionAction::OpenLogView {
                 beam_index: self.selected,
