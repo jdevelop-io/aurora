@@ -9,3 +9,4 @@ ratatui = "0.29"
 crossterm = "0.28"
 tokio = { workspace = true }
 aurora-core = { path = "../aurora-core" }
+aurora-executor-api = { path = "../aurora-executor-api" }
