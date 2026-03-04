@@ -1,5 +1,6 @@
 pub mod app;
 pub mod execution_view;
+pub mod picker;
 pub mod picker_view;
 
 use anyhow::Result;
