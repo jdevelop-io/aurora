@@ -31,7 +31,7 @@ async fn test_scheduler_simple() {
     ];
     let executor: Arc<dyn Executor> = Arc::new(LocalExecutor::new());
     let (tx, mut rx) = mpsc::channel(32);
-    let scheduler = Scheduler::new(beams, executor, tx, None);
+    let scheduler = Scheduler::new(beams, executor, tx, None, std::path::PathBuf::from("/tmp"));
     scheduler.run("b").await.unwrap();
 
     let mut events = vec![];
@@ -55,7 +55,7 @@ async fn test_scheduler_failed_cancels_dependents() {
     ];
     let executor: Arc<dyn Executor> = Arc::new(LocalExecutor::new());
     let (tx, mut rx) = mpsc::channel(32);
-    Scheduler::new(beams, executor, tx, None).run("b").await.unwrap();
+    Scheduler::new(beams, executor, tx, None, std::path::PathBuf::from("/tmp")).run("b").await.unwrap();
 
     let mut events = vec![];
     while let Ok(evt) = rx.try_recv() { events.push(evt); }

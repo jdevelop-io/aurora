@@ -68,12 +68,14 @@ async fn main() -> Result<()> {
     let (tx, rx) = mpsc::channel(128);
     let beam_names: Vec<String> = beam_file.beams.iter().map(|b| b.name.clone()).collect();
 
+    let working_dir = beamfile_path.parent().unwrap().to_path_buf();
     let beams = beam_file.beams.clone();
     let scheduler = Scheduler::new(
         beams,
         executor,
         tx,
         beam_file.config.as_ref().and_then(|c| c.max_parallelism),
+        working_dir,
     );
 
     let target_clone = target.clone();

@@ -1,4 +1,5 @@
 use crate::ast::Beam;
+use crate::cache::BeamCache;
 use crate::dag::BeamGraph;
 use aurora_executor_api::{Executor, ExecutionInput};
 use anyhow::Result;
@@ -38,6 +39,8 @@ pub struct Scheduler {
     executor: Arc<dyn Executor>,
     tx: mpsc::Sender<SchedulerEvent>,
     max_parallelism: Option<usize>,
+    cache: Arc<BeamCache>,
+    working_dir: PathBuf,
 }
 
 impl Scheduler {
@@ -46,12 +49,16 @@ impl Scheduler {
         executor: Arc<dyn Executor>,
         tx: mpsc::Sender<SchedulerEvent>,
         max_parallelism: Option<usize>,
+        working_dir: PathBuf,
     ) -> Self {
+        let cache = Arc::new(BeamCache::new(working_dir.join(".aurora/cache")));
         Self {
             beams: beams.into_iter().map(|b| (b.name.clone(), b)).collect(),
             executor,
             tx,
             max_parallelism,
+            cache,
+            working_dir,
         }
     }
 
@@ -80,6 +87,8 @@ impl Scheduler {
                 let executor = self.executor.clone();
                 let tx = self.tx.clone();
                 let sem = semaphore.clone();
+                let cache = self.cache.clone();
+                let working_dir = self.working_dir.clone();
 
                 set.spawn(async move {
                     let _permit = if let Some(s) = sem {
@@ -110,11 +119,28 @@ impl Scheduler {
                         }
                     }
 
+                    // Cache check — uniquement si inputs/outputs définis
+                    let inputs_hash = if !beam.inputs.is_empty() {
+                        cache.hash_inputs_at(&working_dir, &beam.inputs).ok()
+                    } else {
+                        None
+                    };
+
+                    if let Some(ref hash) = inputs_hash {
+                        if cache.is_valid(&beam.name, hash, &beam.outputs) {
+                            let _ = tx.send(SchedulerEvent::BeamCompleted {
+                                name: beam.name.clone(),
+                                status: BeamStatus::Skipped { reason: SkipReason::Cached },
+                            }).await;
+                            return (beam.name, true);
+                        }
+                    }
+
                     let run = beam.run.as_ref().unwrap();
                     let input = ExecutionInput {
                         commands: run.commands.clone(),
                         env: std::env::vars().collect(),
-                        working_dir: PathBuf::from("."),
+                        working_dir: working_dir.clone(),
                         config: serde_json::json!({}),
                     };
 
@@ -125,6 +151,11 @@ impl Scheduler {
                         Ok(output) => {
                             let duration = start.elapsed();
                             let success = output.success();
+                            if success {
+                                if let Some(ref hash) = inputs_hash {
+                                    let _ = cache.save(&beam.name, hash);
+                                }
+                            }
                             let status = if success {
                                 BeamStatus::Success { duration, cached: false }
                             } else {
