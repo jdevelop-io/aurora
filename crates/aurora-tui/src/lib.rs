@@ -29,7 +29,7 @@ pub async fn run_execution_tui(
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
-        let mut exec = ExecutionState::new(beam_names);
+        let mut exec = ExecutionState::new(beam_names.into_iter().map(|n| (n, vec![])).collect());
         let mut log_state = LogViewState::new(0, 0);
         let mut show_help = false;
         let mut tick: u64 = 0;

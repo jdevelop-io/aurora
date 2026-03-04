@@ -24,35 +24,42 @@ fn picker_esc_returns_quit() {
 
 #[test]
 fn execution_q_returns_quit() {
-    let mut exec = ExecutionState::new(vec!["build".to_string(), "test".to_string()]);
+    let mut exec = ExecutionState::new(vec![("build".to_string(), vec![]), ("test".to_string(), vec![])]);
     let result = exec.handle_key(key(KeyCode::Char('q')));
     assert_eq!(result, Some(ExecutionAction::Quit));
 }
 
 #[test]
 fn execution_enter_opens_log_view() {
-    let mut exec = ExecutionState::new(vec!["build".to_string()]);
+    let mut exec = ExecutionState::new(vec![("build".to_string(), vec![])]);
     let result = exec.handle_key(key(KeyCode::Enter));
     assert_eq!(result, Some(ExecutionAction::OpenLogView { beam_index: 0 }));
 }
 
 #[test]
 fn default_focus_is_beams() {
-    let state = ExecutionState::new(vec!["a".into(), "b".into()]);
+    let state = ExecutionState::new(vec![("a".to_string(), vec![]), ("b".to_string(), vec![])]);
     assert_eq!(state.focus, FocusPanel::Beams);
 }
 
 #[test]
 fn tab_switches_focus_from_beams_to_logs() {
-    let mut state = ExecutionState::new(vec!["a".into()]);
+    let mut state = ExecutionState::new(vec![("a".to_string(), vec![])]);
     state.handle_key(key(KeyCode::Tab));
     assert_eq!(state.focus, FocusPanel::Logs);
 }
 
 #[test]
 fn tab_switches_focus_from_logs_to_beams() {
-    let mut state = ExecutionState::new(vec!["a".into()]);
+    let mut state = ExecutionState::new(vec![("a".to_string(), vec![])]);
     state.focus = FocusPanel::Logs;
     state.handle_key(key(KeyCode::Tab));
     assert_eq!(state.focus, FocusPanel::Beams);
+}
+
+#[test]
+fn beam_view_stores_depends_on() {
+    use aurora_tui::app::BeamView;
+    let beam = BeamView::new("deploy".to_string(), vec!["build".to_string()]);
+    assert_eq!(beam.depends_on, vec!["build".to_string()]);
 }

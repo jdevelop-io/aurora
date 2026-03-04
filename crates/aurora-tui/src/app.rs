@@ -7,6 +7,7 @@ use std::time::Instant;
 #[derive(Debug, Clone)]
 pub struct BeamView {
     pub name: String,
+    pub depends_on: Vec<String>,
     pub status: BeamStatus,
     pub stdout: Vec<String>,
     pub stderr: Vec<String>,
@@ -14,9 +15,10 @@ pub struct BeamView {
 }
 
 impl BeamView {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String, depends_on: Vec<String>) -> Self {
         BeamView {
             name,
+            depends_on,
             status: BeamStatus::Pending,
             stdout: vec![],
             stderr: vec![],
@@ -203,9 +205,9 @@ pub struct ExecutionState {
 }
 
 impl ExecutionState {
-    pub fn new(beam_names: Vec<String>) -> Self {
+    pub fn new(beam_info: Vec<(String, Vec<String>)>) -> Self {
         ExecutionState {
-            beams: beam_names.into_iter().map(BeamView::new).collect(),
+            beams: beam_info.into_iter().map(|(name, deps)| BeamView::new(name, deps)).collect(),
             selected: 0,
             done: None,
             focus: FocusPanel::Beams,
@@ -350,7 +352,7 @@ pub struct App {
 impl App {
     pub fn new(beam_names: Vec<String>) -> Self {
         App {
-            beams: beam_names.into_iter().map(BeamView::new).collect(),
+            beams: beam_names.into_iter().map(|n| BeamView::new(n, vec![])).collect(),
             mode: AppMode::Running,
             selected: 0,
             log_scroll: 0,

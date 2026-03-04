@@ -65,7 +65,7 @@ fn jk_scroll_logs_when_log_focused() {
 
 #[test]
 fn focus_beams_by_default_and_tab_toggles() {
-    let mut state = ExecutionState::new(vec!["a".into(), "b".into()]);
+    let mut state = ExecutionState::new(vec![("a".to_string(), vec![]), ("b".to_string(), vec![])]);
     assert_eq!(state.focus, FocusPanel::Beams);
 
     state.handle_key(key(KeyCode::Tab));
@@ -77,7 +77,7 @@ fn focus_beams_by_default_and_tab_toggles() {
 
 #[test]
 fn select_next_does_not_affect_log_scroll_position() {
-    let mut exec = ExecutionState::new(vec!["a".into(), "b".into(), "c".into()]);
+    let mut exec = ExecutionState::new(vec![("a".to_string(), vec![]), ("b".to_string(), vec![]), ("c".to_string(), vec![])]);
     let mut log_state = LogViewState::new(0, 20);
     log_state.scroll = 10;
     log_state.scroll_locked = true;
