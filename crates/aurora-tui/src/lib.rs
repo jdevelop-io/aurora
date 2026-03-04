@@ -86,8 +86,12 @@ pub async fn run_execution_tui(
                                         log_state.scroll_locked = false;
                                     }
                                     FocusPanel::Logs => {
+                                        let current_total = {
+                                            let beam = &exec.beams[log_state.beam_index];
+                                            beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
+                                        };
                                         let height = terminal.size()?.height;
-                                        log_state.handle_key(key, total_lines, height);
+                                        log_state.handle_key(key, current_total, height);
                                     }
                                 }
                             }
@@ -99,20 +103,28 @@ pub async fn run_execution_tui(
                                         log_state.scroll_locked = false;
                                     }
                                     FocusPanel::Logs => {
+                                        let current_total = {
+                                            let beam = &exec.beams[log_state.beam_index];
+                                            beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
+                                        };
                                         let height = terminal.size()?.height;
-                                        log_state.handle_key(key, total_lines, height);
+                                        log_state.handle_key(key, current_total, height);
                                     }
                                 }
                             }
                             KeyCode::Tab => {
-                                exec.handle_key(key);
+                                let _ = exec.handle_key(key);
                             }
                             KeyCode::Char('G') => {
                                 log_state.scroll_locked = false;
                             }
                             KeyCode::PageUp | KeyCode::PageDown => {
+                                let current_total = {
+                                    let beam = &exec.beams[log_state.beam_index];
+                                    beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
+                                };
                                 let height = terminal.size()?.height;
-                                log_state.handle_key(key, total_lines, height);
+                                log_state.handle_key(key, current_total, height);
                             }
                             KeyCode::Char('y') => {
                                 copy_logs_to_clipboard(&exec.beams[exec.selected]);
