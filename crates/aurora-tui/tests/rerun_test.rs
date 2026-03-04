@@ -104,11 +104,16 @@ fn r_key_ignored_when_exec_still_running() {
 }
 
 #[test]
-fn r_key_ignored_on_success_beam() {
+fn r_key_works_on_success_beam() {
     let mut state = make_state();
     set_done(&mut state);
     state.selected = 0; // test (Success)
 
     let action = state.handle_key(key(KeyCode::Char('r')));
-    assert!(action.is_none());
+    assert!(matches!(action, Some(ExecutionAction::Rerun { .. })));
+    if let Some(ExecutionAction::Rerun { root, pre_success }) = action {
+        assert_eq!(root, "test");
+        // test est le root → dans to_rerun, pas dans pre_success
+        assert!(!pre_success.contains(&"test".to_string()));
+    }
 }

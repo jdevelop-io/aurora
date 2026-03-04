@@ -259,14 +259,19 @@ impl ExecutionState {
             }
             visited.push(idx);
             let beam = &self.beams[idx];
-            match &beam.status {
-                BeamStatus::Failed { .. } | BeamStatus::Cancelled => {
-                    to_rerun.push(beam.name.clone());
+            if idx == selected {
+                // Le beam racine est toujours relancé, quel que soit son statut
+                to_rerun.push(beam.name.clone());
+            } else {
+                match &beam.status {
+                    BeamStatus::Failed { .. } | BeamStatus::Cancelled => {
+                        to_rerun.push(beam.name.clone());
+                    }
+                    BeamStatus::Success { .. } | BeamStatus::Skipped { .. } => {
+                        pre_success.push(beam.name.clone());
+                    }
+                    _ => {}
                 }
-                BeamStatus::Success { .. } | BeamStatus::Skipped { .. } => {
-                    pre_success.push(beam.name.clone());
-                }
-                _ => {}
             }
             for dep_name in &beam.depends_on {
                 if let Some(dep_idx) = self.beams.iter().position(|b| &b.name == dep_name) {
@@ -309,7 +314,7 @@ impl ExecutionState {
             KeyCode::Char('r') => {
                 if self.done.is_some() {
                     let beam = &self.beams[self.selected];
-                    if matches!(beam.status, BeamStatus::Failed { .. } | BeamStatus::Cancelled) {
+                    if matches!(beam.status, BeamStatus::Failed { .. } | BeamStatus::Cancelled | BeamStatus::Success { .. } | BeamStatus::Skipped { .. }) {
                         let (root, to_rerun, pre_success) = self.compute_rerun(self.selected);
                         self.reset_for_rerun(&to_rerun);
                         return Some(ExecutionAction::Rerun { root, pre_success });
