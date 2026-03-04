@@ -11,11 +11,7 @@ use ratatui::{
 const SPINNER_FRAMES: &[&str] = &["⣇", "⣦", "⣴", "⣸", "⢹", "⠻", "⠟", "⡏"];
 
 pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: Rect, focused: bool) {
-    let title = match state.done {
-        Some(true) => " Aurora ✔ Done ".to_string(),
-        Some(false) => " Aurora ✕ Failed ".to_string(),
-        None => " Aurora  Running... ".to_string(),
-    };
+    let title = " Aurora ";
 
     let items: Vec<ListItem> = state
         .beams
