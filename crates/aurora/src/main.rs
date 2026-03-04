@@ -59,8 +59,23 @@ async fn main() -> Result<()> {
     } else if let Some(picker_results) = aurora_tui::run_picker(
         beam_file.beams.iter().map(|b| (b.name.clone(), b.description.clone(), b.depends_on.clone())).collect()
     )? {
-        // TODO Task 10 : supporter le multi-beam ; pour l'instant, premier beam sélectionné
-        picker_results.into_iter().next().unwrap_or_default()
+        if picker_results.len() == 1 {
+            picker_results.into_iter().next().unwrap()
+        } else {
+            // Multi-select : beam virtuel __multi__ qui dépend de tous les beams sélectionnés
+            let virtual_beam = aurora_core::ast::Beam {
+                name: "__multi__".to_string(),
+                description: Some("Multi-beam run".to_string()),
+                depends_on: picker_results,
+                inputs: vec![],
+                outputs: vec![],
+                skip_if: None,
+                condition: None,
+                run: None,
+            };
+            beam_file.beams.push(virtual_beam);
+            "__multi__".to_string()
+        }
     } else {
         return Ok(());
     };
@@ -79,7 +94,11 @@ async fn main() -> Result<()> {
     };
 
     let (tx, rx) = mpsc::channel(128);
-    let beam_names: Vec<String> = beam_file.beams.iter().map(|b| b.name.clone()).collect();
+    // Exclure le beam virtuel __multi__ de la liste affichée dans la TUI
+    let beam_names: Vec<String> = beam_file.beams.iter()
+        .filter(|b| b.name != "__multi__")
+        .map(|b| b.name.clone())
+        .collect();
 
     let beams = beam_file.beams.clone();
     let scheduler = Scheduler::new(
