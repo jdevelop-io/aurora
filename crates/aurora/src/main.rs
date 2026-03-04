@@ -1,8 +1,9 @@
 mod plugins;
 
 use anyhow::{bail, Result};
-use aurora_core::{parser::parse, scheduler::Scheduler};
+use aurora_core::{env::evaluate, parser::parse, scheduler::Scheduler};
 use aurora_executor_api::Executor;
+use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
 use clap::{Arg, Command};
 use std::fs;
@@ -55,27 +56,39 @@ async fn main() -> Result<()> {
 
     let target = if let Some(beam_name) = matches.get_one::<String>("beam") {
         beam_name.clone()
-    } else if let Some(picker_result) = aurora_tui::run_picker(
+    } else if let Some(picker_results) = aurora_tui::run_picker(
         beam_file.beams.iter().map(|b| (b.name.clone(), b.description.clone(), b.depends_on.clone())).collect()
     )? {
-        picker_result
+        // TODO Task 10 : supporter le multi-beam ; pour l'instant, premier beam sélectionné
+        picker_results.into_iter().next().unwrap_or_default()
     } else {
         return Ok(());
     };
 
-    let executor: Arc<dyn Executor> = Arc::new(LocalExecutor::new());
+    let mut executors: std::collections::HashMap<String, Arc<dyn Executor>> = std::collections::HashMap::new();
+    executors.insert("local".into(), Arc::new(LocalExecutor::new()));
+    executors.insert("docker".into(), Arc::new(DockerExecutor::new()));
+
+    let working_dir = beamfile_path.parent().unwrap().to_path_buf();
+
+    // Évaluer les variables environment (shell(...)) séquentiellement
+    let env = if let Some(env_block) = &beam_file.environment {
+        evaluate(env_block, &working_dir)?
+    } else {
+        std::env::vars().collect()
+    };
 
     let (tx, rx) = mpsc::channel(128);
     let beam_names: Vec<String> = beam_file.beams.iter().map(|b| b.name.clone()).collect();
 
-    let working_dir = beamfile_path.parent().unwrap().to_path_buf();
     let beams = beam_file.beams.clone();
     let scheduler = Scheduler::new(
         beams,
-        executor,
+        executors,
         tx,
         beam_file.config.as_ref().and_then(|c| c.max_parallelism),
         working_dir,
+        env,
     );
 
     let target_clone = target.clone();
