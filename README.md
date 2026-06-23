@@ -71,6 +71,70 @@ aurora --var key=val   # override a Beamfile variable
 
 With no argument, the `default` beam declared in the `aurora {}` block is used.
 
+### Examples
+
+Run the default beam (here `check`, which fans out to `clippy` and `test`):
+
+```bash
+aurora
+```
+
+Run a specific beam and its dependencies. Running `clippy` first runs `fmt`,
+since `clippy` declares `depends_on = ["fmt"]`:
+
+```bash
+aurora clippy
+```
+
+List the available beams with their descriptions:
+
+```bash
+$ aurora --list
+check    Format + lint + test
+clippy   Lint with clippy
+fmt      Format Rust code
+test     Run all tests
+```
+
+Preview the execution plan without running anything. Beams already satisfied by
+the cache are flagged as skipped:
+
+```bash
+$ aurora check --dry-run
+fmt      → run
+clippy   → run    (depends_on: fmt)
+test     → run    (depends_on: fmt)
+check    → run    (aggregate)
+```
+
+Force a full rebuild by ignoring the cache:
+
+```bash
+aurora check --no-cache
+```
+
+Override a variable declared in the Beamfile (for instance a Docker image used
+by a `docker` executor):
+
+```bash
+aurora qa --var docker_image=omega-tools:v2.0.0
+```
+
+Override several variables at once:
+
+```bash
+aurora qa --var docker_image=omega-tools:v2.0.0 --var profile=ci
+```
+
+### In the TUI
+
+Launch Aurora without arguments to open the picker, then:
+
+- type to fuzzy-search a beam, `Enter` to run it,
+- during execution, `↑`/`↓` to navigate beams and `Enter` to open the streamed logs,
+- `r` to rerun the focused beam (and its dependents),
+- `q` to quit.
+
 ## The Beamfile
 
 Minimal example (the one Aurora uses to build itself):
