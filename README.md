@@ -2,6 +2,7 @@
 
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/jdevelop-io/aurora/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-stable-orange.svg?logo=rust)](https://www.rust-lang.org/)
 
 Aurora is a task runner and build tool written in Rust, designed as an alternative to `make`, `just` and `taskfile`. Tasks, called **beams**, are described in a `Beamfile` using an HCL-inspired syntax. Aurora resolves their dependencies as a directed acyclic graph, runs them in parallel, and ships a TUI to follow execution in real time.
 
