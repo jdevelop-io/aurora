@@ -54,6 +54,13 @@ pub async fn run_execution_tui(
                     }
                 }
 
+                // Recherche active : recalculer les correspondances au fil des
+                // nouvelles sorties, sans déplacer la vue (non intrusif). La
+                // position courante de n/N est préservée.
+                if search.is_active() {
+                    search.recompute_preserving(&exec.beams[log_state.beam_index]);
+                }
+
                 // Auto-scroll si pas verrouillé
                 log_state.auto_scroll(exec.beams[log_state.beam_index].log_line_count());
 

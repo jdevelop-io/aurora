@@ -184,6 +184,19 @@ impl LogSearch {
         }
     }
 
+    /// Recalcule les correspondances en conservant la ligne logique courante.
+    /// Utilisé pendant l'exécution : les nouvelles sorties peuvent faire
+    /// apparaître des correspondances sans réinitialiser la navigation `n`/`N`.
+    pub fn recompute_preserving(&mut self, beam: &BeamView) {
+        let prev_line = self.current_line();
+        self.recompute(beam);
+        if let Some(pl) = prev_line {
+            if let Some(pos) = self.matches.iter().position(|&l| l == pl) {
+                self.current = pos;
+            }
+        }
+    }
+
     pub fn next(&mut self) {
         if self.matches.is_empty() {
             return;
