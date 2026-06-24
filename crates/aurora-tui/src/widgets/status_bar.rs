@@ -7,7 +7,6 @@ use ratatui::{
 };
 
 const BAR_WIDTH: usize = 16;
-const BAR_MAX: usize = 60;
 
 // Palette : touche en accent, libellé lisible, séparateur discret.
 const KEY: Color = Color::Cyan;
@@ -86,16 +85,71 @@ pub fn fit_hints<'a>(
     }
 }
 
+/// Largeurs des séparateurs pour justifier `n` éléments de largeur cumulée
+/// `content` sur `target` colonnes (séparateur minimal 3 : « · » entouré
+/// d'espaces). `None` si un seul élément ou si ça ne tient pas.
+pub fn justify_gaps(content: usize, n: usize, target: usize) -> Option<Vec<usize>> {
+    if n <= 1 {
+        return None;
+    }
+    let gaps = n - 1;
+    if target < content + gaps * 3 {
+        return None;
+    }
+    let total = target - content;
+    let base = total / gaps;
+    let rem = total % gaps;
+    Some((0..gaps).map(|i| base + usize::from(i < rem)).collect())
+}
+
+/// Séparateur de largeur `width` (>= 3) avec le point centré.
+fn separator(width: usize) -> String {
+    let left = width / 2;
+    let right = width - 1 - left;
+    format!("{}·{}", " ".repeat(left), " ".repeat(right))
+}
+
+/// Largeur d'affichage d'un couple (touche, libellé) : « touche libellé ».
+fn pair_width(key: &str, label: &str) -> usize {
+    key.chars().count() + 1 + label.chars().count()
+}
+
+fn key_label_spans(key: &str, label: &str) -> [Span<'static>; 2] {
+    [
+        Span::styled(format!("{} ", key), Style::default().fg(KEY)),
+        Span::styled(label.to_string(), Style::default().fg(LABEL)),
+    ]
+}
+
+/// Raccourcis alignés à gauche, séparateur minimal.
 fn hint_spans(hints: &[(&str, &str)]) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for (i, (key, label)) in hints.iter().enumerate() {
         if i > 0 {
             spans.push(Span::styled(" · ", Style::default().fg(SEP)));
         }
-        spans.push(Span::styled(format!("{} ", key), Style::default().fg(KEY)));
-        spans.push(Span::styled(label.to_string(), Style::default().fg(LABEL)));
+        spans.extend(key_label_spans(key, label));
     }
     spans
+}
+
+/// Raccourcis justifiés sur `width` colonnes si possible, sinon alignés à gauche.
+fn hint_spans_justified(hints: &[(&str, &str)], width: usize) -> Vec<Span<'static>> {
+    let content: usize = hints.iter().map(|(k, l)| pair_width(k, l)).sum();
+    // 1 colonne de marge à gauche et à droite.
+    match justify_gaps(content, hints.len(), width.saturating_sub(2)) {
+        Some(gaps) => {
+            let mut spans = Vec::new();
+            for (i, (key, label)) in hints.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::styled(separator(gaps[i - 1]), Style::default().fg(SEP)));
+                }
+                spans.extend(key_label_spans(key, label));
+            }
+            spans
+        }
+        None => hint_spans(hints),
+    }
 }
 
 fn semantic(done: Option<bool>) -> (&'static str, &'static str, Color) {
@@ -123,7 +177,7 @@ pub fn render_progress_line(
         // Largeur restante pour la barre : largeur totale - gauche - compteur -
         // crochets - marge droite.
         let used = left.chars().count() + count.chars().count() + 3;
-        let bar_w = (area.width as usize).saturating_sub(used).min(BAR_MAX);
+        let bar_w = (area.width as usize).saturating_sub(used);
         spans.push(Span::styled(count, Style::default().fg(LABEL)));
         if let Some((filled, empty)) = progress_fill_width(done_count, total, bar_w) {
             spans.push(Span::styled("[", Style::default().fg(SEP)));
@@ -144,6 +198,6 @@ pub fn render_hints_line(f: &mut Frame, area: Rect, done: Option<bool>) {
     };
     let hints = fit_hints(full, essential, area.width as usize);
     let mut spans = vec![Span::raw(" ")];
-    spans.extend(hint_spans(hints));
+    spans.extend(hint_spans_justified(hints, area.width as usize));
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }

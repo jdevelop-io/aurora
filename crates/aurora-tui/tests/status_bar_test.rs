@@ -1,4 +1,6 @@
-use aurora_tui::widgets::status_bar::{fit_hints, hint_text, progress_fill, progress_fill_width};
+use aurora_tui::widgets::status_bar::{
+    fit_hints, hint_text, justify_gaps, progress_fill, progress_fill_width,
+};
 
 #[test]
 fn progress_fill_empty_when_none_done() {
@@ -57,4 +59,26 @@ fn fit_hints_falls_back_to_essential_when_too_narrow() {
     let full = [("↑↓", "beam"), ("/", "cherche"), ("q", "quitter")];
     let essential = [("/", "cherche"), ("q", "quitter")];
     assert_eq!(fit_hints(&full, &essential, 8), &essential[..]);
+}
+
+#[test]
+fn justify_gaps_distributes_space_evenly() {
+    // 3 éléments, 2 intervalles ; contenu 20, cible 40 -> 20 d'espace réparti
+    assert_eq!(justify_gaps(20, 3, 40), Some(vec![10, 10]));
+}
+
+#[test]
+fn justify_gaps_puts_remainder_on_first_gaps() {
+    assert_eq!(justify_gaps(20, 3, 41), Some(vec![11, 10]));
+}
+
+#[test]
+fn justify_gaps_none_when_too_narrow() {
+    // minimum = contenu + 3 par intervalle = 20 + 6 = 26
+    assert_eq!(justify_gaps(20, 3, 25), None);
+}
+
+#[test]
+fn justify_gaps_none_with_single_item() {
+    assert_eq!(justify_gaps(10, 1, 40), None);
 }
