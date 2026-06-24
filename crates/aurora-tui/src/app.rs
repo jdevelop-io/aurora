@@ -1,5 +1,5 @@
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::Instant;
 
 // ── BeamView ─────────────────────────────────────────────────────
@@ -337,8 +337,14 @@ impl PickerState {
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<PickerAction> {
         let filtered = self.filtered();
         let count = filtered.len();
+        // Recherche au fil de la frappe : seuls Esc et Ctrl+C quittent, la
+        // navigation se fait aux flèches. Tout caractère imprimable (y compris
+        // q, j, k) alimente la recherche.
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            return Some(PickerAction::Quit);
+        }
         match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => return Some(PickerAction::Quit),
+            KeyCode::Esc => return Some(PickerAction::Quit),
             KeyCode::Enter => {
                 let checked = self.selected_beam_indices();
                 if checked.is_empty() {
@@ -350,10 +356,10 @@ impl PickerState {
                     return Some(PickerAction::Launch(names));
                 }
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 self.selected = (self.selected + 1).min(count.saturating_sub(1));
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Up => {
                 self.selected = self.selected.saturating_sub(1);
             }
             KeyCode::Char(' ') => {
