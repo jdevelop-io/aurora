@@ -326,6 +326,21 @@ impl ExecutionState {
         }
     }
 
+    /// Sélectionne le premier beam au statut `Failed`. Renvoie `true` si trouvé,
+    /// ne modifie rien sinon (ex. échec dû uniquement à des `Cancelled`).
+    pub fn select_first_failed(&mut self) -> bool {
+        if let Some(idx) = self
+            .beams
+            .iter()
+            .position(|b| matches!(b.status, BeamStatus::Failed { .. }))
+        {
+            self.selected = idx;
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn select_next(&mut self) {
         self.selected = (self.selected + 1).min(self.beams.len().saturating_sub(1));
     }

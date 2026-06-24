@@ -39,9 +39,16 @@ pub async fn run_execution_tui(
             loop {
                 // Drainer les events scheduler
                 while let Ok(evt) = rx.try_recv() {
+                    let done_failed = matches!(evt, SchedulerEvent::AllDone { success: false });
                     let is_done = matches!(evt, SchedulerEvent::AllDone { .. });
                     exec.apply_event(evt);
                     if is_done {
+                        // En cas d'échec, sauter sur le premier beam Failed
+                        // pour montrer ses logs sans navigation manuelle.
+                        if done_failed && exec.select_first_failed() {
+                            log_state.beam_index = exec.selected;
+                            log_state.scroll_locked = false;
+                        }
                         break;
                     }
                 }
