@@ -197,6 +197,13 @@ pub fn render_hints_line(f: &mut Frame, area: Rect, done: Option<bool>) {
         _ => (DONE_FULL, DONE_ESSENTIAL),
     };
     let hints = fit_hints(full, essential, area.width as usize);
+    render_hints(f, area, hints);
+}
+
+/// Rend une ligne de raccourcis avec la palette commune (touche en accent,
+/// libellé lisible, séparateur discret), justifiée sur la largeur disponible.
+/// Point d'entrée partagé entre l'écran d'exécution et le picker.
+pub fn render_hints(f: &mut Frame, area: Rect, hints: &[(&str, &str)]) {
     let mut spans = vec![Span::raw(" ")];
     spans.extend(hint_spans_justified(hints, area.width as usize));
     f.render_widget(Paragraph::new(Line::from(spans)), area);

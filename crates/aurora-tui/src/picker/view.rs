@@ -95,14 +95,20 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         crate::picker::deps_panel::render_deps_panel(f, state, area);
     }
 
-    // Help bar
-    let help = if state.show_deps {
-        " [↑↓] nav  [Space] sélec  [Tab] fermer deps  [Enter] lancer  [q] quitter "
+    // Barre de raccourcis : même rendu que l'écran d'exécution.
+    let deps_hint = if state.show_deps {
+        ("Tab", "fermer deps")
     } else {
-        " [↑↓] nav  [Space] sélec  [Tab] deps  [Enter] lancer  [q] quitter "
+        ("Tab", "deps")
     };
-    let bar = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
-    f.render_widget(bar, chunks[2]);
+    let hints = [
+        ("↑↓", "nav"),
+        ("Space", "sélec"),
+        deps_hint,
+        ("Enter", "lancer"),
+        ("Esc", "quitter"),
+    ];
+    crate::widgets::status_bar::render_hints(f, chunks[2], &hints);
 }
 
 fn highlight_name(name: &str, indices: &[usize], selected: bool) -> Vec<Span<'static>> {
