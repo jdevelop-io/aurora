@@ -3,7 +3,7 @@ use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
     Frame,
 };
 
@@ -52,12 +52,22 @@ pub fn render_log_panel(
         }
     }
 
+    let total_visual = lines.len() as u16;
+    let inner_height = area.height.saturating_sub(2);
+
     let auto_indicator = if log_state.scroll_locked {
         " [scroll manuel]"
     } else {
         " [auto]"
     };
-    let title = format!(" {} — Logs{} ", beam.name, auto_indicator);
+    // Indicateur de position en lignes logiques (plus parlant que le visuel).
+    let position = if beam.stdout.is_empty() && beam.stderr.is_empty() {
+        String::new()
+    } else {
+        let top = beam.logical_line_at_visual(log_state.scroll, width) + 1;
+        format!("  {}/{}", top, beam.log_line_count())
+    };
+    let title = format!(" {} — Logs{}{} ", beam.name, auto_indicator, position);
 
     let border_style = if focused {
         Style::default().fg(Color::Yellow)
@@ -73,6 +83,17 @@ pub fn render_log_panel(
         )
         .scroll((log_state.scroll, 0));
     f.render_widget(paragraph, area);
+
+    // Scrollbar verticale, seulement si le contenu déborde du panneau.
+    if total_visual > inner_height {
+        let mut sb_state = ScrollbarState::new(total_visual as usize)
+            .viewport_content_length(inner_height as usize)
+            .position(log_state.scroll as usize);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+        f.render_stateful_widget(scrollbar, area, &mut sb_state);
+    }
 }
 
 /// Plages d'octets des occurrences de `needle_lower` (déjà en minuscules) dans

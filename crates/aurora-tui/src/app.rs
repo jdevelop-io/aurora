@@ -92,6 +92,19 @@ impl BeamView {
     pub fn total_visual_rows(&self, width: u16) -> u16 {
         self.iter_log_lines().map(|(t, _)| visual_rows(t, width)).sum()
     }
+
+    /// Index de la ligne logique affichée à l'offset visuel `offset`
+    /// (la ligne logique en haut de l'écran). Inverse de `visual_offset`.
+    pub fn logical_line_at_visual(&self, offset: u16, width: u16) -> usize {
+        let mut acc = 0u16;
+        for (i, (t, _)) in self.iter_log_lines().enumerate() {
+            acc = acc.saturating_add(visual_rows(t, width));
+            if acc > offset {
+                return i;
+            }
+        }
+        self.log_line_count().saturating_sub(1)
+    }
 }
 
 /// Découpe une ligne logique en segments visuels d'au plus `width` caractères.
@@ -531,58 +544,70 @@ pub struct LogViewState {
 }
 
 impl LogViewState {
-    pub fn new(beam_index: usize, total_lines: usize) -> Self {
-        let scroll = total_lines.saturating_sub(1) as u16;
+    pub fn new(beam_index: usize) -> Self {
         LogViewState {
             beam_index,
-            scroll,
+            scroll: 0,
             scroll_locked: false,
         }
+    }
+
+    /// Offset maximal de scroll (en lignes visuelles) : on ne scrolle pas
+    /// au-delà du dernier écran complet.
+    fn max_scroll(total_visual: u16, height: u16) -> u16 {
+        total_visual.saturating_sub(height)
+    }
+
+    /// Déplace le scroll de `delta` lignes visuelles, borné à [0, max_scroll].
+    /// Une montée verrouille l'auto-scroll ; atteindre le bas le réactive.
+    pub fn scroll_lines(&mut self, delta: i32, total_visual: u16, height: u16) {
+        let max = Self::max_scroll(total_visual, height) as i32;
+        let next = (self.scroll as i32 + delta).clamp(0, max);
+        self.scroll = next as u16;
+        if delta < 0 {
+            self.scroll_locked = true;
+        } else if next >= max {
+            self.scroll_locked = false;
+        }
+    }
+
+    /// Va en haut des logs et verrouille l'auto-scroll.
+    pub fn scroll_to_top(&mut self) {
+        self.scroll = 0;
+        self.scroll_locked = true;
+    }
+
+    /// Va en bas des logs et réactive l'auto-scroll.
+    pub fn scroll_to_bottom(&mut self, total_visual: u16, height: u16) {
+        self.scroll = Self::max_scroll(total_visual, height);
+        self.scroll_locked = false;
     }
 
     pub fn handle_key(
         &mut self,
         key: KeyEvent,
-        total_lines: usize,
-        panel_height: u16,
+        total_visual: u16,
+        height: u16,
     ) -> Option<LogViewAction> {
-        let max_scroll = total_lines.saturating_sub(1) as u16;
+        let page = height.saturating_sub(2).max(1) as i32;
         match key.code {
             KeyCode::Esc => return Some(LogViewAction::Close),
             KeyCode::Char('q') => return Some(LogViewAction::Quit),
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.scroll = self.scroll.saturating_sub(1);
-                self.scroll_locked = true;
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.scroll = (self.scroll + 1).min(max_scroll);
-                if self.scroll >= max_scroll {
-                    self.scroll_locked = false;
-                }
-            }
-            KeyCode::Char('G') => {
-                self.scroll = max_scroll;
-                self.scroll_locked = false;
-            }
-            KeyCode::PageUp => {
-                self.scroll = self.scroll.saturating_sub(panel_height.saturating_sub(2));
-                self.scroll_locked = true;
-            }
-            KeyCode::PageDown => {
-                self.scroll = (self.scroll + panel_height.saturating_sub(2)).min(max_scroll);
-                if self.scroll >= max_scroll {
-                    self.scroll_locked = false;
-                }
-            }
+            KeyCode::Up | KeyCode::Char('k') => self.scroll_lines(-1, total_visual, height),
+            KeyCode::Down | KeyCode::Char('j') => self.scroll_lines(1, total_visual, height),
+            KeyCode::Char('g') => self.scroll_to_top(),
+            KeyCode::Char('G') => self.scroll_to_bottom(total_visual, height),
+            KeyCode::PageUp => self.scroll_lines(-page, total_visual, height),
+            KeyCode::PageDown => self.scroll_lines(page, total_visual, height),
             _ => {}
         }
         None
     }
 
     /// Appelé à chaque tick : si auto-scroll actif, coller au bas.
-    pub fn auto_scroll(&mut self, total_lines: usize) {
+    pub fn auto_scroll(&mut self, total_visual: u16, height: u16) {
         if !self.scroll_locked {
-            self.scroll = total_lines.saturating_sub(1) as u16;
+            self.scroll = Self::max_scroll(total_visual, height);
         }
     }
 }

@@ -26,6 +26,19 @@ fn wrap_count_matches_visual_rows() {
 }
 
 #[test]
+fn logical_line_at_visual_maps_offset_back_to_logical_line() {
+    // largeur 10 : ligne0 (5 chars -> 1 row), ligne1 (12 chars -> 2 rows), ligne2 (3 chars -> 1 row)
+    // disposition visuelle : row0=l0, row1+2=l1, row3=l2
+    let mut beam = BeamView::new("b".to_string(), vec![]);
+    beam.stdout = vec!["12345".to_string(), "123456789012".to_string(), "abc".to_string()];
+
+    assert_eq!(beam.logical_line_at_visual(0, 10), 0);
+    assert_eq!(beam.logical_line_at_visual(1, 10), 1);
+    assert_eq!(beam.logical_line_at_visual(2, 10), 1);
+    assert_eq!(beam.logical_line_at_visual(3, 10), 2);
+}
+
+#[test]
 fn visual_offset_accumulates_wrapped_rows() {
     // ligne 0: 5 chars -> 1 row ; ligne 1: 12 chars -> 2 rows (width 10)
     let mut beam = BeamView::new("b".to_string(), vec![]);

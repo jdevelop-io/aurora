@@ -31,7 +31,7 @@ pub async fn run_execution_tui(
         let mut terminal = Terminal::new(backend)?;
 
         let mut exec = ExecutionState::new(beam_info);
-        let mut log_state = LogViewState::new(0, 0);
+        let mut log_state = LogViewState::new(0);
         let mut search = LogSearch::new();
         let mut show_help = false;
         let mut tick: u64 = 0;
@@ -54,6 +54,13 @@ pub async fn run_execution_tui(
                     }
                 }
 
+                // Dimensions du panneau logs et hauteur visuelle totale du beam
+                // sélectionné, pour piloter scroll et auto-scroll en lignes
+                // visuelles.
+                let size = terminal.size()?;
+                let (log_w, log_h) = log_panel_dims(size.width, size.height);
+                let total_visual = exec.beams[log_state.beam_index].total_visual_rows(log_w);
+
                 // Recherche active : recalculer les correspondances au fil des
                 // nouvelles sorties, sans déplacer la vue (non intrusif). La
                 // position courante de n/N est préservée.
@@ -62,7 +69,7 @@ pub async fn run_execution_tui(
                 }
 
                 // Auto-scroll si pas verrouillé
-                log_state.auto_scroll(exec.beams[log_state.beam_index].log_line_count());
+                log_state.auto_scroll(total_visual, log_h);
 
                 terminal.draw(|f| {
                     split_layout::render_execution(f, &exec, &log_state, &search, tick, show_help);
@@ -71,9 +78,6 @@ pub async fn run_execution_tui(
 
                 if event::poll(Duration::from_millis(50))? {
                     if let Event::Key(key) = event::read()? {
-                        let size = terminal.size()?;
-                        let log_w = log_panel_width(size.width, size.height);
-
                         // Help popup capture tout
                         if show_help {
                             match key.code {
@@ -90,11 +94,11 @@ pub async fn run_execution_tui(
                                 KeyCode::Enter => search.input_active = false,
                                 KeyCode::Backspace => {
                                     search.query.pop();
-                                    refresh_search(&mut search, &exec, &mut log_state, log_w);
+                                    refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
                                 }
                                 KeyCode::Char(c) => {
                                     search.query.push(c);
-                                    refresh_search(&mut search, &exec, &mut log_state, log_w);
+                                    refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
                                 }
                                 _ => {}
                             }
@@ -108,6 +112,18 @@ pub async fn run_execution_tui(
                             {
                                 return Ok(());
                             }
+                            KeyCode::Char('u')
+                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                            {
+                                let half = (log_h / 2).max(1) as i32;
+                                log_state.scroll_lines(-half, total_visual, log_h);
+                            }
+                            KeyCode::Char('d')
+                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                            {
+                                let half = (log_h / 2).max(1) as i32;
+                                log_state.scroll_lines(half, total_visual, log_h);
+                            }
                             KeyCode::Char('?') => show_help = true,
                             KeyCode::Down | KeyCode::Char('j') => {
                                 match exec.focus {
@@ -116,13 +132,11 @@ pub async fn run_execution_tui(
                                         log_state.beam_index = exec.selected;
                                         log_state.scroll_locked = false;
                                         if search.is_active() {
-                                            refresh_search(&mut search, &exec, &mut log_state, log_w);
+                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
                                         }
                                     }
                                     FocusPanel::Logs => {
-                                        let total = exec.beams[log_state.beam_index].log_line_count();
-                                        let height = terminal.size()?.height;
-                                        log_state.handle_key(key, total, height);
+                                        log_state.handle_key(key, total_visual, log_h);
                                     }
                                 }
                             }
@@ -133,13 +147,11 @@ pub async fn run_execution_tui(
                                         log_state.beam_index = exec.selected;
                                         log_state.scroll_locked = false;
                                         if search.is_active() {
-                                            refresh_search(&mut search, &exec, &mut log_state, log_w);
+                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
                                         }
                                     }
                                     FocusPanel::Logs => {
-                                        let total = exec.beams[log_state.beam_index].log_line_count();
-                                        let height = terminal.size()?.height;
-                                        log_state.handle_key(key, total, height);
+                                        log_state.handle_key(key, total_visual, log_h);
                                     }
                                 }
                             }
@@ -152,31 +164,30 @@ pub async fn run_execution_tui(
                             }
                             KeyCode::Char('n') if search.is_active() => {
                                 search.next();
-                                apply_search_jump(&search, &exec.beams[log_state.beam_index], log_w, &mut log_state);
+                                apply_search_jump(&search, &exec.beams[log_state.beam_index], log_w, log_h, &mut log_state);
                             }
                             KeyCode::Char('N') if search.is_active() => {
                                 search.prev();
-                                apply_search_jump(&search, &exec.beams[log_state.beam_index], log_w, &mut log_state);
+                                apply_search_jump(&search, &exec.beams[log_state.beam_index], log_w, log_h, &mut log_state);
                             }
                             KeyCode::Esc if search.is_active() => {
                                 search.clear();
                             }
+                            KeyCode::Char('g') => {
+                                log_state.scroll_to_top();
+                            }
                             KeyCode::Char('G') => {
-                                let total = exec.beams[log_state.beam_index].log_line_count();
-                                log_state.scroll = total.saturating_sub(1) as u16;
-                                log_state.scroll_locked = false;
+                                log_state.scroll_to_bottom(total_visual, log_h);
                             }
                             KeyCode::PageUp | KeyCode::PageDown => {
-                                let total = exec.beams[log_state.beam_index].log_line_count();
-                                let height = terminal.size()?.height;
-                                log_state.handle_key(key, total, height);
+                                log_state.handle_key(key, total_visual, log_h);
                             }
                             KeyCode::Char('y') => {
                                 copy_logs_to_clipboard(&exec.beams[exec.selected]);
                             }
                             KeyCode::Char('r') => {
                                 if let Some(ExecutionAction::Rerun { root, pre_success }) = exec.handle_key(key) {
-                                    log_state = LogViewState::new(exec.selected, 0);
+                                    log_state = LogViewState::new(exec.selected);
                                     search.clear();
                                     rx = rerun(root, pre_success);
                                 }
@@ -227,10 +238,11 @@ pub fn run_picker(
     })
 }
 
-/// Largeur intérieure du panneau logs pour un terminal donné. Réplique le
-/// découpage de `render_execution` (vertical [Min, Length(1)] puis horizontal
-/// 30/70) afin de convertir précisément les index logiques en offset visuel.
-fn log_panel_width(width: u16, height: u16) -> u16 {
+/// Dimensions intérieures (largeur, hauteur) du panneau logs pour un terminal
+/// donné. Réplique le découpage de `render_execution` (vertical [Min, Length(1)]
+/// puis horizontal 30/70) afin de convertir précisément les index logiques en
+/// offset visuel et de borner le scroll.
+fn log_panel_dims(width: u16, height: u16) -> (u16, u16) {
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     let area = Rect::new(0, 0, width, height);
     let outer = Layout::default()
@@ -241,7 +253,7 @@ fn log_panel_width(width: u16, height: u16) -> u16 {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(outer[0]);
-    split[1].width.saturating_sub(2)
+    (split[1].width.saturating_sub(2), split[1].height.saturating_sub(2))
 }
 
 /// Recalcule les correspondances pour le beam sélectionné et saute au match
@@ -251,23 +263,26 @@ fn refresh_search(
     exec: &ExecutionState,
     log_state: &mut LogViewState,
     width: u16,
+    height: u16,
 ) {
     let beam = &exec.beams[log_state.beam_index];
     search.recompute(beam);
-    apply_search_jump(search, beam, width, log_state);
+    apply_search_jump(search, beam, width, height, log_state);
 }
 
 /// Positionne le scroll sur la ligne visuelle du match courant, s'il y en a un.
 /// Convertit l'index de ligne logique en offset visuel (les lignes longues
-/// occupent plusieurs lignes à l'écran).
+/// occupent plusieurs lignes à l'écran), borné au dernier écran complet.
 fn apply_search_jump(
     search: &LogSearch,
     beam: &app::BeamView,
     width: u16,
+    height: u16,
     log_state: &mut LogViewState,
 ) {
     if let Some(line) = search.current_line() {
-        log_state.scroll = beam.visual_offset(line, width);
+        let max = beam.total_visual_rows(width).saturating_sub(height);
+        log_state.scroll = beam.visual_offset(line, width).min(max);
         log_state.scroll_locked = true;
     }
 }
