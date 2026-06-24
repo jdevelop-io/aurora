@@ -56,6 +56,23 @@ Alternatively, install it with Cargo from the local checkout:
 cargo install --path crates/aurora
 ```
 
+### Updating
+
+Already installed Aurora? Re-run the install command with `--force` to replace the binary with the latest version.
+
+If you installed from git:
+
+```bash
+cargo install --git https://github.com/jdevelop-io/aurora aurora --force
+```
+
+If you installed from a local clone, pull the latest changes first:
+
+```bash
+git pull
+cargo install --path crates/aurora --force
+```
+
 ### Verify
 
 ```bash
