@@ -247,7 +247,7 @@ fn log_panel_dims(width: u16, height: u16) -> (u16, u16) {
     let area = Rect::new(0, 0, width, height);
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Min(0), Constraint::Length(2)])
         .split(area);
     let split = Layout::default()
         .direction(Direction::Horizontal)

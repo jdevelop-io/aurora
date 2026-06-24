@@ -17,9 +17,10 @@ pub fn render_execution(
     show_help: bool,
 ) {
     let area = f.area();
+    // Footer sur 2 lignes : état + barre, puis raccourcis (ou recherche).
     let outer = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Min(0), Constraint::Length(2)])
         .split(area);
 
     // Split 30/70
@@ -34,29 +35,30 @@ pub fn render_execution(
     let beam = &exec.beams[log_state.beam_index];
     log_panel::render_log_panel(f, beam, log_state, Some(search), split[1], !beams_focused);
 
-    if search.is_active() {
-        f.render_widget(search_bar(search), outer[1]);
-    } else {
-        let total = exec.beams.len();
-        let done_count = exec.beams.iter().filter(|b| {
-            matches!(
-                b.status,
-                BeamStatus::Success { .. }
-                    | BeamStatus::Failed { .. }
-                    | BeamStatus::Skipped { .. }
-                    | BeamStatus::Cancelled
-            )
-        }).count();
+    let footer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(outer[1]);
 
-        crate::widgets::status_bar::render_status_bar(
-            f,
-            outer[1],
-            crate::widgets::status_bar::StatusContext::Execution {
-                done: exec.done,
-                done_count,
-                total,
-            },
-        );
+    let total = exec.beams.len();
+    let done_count = exec.beams.iter().filter(|b| {
+        matches!(
+            b.status,
+            BeamStatus::Success { .. }
+                | BeamStatus::Failed { .. }
+                | BeamStatus::Skipped { .. }
+                | BeamStatus::Cancelled
+        )
+    }).count();
+
+    // Ligne 1 : toujours l'état + la barre (reste visible même en recherche).
+    crate::widgets::status_bar::render_progress_line(f, footer[0], exec.done, done_count, total);
+
+    // Ligne 2 : raccourcis, ou invite de recherche si une recherche est active.
+    if search.is_active() {
+        f.render_widget(search_bar(search), footer[1]);
+    } else {
+        crate::widgets::status_bar::render_hints_line(f, footer[1], exec.done);
     }
 
     if show_help {
