@@ -4,7 +4,7 @@ pub mod picker;
 pub mod widgets;
 
 use anyhow::Result;
-use app::{ExecutionAction, ExecutionState, FocusPanel, LogViewState, PickerAction, PickerState};
+use app::{ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction, PickerState};
 use aurora_core::scheduler::SchedulerEvent;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -32,6 +32,7 @@ pub async fn run_execution_tui(
 
         let mut exec = ExecutionState::new(beam_info);
         let mut log_state = LogViewState::new(0, 0);
+        let mut search = LogSearch::new();
         let mut show_help = false;
         let mut tick: u64 = 0;
 
@@ -54,16 +55,10 @@ pub async fn run_execution_tui(
                 }
 
                 // Auto-scroll si pas verrouillé
-                let total_lines = {
-                    let beam = &exec.beams[log_state.beam_index];
-                    beam.stdout.len()
-                        + beam.stderr.len()
-                        + if beam.stderr.is_empty() { 0 } else { 1 }
-                };
-                log_state.auto_scroll(total_lines);
+                log_state.auto_scroll(exec.beams[log_state.beam_index].log_line_count());
 
                 terminal.draw(|f| {
-                    split_layout::render_execution(f, &exec, &log_state, tick, show_help);
+                    split_layout::render_execution(f, &exec, &log_state, &search, tick, show_help);
                 })?;
                 tick += 1;
 
@@ -73,6 +68,24 @@ pub async fn run_execution_tui(
                         if show_help {
                             match key.code {
                                 KeyCode::Char('?') | KeyCode::Esc => show_help = false,
+                                _ => {}
+                            }
+                            continue;
+                        }
+
+                        // Mode saisie de recherche : capture tout
+                        if search.input_active {
+                            match key.code {
+                                KeyCode::Esc => search.clear(),
+                                KeyCode::Enter => search.input_active = false,
+                                KeyCode::Backspace => {
+                                    search.query.pop();
+                                    refresh_search(&mut search, &exec, &mut log_state);
+                                }
+                                KeyCode::Char(c) => {
+                                    search.query.push(c);
+                                    refresh_search(&mut search, &exec, &mut log_state);
+                                }
                                 _ => {}
                             }
                             continue;
@@ -92,14 +105,14 @@ pub async fn run_execution_tui(
                                         exec.select_next();
                                         log_state.beam_index = exec.selected;
                                         log_state.scroll_locked = false;
+                                        if search.is_active() {
+                                            refresh_search(&mut search, &exec, &mut log_state);
+                                        }
                                     }
                                     FocusPanel::Logs => {
-                                        let current_total = {
-                                            let beam = &exec.beams[log_state.beam_index];
-                                            beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
-                                        };
+                                        let total = exec.beams[log_state.beam_index].log_line_count();
                                         let height = terminal.size()?.height;
-                                        log_state.handle_key(key, current_total, height);
+                                        log_state.handle_key(key, total, height);
                                     }
                                 }
                             }
@@ -109,35 +122,44 @@ pub async fn run_execution_tui(
                                         exec.select_prev();
                                         log_state.beam_index = exec.selected;
                                         log_state.scroll_locked = false;
+                                        if search.is_active() {
+                                            refresh_search(&mut search, &exec, &mut log_state);
+                                        }
                                     }
                                     FocusPanel::Logs => {
-                                        let current_total = {
-                                            let beam = &exec.beams[log_state.beam_index];
-                                            beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
-                                        };
+                                        let total = exec.beams[log_state.beam_index].log_line_count();
                                         let height = terminal.size()?.height;
-                                        log_state.handle_key(key, current_total, height);
+                                        log_state.handle_key(key, total, height);
                                     }
                                 }
                             }
                             KeyCode::Tab => {
                                 let _ = exec.handle_key(key);
                             }
+                            KeyCode::Char('/') => {
+                                search.clear();
+                                search.input_active = true;
+                            }
+                            KeyCode::Char('n') if search.is_active() => {
+                                search.next();
+                                apply_search_jump(&search, &mut log_state);
+                            }
+                            KeyCode::Char('N') if search.is_active() => {
+                                search.prev();
+                                apply_search_jump(&search, &mut log_state);
+                            }
+                            KeyCode::Esc if search.is_active() => {
+                                search.clear();
+                            }
                             KeyCode::Char('G') => {
-                                let current_total = {
-                                    let beam = &exec.beams[log_state.beam_index];
-                                    beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
-                                };
-                                log_state.scroll = current_total.saturating_sub(1) as u16;
+                                let total = exec.beams[log_state.beam_index].log_line_count();
+                                log_state.scroll = total.saturating_sub(1) as u16;
                                 log_state.scroll_locked = false;
                             }
                             KeyCode::PageUp | KeyCode::PageDown => {
-                                let current_total = {
-                                    let beam = &exec.beams[log_state.beam_index];
-                                    beam.stdout.len() + beam.stderr.len() + if beam.stderr.is_empty() { 0 } else { 1 }
-                                };
+                                let total = exec.beams[log_state.beam_index].log_line_count();
                                 let height = terminal.size()?.height;
-                                log_state.handle_key(key, current_total, height);
+                                log_state.handle_key(key, total, height);
                             }
                             KeyCode::Char('y') => {
                                 copy_logs_to_clipboard(&exec.beams[exec.selected]);
@@ -145,6 +167,7 @@ pub async fn run_execution_tui(
                             KeyCode::Char('r') => {
                                 if let Some(ExecutionAction::Rerun { root, pre_success }) = exec.handle_key(key) {
                                     log_state = LogViewState::new(exec.selected, 0);
+                                    search.clear();
                                     rx = rerun(root, pre_success);
                                 }
                             }
@@ -192,6 +215,21 @@ pub fn run_picker(
         let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
         result
     })
+}
+
+/// Recalcule les correspondances pour le beam sélectionné et saute au match
+/// courant. Utilisé quand la requête ou le beam change.
+fn refresh_search(search: &mut LogSearch, exec: &ExecutionState, log_state: &mut LogViewState) {
+    search.recompute(&exec.beams[log_state.beam_index]);
+    apply_search_jump(search, log_state);
+}
+
+/// Positionne le scroll sur la ligne du match courant, s'il y en a un.
+fn apply_search_jump(search: &LogSearch, log_state: &mut LogViewState) {
+    if let Some(line) = search.current_line() {
+        log_state.scroll = line as u16;
+        log_state.scroll_locked = true;
+    }
 }
 
 fn copy_logs_to_clipboard(beam: &app::BeamView) {

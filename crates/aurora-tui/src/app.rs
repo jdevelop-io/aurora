@@ -46,6 +46,118 @@ impl BeamView {
         }
         all
     }
+
+    /// Texte du placeholder affiché quand le beam n'a aucune sortie,
+    /// adapté à son statut.
+    pub fn empty_placeholder(&self) -> &'static str {
+        match self.status {
+            BeamStatus::Pending => "(en attente de démarrage)",
+            BeamStatus::Running => "(pas encore de sortie)",
+            _ => "(aucune sortie)",
+        }
+    }
+
+    /// Itère les lignes de logs telles qu'elles sont affichées : stdout, puis
+    /// séparateur et stderr si présent. Si aucune sortie, une unique ligne
+    /// placeholder. Source unique partagée par le rendu et la recherche.
+    pub fn iter_log_lines(&self) -> impl Iterator<Item = (&str, LogKind)> {
+        let has_stderr = !self.stderr.is_empty();
+        let is_empty = self.stdout.is_empty() && !has_stderr;
+        let stdout = self.stdout.iter().map(|l| (l.as_str(), LogKind::Stdout));
+        let sep = has_stderr
+            .then_some(("── stderr ──", LogKind::Separator))
+            .into_iter();
+        let stderr = self.stderr.iter().map(|l| (l.as_str(), LogKind::Stderr));
+        let placeholder = is_empty
+            .then_some((self.empty_placeholder(), LogKind::Placeholder))
+            .into_iter();
+        stdout.chain(sep).chain(stderr).chain(placeholder)
+    }
+
+    pub fn log_line_count(&self) -> usize {
+        self.iter_log_lines().count()
+    }
+}
+
+// ── LogKind ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogKind {
+    Stdout,
+    Stderr,
+    Separator,
+    Placeholder,
+}
+
+// ── LogSearch ────────────────────────────────────────────────────
+
+/// Recherche incrémentale dans les logs du beam sélectionné.
+#[derive(Debug, Default)]
+pub struct LogSearch {
+    pub input_active: bool,
+    pub query: String,
+    pub matches: Vec<usize>,
+    pub current: usize,
+}
+
+impl LogSearch {
+    pub fn new() -> Self {
+        LogSearch::default()
+    }
+
+    /// Y a-t-il une requête active (saisie en cours ou validée non vide) ?
+    pub fn is_active(&self) -> bool {
+        self.input_active || !self.query.is_empty()
+    }
+
+    pub fn match_count(&self) -> usize {
+        self.matches.len()
+    }
+
+    /// Index de la ligne logique du match courant, ou None si aucun match.
+    pub fn current_line(&self) -> Option<usize> {
+        self.matches.get(self.current).copied()
+    }
+
+    /// Recalcule les lignes correspondant à la requête (insensible à la casse).
+    /// Ne retient que les lignes Stdout/Stderr ; requête vide => aucun match.
+    pub fn recompute(&mut self, beam: &BeamView) {
+        self.matches.clear();
+        self.current = 0;
+        if self.query.is_empty() {
+            return;
+        }
+        let needle = self.query.to_lowercase();
+        for (idx, (text, kind)) in beam.iter_log_lines().enumerate() {
+            if matches!(kind, LogKind::Stdout | LogKind::Stderr)
+                && text.to_lowercase().contains(&needle)
+            {
+                self.matches.push(idx);
+            }
+        }
+    }
+
+    pub fn next(&mut self) {
+        if self.matches.is_empty() {
+            return;
+        }
+        self.current = (self.current + 1) % self.matches.len();
+    }
+
+    pub fn prev(&mut self) {
+        if self.matches.is_empty() {
+            return;
+        }
+        self.current = (self.current + self.matches.len() - 1) % self.matches.len();
+    }
+
+    /// Réinitialise complètement la recherche.
+    pub fn clear(&mut self) {
+        self.input_active = false;
+        self.query.clear();
+        self.matches.clear();
+        self.current = 0;
+    }
 }
 
 // ── FocusPanel ───────────────────────────────────────────────────

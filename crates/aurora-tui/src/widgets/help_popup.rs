@@ -57,10 +57,12 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
             Line::from(" Tab        Basculer focus beams / logs"),
             Line::from(" PgUp/Dn    Scroller les logs par page"),
             Line::from(" G          Aller au bas des logs"),
+            Line::from(" /          Chercher dans les logs"),
+            Line::from(" n / N      Correspondance suivante / précédente"),
             Line::from(" y          Copier les logs dans le clipboard"),
+            Line::from(" r          Re-lancer le beam (si Failed/Cancelled)"),
             Line::from(" ?          Fermer cette aide"),
             Line::from(" q          Annuler et quitter"),
-            Line::from(" r          Re-lancer le beam (si Failed/Cancelled)"),
         ],
         HelpContext::LogView => vec![
             Line::from(Span::styled(

@@ -1,40 +1,53 @@
-use crate::app::{BeamView, LogViewState};
-use aurora_core::scheduler::BeamStatus;
+use crate::app::{BeamView, LogKind, LogSearch, LogViewState};
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Wrap},
     Frame,
 };
 
-pub fn render_log_panel(f: &mut Frame, beam: &BeamView, log_state: &LogViewState, area: Rect, focused: bool) {
-    let mut lines: Vec<Line> = beam
-        .stdout
-        .iter()
-        .map(|l| Line::from(l.as_str()))
-        .collect();
-    if !beam.stderr.is_empty() {
-        lines.push(Line::from(Span::styled(
-            "── stderr ──",
-            Style::default().fg(Color::Red),
-        )));
-        lines.extend(beam.stderr.iter().map(|l| {
-            Line::from(Span::styled(l.as_str(), Style::default().fg(Color::Red)))
-        }));
-    }
+pub fn render_log_panel(
+    f: &mut Frame,
+    beam: &BeamView,
+    log_state: &LogViewState,
+    search: Option<&LogSearch>,
+    area: Rect,
+    focused: bool,
+) {
+    let needle = search
+        .filter(|s| !s.query.is_empty())
+        .map(|s| s.query.to_lowercase());
+    let current_line = search.and_then(|s| s.current_line());
 
-    if lines.is_empty() {
-        let placeholder = match beam.status {
-            BeamStatus::Pending => "(en attente de démarrage)",
-            BeamStatus::Running => "(pas encore de sortie)",
-            _ => "(aucune sortie)",
-        };
-        lines.push(Line::from(Span::styled(
-            placeholder,
-            Style::default().fg(Color::DarkGray),
-        )));
-    }
+    let lines: Vec<Line> = beam
+        .iter_log_lines()
+        .enumerate()
+        .map(|(idx, (text, kind))| {
+            let base = match kind {
+                LogKind::Stdout => Style::default(),
+                LogKind::Stderr | LogKind::Separator => Style::default().fg(Color::Red),
+                LogKind::Placeholder => Style::default().fg(Color::DarkGray),
+            };
+            let highlightable = matches!(kind, LogKind::Stdout | LogKind::Stderr);
+            match &needle {
+                Some(n) if highlightable => {
+                    let ranges = match_ranges(text, n);
+                    if ranges.is_empty() {
+                        Line::from(Span::styled(text.to_string(), base))
+                    } else {
+                        let hl = if current_line == Some(idx) {
+                            Style::default().fg(Color::Black).bg(Color::Yellow)
+                        } else {
+                            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                        };
+                        Line::from(highlight_spans(text, &ranges, base, hl))
+                    }
+                }
+                _ => Line::from(Span::styled(text.to_string(), base)),
+            }
+        })
+        .collect();
 
     let auto_indicator = if log_state.scroll_locked {
         " [scroll manuel]"
@@ -58,4 +71,43 @@ pub fn render_log_panel(f: &mut Frame, beam: &BeamView, log_state: &LogViewState
         .wrap(Wrap { trim: false })
         .scroll((log_state.scroll, 0));
     f.render_widget(paragraph, area);
+}
+
+/// Plages d'octets des occurrences de `needle_lower` (déjà en minuscules) dans
+/// `haystack`, casse insensible. Si la mise en minuscules change la longueur en
+/// octets (cas Unicode rares), surligne la ligne entière par sécurité.
+fn match_ranges(haystack: &str, needle_lower: &str) -> Vec<(usize, usize)> {
+    let hay_lower = haystack.to_lowercase();
+    if hay_lower.len() != haystack.len() {
+        return if hay_lower.contains(needle_lower) {
+            vec![(0, haystack.len())]
+        } else {
+            vec![]
+        };
+    }
+    hay_lower
+        .match_indices(needle_lower)
+        .map(|(start, m)| (start, start + m.len()))
+        .collect()
+}
+
+fn highlight_spans(
+    text: &str,
+    ranges: &[(usize, usize)],
+    base: Style,
+    hl: Style,
+) -> Vec<Span<'static>> {
+    let mut spans = vec![];
+    let mut last = 0;
+    for &(start, end) in ranges {
+        if start > last {
+            spans.push(Span::styled(text[last..start].to_string(), base));
+        }
+        spans.push(Span::styled(text[start..end].to_string(), hl));
+        last = end;
+    }
+    if last < text.len() {
+        spans.push(Span::styled(text[last..].to_string(), base));
+    }
+    spans
 }
