@@ -1,9 +1,9 @@
-use crate::app::{BeamView, LogKind, LogSearch, LogViewState};
+use crate::app::{wrap_log_line, BeamView, LogKind, LogSearch, LogViewState};
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Paragraph},
     Frame,
 };
 
@@ -20,34 +20,37 @@ pub fn render_log_panel(
         .map(|s| s.query.to_lowercase());
     let current_line = search.and_then(|s| s.current_line());
 
-    let lines: Vec<Line> = beam
-        .iter_log_lines()
-        .enumerate()
-        .map(|(idx, (text, kind))| {
-            let base = match kind {
-                LogKind::Stdout => Style::default(),
-                LogKind::Stderr | LogKind::Separator => Style::default().fg(Color::Red),
-                LogKind::Placeholder => Style::default().fg(Color::DarkGray),
-            };
-            let highlightable = matches!(kind, LogKind::Stdout | LogKind::Stderr);
-            match &needle {
+    // Wrap manuel (par caractères) : on construit les lignes visuelles nous-mêmes
+    // pour que l'offset de scroll corresponde exactement aux index logiques.
+    let width = area.width.saturating_sub(2);
+    let mut lines: Vec<Line> = Vec::new();
+    for (idx, (text, kind)) in beam.iter_log_lines().enumerate() {
+        let base = match kind {
+            LogKind::Stdout => Style::default(),
+            LogKind::Stderr | LogKind::Separator => Style::default().fg(Color::Red),
+            LogKind::Placeholder => Style::default().fg(Color::DarkGray),
+        };
+        let highlightable = matches!(kind, LogKind::Stdout | LogKind::Stderr);
+        for segment in wrap_log_line(text, width) {
+            let line = match &needle {
                 Some(n) if highlightable => {
-                    let ranges = match_ranges(text, n);
+                    let ranges = match_ranges(segment, n);
                     if ranges.is_empty() {
-                        Line::from(Span::styled(text.to_string(), base))
+                        Line::from(Span::styled(segment.to_string(), base))
                     } else {
                         let hl = if current_line == Some(idx) {
                             Style::default().fg(Color::Black).bg(Color::Yellow)
                         } else {
                             Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                         };
-                        Line::from(highlight_spans(text, &ranges, base, hl))
+                        Line::from(highlight_spans(segment, &ranges, base, hl))
                     }
                 }
-                _ => Line::from(Span::styled(text.to_string(), base)),
-            }
-        })
-        .collect();
+                _ => Line::from(Span::styled(segment.to_string(), base)),
+            };
+            lines.push(line);
+        }
+    }
 
     let auto_indicator = if log_state.scroll_locked {
         " [scroll manuel]"
@@ -68,7 +71,6 @@ pub fn render_log_panel(
                 .title(title)
                 .border_style(border_style),
         )
-        .wrap(Wrap { trim: false })
         .scroll((log_state.scroll, 0));
     f.render_widget(paragraph, area);
 }

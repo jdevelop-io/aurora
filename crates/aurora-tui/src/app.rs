@@ -77,6 +77,53 @@ impl BeamView {
     pub fn log_line_count(&self) -> usize {
         self.iter_log_lines().count()
     }
+
+    /// Index de la première ligne visuelle (après wrap) correspondant à la
+    /// ligne logique `logical_line`, à la largeur `width`. Permet de convertir
+    /// un index de ligne logique en offset de scroll visuel.
+    pub fn visual_offset(&self, logical_line: usize, width: u16) -> u16 {
+        self.iter_log_lines()
+            .take(logical_line)
+            .map(|(t, _)| visual_rows(t, width))
+            .sum()
+    }
+
+    /// Nombre total de lignes visuelles (après wrap) à la largeur `width`.
+    pub fn total_visual_rows(&self, width: u16) -> u16 {
+        self.iter_log_lines().map(|(t, _)| visual_rows(t, width)).sum()
+    }
+}
+
+/// Découpe une ligne logique en segments visuels d'au plus `width` caractères.
+/// Découpe par caractères (déterministe), pour que l'index logique se convertisse
+/// exactement en offset visuel. Une ligne vide produit un segment vide (1 ligne).
+pub fn wrap_log_line(text: &str, width: u16) -> Vec<&str> {
+    if width == 0 {
+        return vec![text];
+    }
+    let width = width as usize;
+    let bounds: Vec<usize> = text
+        .char_indices()
+        .map(|(b, _)| b)
+        .chain(std::iter::once(text.len()))
+        .collect();
+    let nchars = bounds.len() - 1;
+    if nchars == 0 {
+        return vec![""];
+    }
+    let mut segments = Vec::new();
+    let mut i = 0;
+    while i < nchars {
+        let end = (i + width).min(nchars);
+        segments.push(&text[bounds[i]..bounds[end]]);
+        i = end;
+    }
+    segments
+}
+
+/// Nombre de lignes visuelles qu'occupe une ligne logique à la largeur `width`.
+pub fn visual_rows(text: &str, width: u16) -> u16 {
+    wrap_log_line(text, width).len() as u16
 }
 
 // ── LogKind ──────────────────────────────────────────────────────
