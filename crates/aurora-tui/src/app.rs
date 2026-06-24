@@ -293,7 +293,8 @@ impl PickerState {
                 .collect(),
             selected: 0,
             search: String::new(),
-            show_deps: false,
+            // Panneau des dépendances visible d'emblée ; Tab le replie.
+            show_deps: true,
             checked: vec![false; len],
         }
     }

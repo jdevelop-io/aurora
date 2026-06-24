@@ -74,9 +74,10 @@ fn picker_tab_toggles_deps() {
         None,
         vec!["lint".to_string()],
     )]);
-    assert!(!state.show_deps);
-    state.handle_key(key(KeyCode::Tab));
+    // Visible par défaut, Tab le replie puis le rouvre.
     assert!(state.show_deps);
     state.handle_key(key(KeyCode::Tab));
     assert!(!state.show_deps);
+    state.handle_key(key(KeyCode::Tab));
+    assert!(state.show_deps);
 }
