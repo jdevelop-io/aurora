@@ -1,7 +1,7 @@
 use crate::app::PickerState;
 use crate::picker::fuzzy::match_indices;
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
@@ -39,43 +39,57 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
 
     // Liste
     let filtered = state.filtered();
-    let items: Vec<ListItem> = filtered
-        .iter()
-        .enumerate()
-        .map(|(display_i, (orig_idx, beam, _score))| {
-            let is_selected = display_i == state.selected;
-            let is_checked = state.checked[*orig_idx];
-            let checkbox = if is_checked { "[x] " } else { "[ ] " };
-            let prefix = if is_selected { "▶ " } else { "  " };
 
-            let name_spans = if !state.search.is_empty() {
-                let indices = match_indices(&state.search, &beam.name);
-                highlight_name(&beam.name, &indices, is_selected)
-            } else {
-                vec![Span::styled(
-                    beam.name.clone(),
-                    if is_selected {
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(Color::Gray)
-                    },
-                )]
-            };
+    if filtered.is_empty() {
+        let message = if state.search.is_empty() {
+            "Aucun beam disponible".to_string()
+        } else {
+            format!("Aucun beam ne correspond à « {} »", state.search)
+        };
+        let empty = Paragraph::new(message)
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL));
+        f.render_widget(empty, list_area);
+    } else {
+        let items: Vec<ListItem> = filtered
+            .iter()
+            .enumerate()
+            .map(|(display_i, (orig_idx, beam, _score))| {
+                let is_selected = display_i == state.selected;
+                let is_checked = state.checked[*orig_idx];
+                let checkbox = if is_checked { "[x] " } else { "[ ] " };
+                let prefix = if is_selected { "▶ " } else { "  " };
 
-            let mut spans = vec![Span::raw(format!("{}{}", prefix, checkbox))];
-            spans.extend(name_spans);
-            if let Some(desc) = &beam.description {
-                spans.push(Span::styled(
-                    format!("  {}", desc),
-                    Style::default().fg(Color::DarkGray),
-                ));
-            }
-            ListItem::new(Line::from(spans))
-        })
-        .collect();
+                let name_spans = if !state.search.is_empty() {
+                    let indices = match_indices(&state.search, &beam.name);
+                    highlight_name(&beam.name, &indices, is_selected)
+                } else {
+                    vec![Span::styled(
+                        beam.name.clone(),
+                        if is_selected {
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::Gray)
+                        },
+                    )]
+                };
 
-    let list = List::new(items).block(Block::default().borders(Borders::ALL));
-    f.render_widget(list, list_area);
+                let mut spans = vec![Span::raw(format!("{}{}", prefix, checkbox))];
+                spans.extend(name_spans);
+                if let Some(desc) = &beam.description {
+                    spans.push(Span::styled(
+                        format!("  {}", desc),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+                ListItem::new(Line::from(spans))
+            })
+            .collect();
+
+        let list = List::new(items).block(Block::default().borders(Borders::ALL));
+        f.render_widget(list, list_area);
+    }
 
     if let Some(area) = deps_area {
         crate::picker::deps_panel::render_deps_panel(f, state, area);
