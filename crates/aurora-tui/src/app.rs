@@ -107,6 +107,55 @@ impl BeamView {
     }
 }
 
+/// Retire les séquences d'échappement ANSI et les caractères de contrôle d'une
+/// ligne de log capturée. Les outils (deptrac, phpcs, ...) émettent des codes
+/// couleur et de positionnement bruts : laissés tels quels, ratatui les écrirait
+/// dans le terminal qui les réinterpréterait, corrompant l'affichage (texte
+/// décalé, restes de l'écran précédent). Le retour chariot est retiré car il
+/// réécrirait la ligne ; la tabulation est conservée.
+pub fn sanitize_log_line(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\x1b' => match chars.peek() {
+                // CSI : ESC [ ... octet final dans 0x40..=0x7E (ex. couleurs SGR).
+                Some('[') => {
+                    chars.next();
+                    while let Some(n) = chars.next() {
+                        if ('\x40'..='\x7e').contains(&n) {
+                            break;
+                        }
+                    }
+                }
+                // OSC : ESC ] ... terminé par BEL (0x07) ou ST (ESC \).
+                Some(']') => {
+                    chars.next();
+                    while let Some(n) = chars.next() {
+                        if n == '\x07' {
+                            break;
+                        }
+                        if n == '\x1b' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                            }
+                            break;
+                        }
+                    }
+                }
+                // Autre séquence d'échappement courte : on saute l'octet suivant.
+                _ => {
+                    chars.next();
+                }
+            },
+            '\r' => {}
+            c if c.is_control() && c != '\t' => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Découpe une ligne logique en segments visuels d'au plus `width` caractères.
 /// Découpe par caractères (déterministe), pour que l'index logique se convertisse
 /// exactement en offset visuel. Une ligne vide produit un segment vide (1 ligne).
@@ -422,6 +471,7 @@ impl ExecutionState {
             }
             SchedulerEvent::BeamOutput { name, line, is_stderr } => {
                 if let Some(b) = self.beams.iter_mut().find(|b| b.name == name) {
+                    let line = sanitize_log_line(&line);
                     if is_stderr {
                         b.stderr.push(line);
                     } else {
@@ -660,6 +710,7 @@ impl App {
             }
             SchedulerEvent::BeamOutput { name, line, is_stderr } => {
                 if let Some(b) = self.beams.iter_mut().find(|b| b.name == name) {
+                    let line = sanitize_log_line(&line);
                     if is_stderr {
                         b.stderr.push(line);
                     } else {
