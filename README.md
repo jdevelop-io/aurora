@@ -19,10 +19,8 @@ Aurora is a task runner and build tool written in Rust, designed as an alternati
 
 ## Installation
 
-### Prerequisites
-
-- A recent stable [Rust toolchain](https://rustup.rs/) (Cargo included).
-- Docker (optional), only needed for beams that use the `docker` executor.
+The quick-install scripts below download a prebuilt binary and need no build tools.
+Docker is optional and only required at runtime for beams that use the `docker` executor.
 
 ### Quick install (Linux and macOS)
 
@@ -55,7 +53,8 @@ The same `AURORA_INSTALL_DIR` and `AURORA_VERSION` environment variables are sup
 
 ### With cargo install
 
-To build the binary from the latest source instead of downloading a prebuilt one:
+Requires a stable [Rust toolchain](https://rustup.rs/). To build the binary from the
+latest source instead of downloading a prebuilt one:
 
 ```bash
 cargo install --git https://github.com/jdevelop-io/aurora aurora
@@ -66,7 +65,8 @@ Add `--force` to update an existing install.
 
 ### From source
 
-Clone the repository and build the release binary:
+Requires a stable [Rust toolchain](https://rustup.rs/). Clone the repository and build
+the release binary:
 
 ```bash
 git clone git@github.com:jdevelop-io/aurora.git
