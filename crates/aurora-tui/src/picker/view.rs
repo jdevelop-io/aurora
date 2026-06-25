@@ -12,30 +12,60 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
     let area = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Min(0), Constraint::Length(2)])
         .split(area);
 
-    let selected_count = state.checked.iter().filter(|&&c| c).count();
-    let title = if selected_count > 0 {
-        format!(" Aurora — Choisir un beam ({} sélectionnés) ", selected_count)
-    } else {
-        " Aurora — Choisir un beam ".to_string()
-    };
-
-    let search = Paragraph::new(format!(" {} ", state.search))
-        .block(Block::default().borders(Borders::ALL).title(title));
-    f.render_widget(search, chunks[0]);
-
-    // Zone centrale : liste + panel deps si show_deps
-    let (list_area, deps_area) = if state.show_deps {
+    // Zone centrale : panneau des beams (+ panel deps si show_deps).
+    let (main_area, deps_area) = if state.show_deps {
         let sub = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(chunks[1]);
+            .split(chunks[0]);
         (sub[0], Some(sub[1]))
     } else {
-        (chunks[1], None)
+        (chunks[0], None)
     };
+
+    // Panneau des beams : titre « Aurora » identique au runner. La recherche est
+    // une ligne fine à l'intérieur, plus d'encart bordé dédié. Le récap de
+    // sélection vit dans le footer (ligne d'état), pas dans le titre.
+    let selected_count = state.checked.iter().filter(|&&c| c).count();
+    // Panneau actif : même style que le panneau des beams « focus » du runner
+    // (bordure et titre en jaune), pour une couleur de titre identique.
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(
+            Line::from(Span::styled(" Aurora ", Style::default().fg(Color::Yellow)))
+                .left_aligned(),
+        );
+    let inner = block.inner(main_area);
+    f.render_widget(block, main_area);
+
+    // Découpe intérieure : ligne de recherche puis liste.
+    let inner_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(inner);
+
+    let search_line = if state.search.is_empty() {
+        // Placeholder en accent tant qu'aucun mot-clé n'est saisi.
+        Line::from(vec![
+            Span::styled(" 🔍 ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "Rechercher",
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            ),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(" 🔍 ", Style::default().fg(Color::DarkGray)),
+            Span::styled(state.search.clone(), Style::default().fg(Color::White)),
+        ])
+    };
+    let search = Paragraph::new(search_line);
+    f.render_widget(search, inner_chunks[0]);
+    let list_area = inner_chunks[1];
 
     // Liste
     let filtered = state.filtered();
@@ -48,8 +78,7 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         };
         let empty = Paragraph::new(message)
             .style(Style::default().fg(Color::DarkGray))
-            .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL));
+            .alignment(Alignment::Center);
         f.render_widget(empty, list_area);
     } else {
         let items: Vec<ListItem> = filtered
@@ -87,7 +116,7 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
             })
             .collect();
 
-        let list = List::new(items).block(Block::default().borders(Borders::ALL));
+        let list = List::new(items);
         f.render_widget(list, list_area);
     }
 
@@ -108,7 +137,54 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         ("Enter", "lancer"),
         ("Esc", "quitter"),
     ];
-    crate::widgets::status_bar::render_hints(f, chunks[2], &hints);
+
+    // Footer sur 2 lignes, comme l'écran d'exécution : ligne d'état puis raccourcis.
+    let footer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(chunks[1]);
+
+    let status = status_line(state, &filtered, selected_count);
+    f.render_widget(Paragraph::new(status), footer[0]);
+    crate::widgets::status_bar::render_hints(f, footer[1], &hints);
+}
+
+/// Ligne d'état du footer : nombre de résultats, sélection et aperçu de l'action
+/// Entrée. Fait écho à la ligne d'état du runner.
+fn status_line(
+    state: &PickerState,
+    filtered: &[(usize, &crate::app::PickerBeam, u32)],
+    selected_count: usize,
+) -> Line<'static> {
+    let total = state.beams.len();
+    let count_text = if state.search.is_empty() {
+        format!("{} beams", total)
+    } else {
+        format!("{} / {} beams", filtered.len(), total)
+    };
+
+    let action_text = if filtered.is_empty() {
+        "aucun résultat".to_string()
+    } else if selected_count > 0 {
+        let s = if selected_count > 1 { "s" } else { "" };
+        format!(
+            "{} sélectionné{s} · Entrée lance {} beam{s}",
+            selected_count, selected_count
+        )
+    } else {
+        let name = filtered
+            .get(state.selected)
+            .map(|(_, b, _)| b.name.clone())
+            .unwrap_or_default();
+        format!("Entrée lance « {} »", name)
+    };
+
+    Line::from(vec![
+        Span::styled(" ◆ ", Style::default().fg(Color::Cyan)),
+        Span::styled(count_text, Style::default().fg(Color::Gray)),
+        Span::styled(" · ", Style::default().fg(Color::DarkGray)),
+        Span::styled(action_text, Style::default().fg(Color::Gray)),
+    ])
 }
 
 fn highlight_name(name: &str, indices: &[usize], selected: bool) -> Vec<Span<'static>> {
