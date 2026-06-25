@@ -54,7 +54,7 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
             )),
             Line::from(""),
             Line::from(" ↑↓ / jk    Naviguer beams (ou scroller logs si focus logs)"),
-            Line::from(" Tab        Basculer focus beams / logs"),
+            Line::from(" ←→ / Tab   Basculer focus beams / logs"),
             Line::from(" PgUp/Dn    Scroller les logs par page"),
             Line::from(" Ctrl+U/D   Demi-page haut / bas"),
             Line::from(" g / G      Haut / bas des logs"),

@@ -185,7 +185,7 @@ pub async fn run_execution_tui(
                                     }
                                 }
                             }
-                            KeyCode::Tab => {
+                            KeyCode::Tab | KeyCode::Left | KeyCode::Right => {
                                 let _ = exec.handle_key(key);
                             }
                             KeyCode::Char('/') => {

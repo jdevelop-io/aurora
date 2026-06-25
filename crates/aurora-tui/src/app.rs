@@ -567,6 +567,14 @@ impl ExecutionState {
                 };
                 None
             }
+            KeyCode::Left => {
+                self.focus = FocusPanel::Beams;
+                None
+            }
+            KeyCode::Right => {
+                self.focus = FocusPanel::Logs;
+                None
+            }
             KeyCode::Char('q') => Some(ExecutionAction::Quit),
             KeyCode::Enter => Some(ExecutionAction::OpenLogView {
                 beam_index: self.selected,

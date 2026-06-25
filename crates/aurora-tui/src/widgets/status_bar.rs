@@ -16,7 +16,7 @@ const SEP: Color = Color::DarkGray;
 // Jeux de raccourcis : complet si la largeur le permet, sinon essentiel.
 const RUNNING_FULL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
-    ("Tab", "focus"),
+    ("←→", "focus"),
     ("PgUp/Dn", "scroll"),
     ("g/G", "haut/bas"),
     ("/", "cherche"),
@@ -26,13 +26,14 @@ const RUNNING_FULL: &[(&str, &str)] = &[
 ];
 const RUNNING_ESSENTIAL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
-    ("Tab", "focus"),
+    ("←→", "focus"),
     ("/", "cherche"),
     ("?", "aide"),
     ("q", "annuler"),
 ];
 const DONE_FULL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
+    ("←→", "focus"),
     ("PgUp/Dn", "scroll"),
     ("g/G", "haut/bas"),
     ("/", "cherche"),
