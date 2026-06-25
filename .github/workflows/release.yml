@@ -35,7 +35,7 @@ jobs:
             cross: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Installer la toolchain Rust
         uses: dtolnay/rust-toolchain@stable
@@ -83,7 +83,7 @@ jobs:
           fi
 
       - name: Publier sur la release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # La release du tag est créée si elle n'existe pas ; chaque job y ajoute son archive.
           files: ${{ env.ASSET }}
