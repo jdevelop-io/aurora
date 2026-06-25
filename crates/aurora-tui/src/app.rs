@@ -407,10 +407,28 @@ impl PickerState {
                 }
             }
             KeyCode::Down => {
-                self.selected = (self.selected + 1).min(count.saturating_sub(1));
+                if count > 0 {
+                    self.selected = if self.selected + 1 >= count {
+                        0
+                    } else {
+                        self.selected + 1
+                    };
+                }
             }
             KeyCode::Up => {
-                self.selected = self.selected.saturating_sub(1);
+                if count > 0 {
+                    self.selected = if self.selected == 0 {
+                        count - 1
+                    } else {
+                        self.selected - 1
+                    };
+                }
+            }
+            KeyCode::Home => {
+                self.selected = 0;
+            }
+            KeyCode::End => {
+                self.selected = count.saturating_sub(1);
             }
             KeyCode::Char(' ') => {
                 let orig_idx = filtered.get(self.selected).map(|(i, _, _)| *i);
@@ -584,11 +602,35 @@ impl ExecutionState {
     }
 
     pub fn select_next(&mut self) {
-        self.selected = (self.selected + 1).min(self.beams.len().saturating_sub(1));
+        let count = self.beams.len();
+        if count == 0 {
+            return;
+        }
+        self.selected = if self.selected + 1 >= count {
+            0
+        } else {
+            self.selected + 1
+        };
     }
 
     pub fn select_prev(&mut self) {
-        self.selected = self.selected.saturating_sub(1);
+        let count = self.beams.len();
+        if count == 0 {
+            return;
+        }
+        self.selected = if self.selected == 0 {
+            count - 1
+        } else {
+            self.selected - 1
+        };
+    }
+
+    pub fn select_first(&mut self) {
+        self.selected = 0;
+    }
+
+    pub fn select_last(&mut self) {
+        self.selected = self.beams.len().saturating_sub(1);
     }
 }
 

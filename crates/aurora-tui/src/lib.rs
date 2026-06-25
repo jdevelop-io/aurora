@@ -155,6 +155,36 @@ pub async fn run_execution_tui(
                                     }
                                 }
                             }
+                            KeyCode::Home => {
+                                match exec.focus {
+                                    FocusPanel::Beams => {
+                                        exec.select_first();
+                                        log_state.beam_index = exec.selected;
+                                        log_state.scroll_locked = false;
+                                        if search.is_active() {
+                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
+                                        }
+                                    }
+                                    FocusPanel::Logs => {
+                                        log_state.scroll_to_top();
+                                    }
+                                }
+                            }
+                            KeyCode::End => {
+                                match exec.focus {
+                                    FocusPanel::Beams => {
+                                        exec.select_last();
+                                        log_state.beam_index = exec.selected;
+                                        log_state.scroll_locked = false;
+                                        if search.is_active() {
+                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
+                                        }
+                                    }
+                                    FocusPanel::Logs => {
+                                        log_state.scroll_to_bottom(total_visual, log_h);
+                                    }
+                                }
+                            }
                             KeyCode::Tab => {
                                 let _ = exec.handle_key(key);
                             }
