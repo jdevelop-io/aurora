@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Command::new("aurora")
-        .version("0.1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .about("Aurora — task runner with HCL-inspired Beamfile DSL")
         .arg(Arg::new("beam").help("Beam to run").index(1))
         .arg(Arg::new("no-cache").long("no-cache").action(clap::ArgAction::SetTrue))
