@@ -60,12 +60,19 @@ pub fn render_log_panel(
     } else {
         " [auto]"
     };
-    // Indicateur de position en lignes logiques (plus parlant que le visuel).
+    // Indicateur de position en lignes logiques : on affiche la dernière ligne
+    // visible (bas du panneau), bornée au contenu. Ainsi, collé au bas (auto),
+    // l'indicateur atteint N/N.
     let position = if beam.stdout.is_empty() && beam.stderr.is_empty() {
         String::new()
     } else {
-        let top = beam.logical_line_at_visual(log_state.scroll, width) + 1;
-        format!("  {}/{}", top, beam.log_line_count())
+        let last_visual = total_visual.saturating_sub(1);
+        let bottom_visual = log_state
+            .scroll
+            .saturating_add(inner_height.saturating_sub(1))
+            .min(last_visual);
+        let bottom = beam.logical_line_at_visual(bottom_visual, width) + 1;
+        format!("  {}/{}", bottom, beam.log_line_count())
     };
     let title = format!(" {} — Logs{}{} ", beam.name, auto_indicator, position);
 
