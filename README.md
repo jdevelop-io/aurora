@@ -1,6 +1,6 @@
 # Aurora
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/jdevelop-io/aurora/releases)
+[![Version](https://img.shields.io/github/v/release/jdevelop-io/aurora?color=blue)](https://github.com/jdevelop-io/aurora/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg?logo=rust)](https://www.rust-lang.org/)
 
@@ -24,15 +24,45 @@ Aurora is a task runner and build tool written in Rust, designed as an alternati
 - A recent stable [Rust toolchain](https://rustup.rs/) (Cargo included).
 - Docker (optional), only needed for beams that use the `docker` executor.
 
-### With cargo install (from git)
+### Quick install (Linux and macOS)
 
-Install the `aurora` binary straight from the repository:
+Download the latest prebuilt binary for your platform and install it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jdevelop-io/aurora/main/install.sh | sh
+```
+
+By default the binary lands in `~/.local/bin`. Override the target directory or pin a
+specific version with environment variables:
+
+```bash
+AURORA_INSTALL_DIR=/usr/local/bin AURORA_VERSION=v0.2.0 \
+  curl -fsSL https://raw.githubusercontent.com/jdevelop-io/aurora/main/install.sh | sh
+```
+
+To update, just run the command again: it always fetches the latest release.
+
+### Quick install (Windows)
+
+In PowerShell, download the latest prebuilt binary and install it:
+
+```powershell
+irm https://raw.githubusercontent.com/jdevelop-io/aurora/main/install.ps1 | iex
+```
+
+The binary lands in `%LOCALAPPDATA%\aurora\bin`, which is added to your user `PATH`.
+The same `AURORA_INSTALL_DIR` and `AURORA_VERSION` environment variables are supported.
+
+### With cargo install
+
+To build the binary from the latest source instead of downloading a prebuilt one:
 
 ```bash
 cargo install --git https://github.com/jdevelop-io/aurora aurora
 ```
 
 The binary is placed in `~/.cargo/bin`, so make sure that directory is on your `PATH`.
+Add `--force` to update an existing install.
 
 ### From source
 
@@ -48,29 +78,6 @@ The binary lands in `target/release/aurora`. Copy it somewhere on your `PATH`, f
 
 ```bash
 install -m 0755 target/release/aurora ~/.local/bin/aurora
-```
-
-Alternatively, install it with Cargo from the local checkout:
-
-```bash
-cargo install --path crates/aurora
-```
-
-### Updating
-
-Already installed Aurora? Re-run the install command with `--force` to replace the binary with the latest version.
-
-If you installed from git:
-
-```bash
-cargo install --git https://github.com/jdevelop-io/aurora aurora --force
-```
-
-If you installed from a local clone, pull the latest changes first:
-
-```bash
-git pull
-cargo install --path crates/aurora --force
 ```
 
 ### Verify
