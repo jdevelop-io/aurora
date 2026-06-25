@@ -1,0 +1,91 @@
+name: Release
+
+# Déclenché quand tu pushes un tag de version, ex. : v0.2.0
+on:
+  push:
+    tags:
+      - "v*"
+
+# Nécessaire pour que l'action puisse créer la release et y attacher les binaires.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            cross: true
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            cross: false
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            cross: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer la toolchain Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Installer cross
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Build (cargo)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }} --bin aurora
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }} --bin aurora
+
+      - name: Empaqueter l'archive
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          bin=aurora
+          ext=""
+          if [[ "$TARGET" == *windows* ]]; then ext=".exe"; fi
+          src="target/${TARGET}/release/${bin}${ext}"
+          name="aurora-${REF_NAME}-${TARGET}"
+          mkdir -p "dist/${name}"
+          cp "$src" "dist/${name}/"
+          cp README.md LICENSE "dist/${name}/" 2>/dev/null || true
+          cd dist
+          if [[ "$TARGET" == *windows* ]]; then
+            7z a "${name}.zip" "${name}" >/dev/null
+            echo "ASSET=dist/${name}.zip" >> "$GITHUB_ENV"
+          else
+            tar -czf "${name}.tar.gz" "${name}"
+            echo "ASSET=dist/${name}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Publier sur la release
+        uses: softprops/action-gh-release@v2
+        with:
+          # La release du tag est créée si elle n'existe pas ; chaque job y ajoute son archive.
+          files: ${{ env.ASSET }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
