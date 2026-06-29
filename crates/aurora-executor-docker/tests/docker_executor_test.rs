@@ -3,6 +3,29 @@ use aurora_executor_api::{ExecutionInput, Executor};
 use aurora_executor_docker::DockerExecutor;
 use std::collections::HashMap;
 
+// Ne nécessite PAS Docker : valide que les volumes dangereux sont rejetés
+// avant tout lancement de conteneur (défense contre l'évasion de sandbox).
+#[tokio::test]
+async fn test_dangerous_volume_is_rejected() {
+    let executor = DockerExecutor::new();
+    for vol in [
+        "/var/run/docker.sock:/var/run/docker.sock",
+        "/:/host:rw",
+        "/etc:/etc",
+        "/proc:/proc",
+    ] {
+        let input = ExecutionInput {
+            commands: vec!["echo nope".to_string()],
+            env: HashMap::new(),
+            working_dir: std::env::current_dir().unwrap(),
+            config: serde_json::json!({ "image": "alpine:3.19", "volumes": [vol] }),
+            output_tx: None,
+        };
+        let result = executor.execute(input).await;
+        assert!(result.is_err(), "volume dangereux accepté : {vol}");
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn test_docker_echo() {
