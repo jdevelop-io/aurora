@@ -107,3 +107,19 @@ fn test_unknown_root_beam() {
     let levels = graph.execution_levels("nonexistent").unwrap();
     assert!(levels.is_empty());
 }
+
+#[test]
+fn test_direct_dependencies() {
+    let deps = vec![
+        ("qa",       vec!["lint", "test"]),
+        ("lint",     vec!["composer"]),
+        ("test",     vec!["composer"]),
+        ("composer", vec![]),
+    ];
+    let graph = BeamGraph::from_deps(deps).unwrap();
+    let mut d = graph.direct_dependencies("qa");
+    d.sort();
+    assert_eq!(d, vec!["lint", "test"]);
+    assert!(graph.direct_dependencies("composer").is_empty());
+    assert!(graph.direct_dependencies("inconnu").is_empty());
+}

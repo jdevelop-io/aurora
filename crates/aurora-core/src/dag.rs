@@ -114,6 +114,18 @@ impl BeamGraph {
             .collect()
     }
 
+    /// Returns the beams that `beam` directly depends on (its immediate dependencies).
+    pub fn direct_dependencies(&self, beam: &str) -> Vec<String> {
+        let idx = match self.index.get(beam) {
+            Some(&idx) => idx,
+            None => return vec![],
+        };
+        self.graph
+            .neighbors_directed(idx, Direction::Incoming)
+            .map(|n| self.graph[n].clone())
+            .collect()
+    }
+
     /// Returns execution levels for running `root` and all its dependencies.
     /// Each level is a Vec of beam names that can run in parallel.
     /// Levels are ordered: level[0] runs first, level[N] runs last.
