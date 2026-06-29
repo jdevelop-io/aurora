@@ -54,6 +54,28 @@ async fn test_scheduler_simple() {
 }
 
 #[tokio::test]
+async fn test_scheduler_zero_parallelism_does_not_deadlock() {
+    let beams = vec![
+        make_beam("a", vec![], vec!["echo a"]),
+        make_beam("b", vec!["a"], vec!["echo b"]),
+    ];
+    let (tx, mut rx) = mpsc::channel(32);
+    // max_parallelism = 0 (issu d'un Beamfile) ne doit pas figer le run.
+    let scheduler = Scheduler::new(beams, local_executors(), tx, Some(0), std::path::PathBuf::from("/tmp"), HashMap::new());
+    let res = tokio::time::timeout(std::time::Duration::from_secs(10), scheduler.run("b", &[])).await;
+    let ok = res.expect("le scheduler s'est figé avec max_parallelism = 0").unwrap();
+    assert!(ok);
+
+    let mut events = vec![];
+    while let Ok(evt) = rx.try_recv() { events.push(evt); }
+    let success: Vec<_> = events.iter()
+        .filter_map(|e| if let SchedulerEvent::BeamCompleted { name, status: BeamStatus::Success { .. } } = e { Some(name.as_str()) } else { None })
+        .collect();
+    assert!(success.contains(&"a"));
+    assert!(success.contains(&"b"));
+}
+
+#[tokio::test]
 async fn test_scheduler_failed_cancels_dependents() {
     let beams = vec![
         make_beam("a", vec![], vec!["false"]),

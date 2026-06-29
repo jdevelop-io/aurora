@@ -72,7 +72,9 @@ impl Scheduler {
         let graph = BeamGraph::from_deps(deps)?;
         let levels = graph.execution_levels(root)?;
 
-        let semaphore = self.max_parallelism.map(|n| Arc::new(Semaphore::new(n)));
+        // `max_parallelism` vient du Beamfile : un 0 créerait un sémaphore qui ne
+        // délivre jamais de permis, figeant le run indéfiniment. On borne à 1.
+        let semaphore = self.max_parallelism.map(|n| Arc::new(Semaphore::new(n.max(1))));
         let mut overall_success = true;
         let mut cancelled: Vec<String> = vec![];
 

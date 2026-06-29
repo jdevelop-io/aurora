@@ -85,6 +85,21 @@ fn test_single_beam_no_deps() {
 }
 
 #[test]
+fn test_deep_dependency_chain_no_stack_overflow() {
+    // Chaîne linéaire profonde b0 -> b1 -> ... -> b(N-1). Une traversée
+    // récursive déborderait la pile ; la version itérative doit terminer.
+    let n = 100_000usize;
+    let mut deps: Vec<(String, Vec<String>)> = Vec::with_capacity(n);
+    for i in 0..n {
+        let d = if i + 1 < n { vec![format!("b{}", i + 1)] } else { vec![] };
+        deps.push((format!("b{i}"), d));
+    }
+    let graph = BeamGraph::from_deps(deps).unwrap();
+    let transitive = graph.transitive_deps("b0");
+    assert_eq!(transitive.len(), n);
+}
+
+#[test]
 fn test_unknown_root_beam() {
     let deps = vec![("a", vec![])];
     let graph = BeamGraph::from_deps(deps).unwrap();

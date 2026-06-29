@@ -1,7 +1,7 @@
 use petgraph::algo::{is_cyclic_directed, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::Direction;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -54,20 +54,25 @@ impl BeamGraph {
             None => return vec![],
         };
 
-        let mut visited = vec![];
-        self.dfs_incoming(root_idx, &mut visited);
-        visited.iter().map(|&idx| self.graph[idx].clone()).collect()
-    }
-
-    /// DFS following incoming edges (i.e., traverse dependencies).
-    fn dfs_incoming(&self, node: NodeIndex, visited: &mut Vec<NodeIndex>) {
-        if visited.contains(&node) {
-            return;
+        // DFS itérative (pile explicite) : évite le débordement de pile sur de
+        // longues chaînes de dépendances (un Beamfile pourrait en déclarer des
+        // dizaines de milliers). Le HashSet donne une appartenance en O(1), au
+        // lieu du O(n) d'un Vec::contains qui rendait le parcours quadratique.
+        let mut seen: HashSet<NodeIndex> = HashSet::new();
+        let mut order: Vec<NodeIndex> = vec![];
+        let mut stack = vec![root_idx];
+        while let Some(node) = stack.pop() {
+            if !seen.insert(node) {
+                continue;
+            }
+            order.push(node);
+            for dep in self.graph.neighbors_directed(node, Direction::Incoming) {
+                if !seen.contains(&dep) {
+                    stack.push(dep);
+                }
+            }
         }
-        visited.push(node);
-        for dep in self.graph.neighbors_directed(node, Direction::Incoming) {
-            self.dfs_incoming(dep, visited);
-        }
+        order.iter().map(|&idx| self.graph[idx].clone()).collect()
     }
 
     /// Returns the beams that directly depend on `beam` (its immediate dependents).
