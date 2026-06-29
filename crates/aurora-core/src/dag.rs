@@ -75,6 +75,33 @@ impl BeamGraph {
         order.iter().map(|&idx| self.graph[idx].clone()).collect()
     }
 
+    /// Returns every beam that transitively depends on `beam` (its full
+    /// downstream closure), following outgoing edges. Excludes `beam` itself.
+    ///
+    /// Used to cancel the whole dependent subtree when a beam fails, so that a
+    /// grandchild never runs after its intermediate prerequisite was cancelled.
+    pub fn transitive_dependents(&self, beam: &str) -> Vec<String> {
+        let start = match self.index.get(beam) {
+            Some(&idx) => idx,
+            None => return vec![],
+        };
+        let mut seen: HashSet<NodeIndex> = HashSet::new();
+        let mut order: Vec<NodeIndex> = vec![];
+        // `start` est marqué vu sans être collecté : on veut ses dépendants, pas
+        // lui-même. Parcours itératif pour rester sûr sur de longues chaînes.
+        seen.insert(start);
+        let mut stack = vec![start];
+        while let Some(node) = stack.pop() {
+            for dependent in self.graph.neighbors_directed(node, Direction::Outgoing) {
+                if seen.insert(dependent) {
+                    order.push(dependent);
+                    stack.push(dependent);
+                }
+            }
+        }
+        order.iter().map(|&idx| self.graph[idx].clone()).collect()
+    }
+
     /// Returns the beams that directly depend on `beam` (its immediate dependents).
     pub fn direct_dependents(&self, beam: &str) -> Vec<String> {
         let idx = match self.index.get(beam) {

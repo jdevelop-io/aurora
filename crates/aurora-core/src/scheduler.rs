@@ -256,7 +256,10 @@ impl Scheduler {
                 if let Ok((name, success)) = result {
                     if !success {
                         overall_success = false;
-                        let dependents = graph.direct_dependents(&name);
+                        // Annule tout le sous-arbre en aval, pas seulement les
+                        // dépendants directs : sinon un petit-enfant s'exécuterait
+                        // alors que son prérequis intermédiaire a été annulé.
+                        let dependents = graph.transitive_dependents(&name);
                         cancelled.extend(dependents);
                     }
                 }

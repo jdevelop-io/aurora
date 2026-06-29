@@ -92,3 +92,35 @@ async fn test_scheduler_failed_cancels_dependents() {
     assert!(failed, "a should have failed");
     assert!(cancelled, "b should be cancelled");
 }
+
+#[tokio::test]
+async fn test_scheduler_cancellation_is_transitive() {
+    // deploy -> test -> build ; build échoue. test ET deploy doivent être
+    // annulés : deploy ne doit jamais s'exécuter alors que test n'a pas tourné.
+    let beams = vec![
+        make_beam("build",  vec![],         vec!["false"]),
+        make_beam("test",   vec!["build"],  vec!["echo test"]),
+        make_beam("deploy", vec!["test"],   vec!["echo deploy"]),
+    ];
+    let (tx, mut rx) = mpsc::channel(32);
+    Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new())
+        .run("deploy", &[]).await.unwrap();
+
+    let mut events = vec![];
+    while let Ok(evt) = rx.try_recv() { events.push(evt); }
+
+    let status_of = |beam: &str| -> Option<BeamStatus> {
+        events.iter().rev().find_map(|e| match e {
+            SchedulerEvent::BeamCompleted { name, status } if name == beam => Some(status.clone()),
+            _ => None,
+        })
+    };
+
+    assert!(matches!(status_of("build"),  Some(BeamStatus::Failed { .. })),    "build doit échouer");
+    assert!(matches!(status_of("test"),   Some(BeamStatus::Cancelled)),        "test doit être annulé");
+    assert!(matches!(status_of("deploy"), Some(BeamStatus::Cancelled)),        "deploy doit être annulé (et non exécuté)");
+
+    // deploy ne doit apparaître dans aucun événement de sortie : il n'a pas tourné.
+    let deploy_ran = events.iter().any(|e| matches!(e, SchedulerEvent::BeamOutput { name, .. } if name == "deploy"));
+    assert!(!deploy_ran, "deploy ne devait produire aucune sortie");
+}
