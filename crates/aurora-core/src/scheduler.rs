@@ -125,6 +125,7 @@ impl Scheduler {
                     if let Some(cond) = &beam.skip_if {
                         let skip = tokio::process::Command::new("sh")
                             .arg("-c").arg(cond)
+                            .env_clear()
                             .envs(&env)
                             .status().await
                             .map(|s| s.success()).unwrap_or(false);

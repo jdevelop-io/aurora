@@ -2,12 +2,18 @@ use aurora_executor_api::{ExecutionInput, Executor};
 use aurora_executor_local::LocalExecutor;
 use std::collections::HashMap;
 
+/// L'exécuteur n'hérite plus de l'environnement ambiant : il faut donc fournir
+/// au moins PATH pour que `sh` et les binaires soient résolus.
+fn base_env() -> HashMap<String, String> {
+    HashMap::from([("PATH".to_string(), std::env::var("PATH").unwrap_or_default())])
+}
+
 #[tokio::test]
 async fn test_execute_echo() {
     let executor = LocalExecutor::new();
     let input = ExecutionInput {
         commands: vec!["echo hello".to_string()],
-        env: HashMap::new(),
+        env: base_env(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
         output_tx: None,
@@ -25,7 +31,7 @@ async fn test_execute_multi_commands() {
             "echo line1".to_string(),
             "echo line2".to_string(),
         ],
-        env: HashMap::new(),
+        env: base_env(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
         output_tx: None,
@@ -42,7 +48,7 @@ async fn test_execute_failing_command() {
     let executor = LocalExecutor::new();
     let input = ExecutionInput {
         commands: vec!["false".to_string()],
-        env: HashMap::new(),
+        env: base_env(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
         output_tx: None,
@@ -56,7 +62,11 @@ async fn test_env_vars_passed() {
     let executor = LocalExecutor::new();
     let input = ExecutionInput {
         commands: vec!["echo $MY_VAR".to_string()],
-        env: HashMap::from([("MY_VAR".to_string(), "aurora_test".to_string())]),
+        env: {
+            let mut e = base_env();
+            e.insert("MY_VAR".to_string(), "aurora_test".to_string());
+            e
+        },
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
         output_tx: None,
