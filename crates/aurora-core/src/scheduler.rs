@@ -66,44 +66,92 @@ impl Scheduler {
     }
 
     pub async fn run(self, root: &str, pre_success: &[String]) -> Result<bool> {
+        use std::collections::HashSet;
+
         let deps: Vec<(String, Vec<String>)> = self.beams.values()
             .map(|b| (b.name.clone(), b.depends_on.clone()))
             .collect();
         let graph = BeamGraph::from_deps(deps)?;
-        let levels = graph.execution_levels(root)?;
+
+        // `execution_levels` valide le graphe (cycle, beam inconnu) et nous donne
+        // l'ensemble exact des beams à jouer pour `root`. On ignore le découpage
+        // en niveaux : l'ordonnancement réel se fait par file de prêts.
+        let nodes: HashSet<String> = graph.execution_levels(root)?
+            .into_iter()
+            .flatten()
+            .collect();
 
         // `max_parallelism` vient du Beamfile : un 0 créerait un sémaphore qui ne
         // délivre jamais de permis, figeant le run indéfiniment. On borne à 1.
         let semaphore = self.max_parallelism.map(|n| Arc::new(Semaphore::new(n.max(1))));
         let mut overall_success = true;
-        let mut cancelled: Vec<String> = vec![];
 
-        for level in &levels {
-            let mut set: JoinSet<(String, bool)> = JoinSet::new();
-            for beam_name in level {
-                // Beam déjà réussi — silencieux, dépendants débloqués normalement
-                if pre_success.contains(beam_name) {
+        let pre: HashSet<&String> = pre_success.iter().collect();
+
+        // In-degree de chaque beam : nombre de dépendances directes présentes dans
+        // l'ensemble à jouer et non déjà réussies (pre_success). Un beam est prêt
+        // quand son compteur tombe à zéro.
+        let mut remaining: HashMap<String, usize> = HashMap::new();
+        for n in &nodes {
+            let deg = graph.direct_dependencies(n)
+                .into_iter()
+                .filter(|d| nodes.contains(d) && !pre.contains(d))
+                .count();
+            remaining.insert(n.clone(), deg);
+        }
+
+        let mut cancelled: HashSet<String> = HashSet::new();
+        let mut spawned: HashSet<String> = HashSet::new();
+        let mut set: JoinSet<(String, bool)> = JoinSet::new();
+
+        // Beams prêts d'emblée (aucune dépendance restante), hors pre_success.
+        for n in &nodes {
+            if pre.contains(n) {
+                continue;
+            }
+            if remaining[n] == 0 {
+                self.spawn_beam(&mut set, &semaphore, n);
+                spawned.insert(n.clone());
+            }
+        }
+
+        while let Some(result) = set.join_next().await {
+            let (name, success) = match result {
+                Ok(pair) => pair,
+                Err(_) => {
+                    // Tâche paniquée : on ne peut pas débloquer ses dépendants,
+                    // mais la boucle se termine quand le JoinSet se vide.
+                    overall_success = false;
                     continue;
                 }
-                if cancelled.contains(beam_name) {
-                    let _ = self.tx.send(SchedulerEvent::BeamCompleted {
-                        name: beam_name.clone(),
-                        status: BeamStatus::Cancelled,
-                    }).await;
-                    continue;
+            };
+
+            if !success {
+                overall_success = false;
+                // Annule toute la fermeture aval. Ces beams n'atteindront jamais
+                // un in-degree nul, donc ne seront jamais lancés ; on émet leur
+                // statut Cancelled une seule fois.
+                for dep in graph.transitive_dependents(&name) {
+                    if nodes.contains(&dep) && !spawned.contains(&dep) && cancelled.insert(dep.clone()) {
+                        let _ = self.tx.send(SchedulerEvent::BeamCompleted {
+                            name: dep,
+                            status: BeamStatus::Cancelled,
+                        }).await;
+                    }
                 }
-                self.spawn_beam(&mut set, &semaphore, beam_name);
+                continue;
             }
 
-            while let Some(result) = set.join_next().await {
-                if let Ok((name, success)) = result {
-                    if !success {
-                        overall_success = false;
-                        // Annule tout le sous-arbre en aval, pas seulement les
-                        // dépendants directs : sinon un petit-enfant s'exécuterait
-                        // alors que son prérequis intermédiaire a été annulé.
-                        let dependents = graph.transitive_dependents(&name);
-                        cancelled.extend(dependents);
+            // Succès : débloque les dépendants directs.
+            for dep in graph.direct_dependents(&name) {
+                if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) {
+                    continue;
+                }
+                if let Some(r) = remaining.get_mut(&dep) {
+                    *r = r.saturating_sub(1);
+                    if *r == 0 {
+                        self.spawn_beam(&mut set, &semaphore, &dep);
+                        spawned.insert(dep);
                     }
                 }
             }

@@ -4,6 +4,7 @@ use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::mpsc;
 
 fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
@@ -123,4 +124,38 @@ async fn test_scheduler_cancellation_is_transitive() {
     // deploy ne doit apparaître dans aucun événement de sortie : il n'a pas tourné.
     let deploy_ran = events.iter().any(|e| matches!(e, SchedulerEvent::BeamOutput { name, .. } if name == "deploy"));
     assert!(!deploy_ran, "deploy ne devait produire aucune sortie");
+}
+
+// `slow` (3s) et `quick_a` (1s) n'ont aucune dépendance. `quick_b` dépend
+// UNIQUEMENT de `quick_a`, `root` dépend de `quick_b` et `slow`. Avec un vrai
+// pipelining, `quick_b` doit démarrer dès la fin de `quick_a` (~1s), sans
+// attendre `slow`. Le modèle par niveaux le retardait jusqu'à la fin de `slow`.
+#[tokio::test]
+async fn test_scheduler_pipelines_across_levels() {
+    let beams = vec![
+        make_beam("quick_a", vec![],                   vec!["sleep 1"]),
+        make_beam("slow",    vec![],                   vec!["sleep 3"]),
+        make_beam("quick_b", vec!["quick_a"],          vec!["echo b"]),
+        make_beam("root",    vec!["quick_b", "slow"],  vec!["echo root"]),
+    ];
+    let (tx, mut rx) = mpsc::channel(256);
+    let start = Instant::now();
+    tokio::spawn(async move {
+        Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new())
+            .run("root", &[]).await.unwrap();
+    });
+
+    let mut b_started_at = None;
+    while let Some(evt) = rx.recv().await {
+        match &evt {
+            SchedulerEvent::BeamStarted { name } if name == "quick_b" => {
+                b_started_at = Some(start.elapsed());
+            }
+            SchedulerEvent::AllDone { .. } => break,
+            _ => {}
+        }
+    }
+
+    let t = b_started_at.expect("quick_b n'a jamais démarré").as_secs_f64();
+    assert!(t < 2.0, "quick_b devait démarrer vers 1s, démarré à {:.2}s (barrière de niveau)", t);
 }
