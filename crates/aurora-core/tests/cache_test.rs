@@ -45,6 +45,35 @@ fn test_cache_hit_if_output_present() {
 }
 
 #[test]
+fn test_malicious_beam_name_stays_in_cache_dir() {
+    let tmp = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+
+    // Noms tentant un path traversal / chemin absolu.
+    let evil_abs = outside.path().join("pwned").to_string_lossy().to_string();
+    for name in [
+        "../../../../etc/cron.d/evil",
+        "/etc/cron.d/evil",
+        "..",
+        evil_abs.as_str(),
+    ] {
+        cache.save(name, "h").unwrap();
+        // Aucun fichier ne doit apparaître hors du répertoire de cache.
+        assert!(
+            !std::path::Path::new(&format!("{}.json", evil_abs)).exists(),
+            "écriture hors du cache pour {name}"
+        );
+    }
+
+    // Toutes les entrées écrites restent confinées dans le répertoire de cache.
+    for entry in fs::read_dir(tmp.path()).unwrap() {
+        let path = entry.unwrap().path();
+        assert_eq!(path.parent().unwrap(), tmp.path());
+    }
+}
+
+#[test]
 fn test_hash_files() {
     let tmp = tempdir().unwrap();
     fs::write(tmp.path().join("file.txt"), b"content").unwrap();

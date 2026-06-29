@@ -16,6 +16,26 @@ pub struct BeamCache {
     cache_dir: PathBuf,
 }
 
+/// Transforme un nom de beam (potentiellement contrôlé par un Beamfile non
+/// fiable) en nom de fichier sûr, confiné au répertoire de cache.
+///
+/// Sans cette normalisation, un nom comme `/etc/cron.d/x` ou `../../.ssh/x`
+/// ferait écrire/supprimer un fichier hors du cache via `PathBuf::join`
+/// (path traversal). On remplace tout caractère non sûr et on suffixe un hash
+/// du nom d'origine : la lisibilité est conservée pour les noms simples, et
+/// l'unicité est garantie même en cas de collision de la sanitisation.
+fn safe_file_stem(beam_name: &str) -> String {
+    let sanitized: String = beam_name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '_' })
+        .take(64)
+        .collect();
+    let mut hasher = Sha256::new();
+    hasher.update(beam_name.as_bytes());
+    let hash = format!("{:x}", hasher.finalize());
+    format!("{}-{}", sanitized, &hash[..16])
+}
+
 impl BeamCache {
     pub fn new(cache_dir: PathBuf) -> Self {
         fs::create_dir_all(&cache_dir).ok();
@@ -23,7 +43,7 @@ impl BeamCache {
     }
 
     fn entry_path(&self, beam_name: &str) -> PathBuf {
-        self.cache_dir.join(format!("{}.json", beam_name))
+        self.cache_dir.join(format!("{}.json", safe_file_stem(beam_name)))
     }
 
     pub fn is_valid(&self, beam_name: &str, inputs_hash: &str, outputs: &[String]) -> bool {
