@@ -169,7 +169,7 @@ pub struct StatusBreakdown {
     pub skipped: usize,
 }
 
-/// Spans du détail « (✔n ✕n ◌n) », uniquement les catégories non nulles, avec
+/// Spans du détail « (✔ n ✕ n ◌ n) », uniquement les catégories non nulles, avec
 /// leur largeur d'affichage cumulée. Vide si aucun beam terminé.
 fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
     let parts = [
@@ -189,7 +189,7 @@ fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
             spans.push(Span::styled(" ", Style::default().fg(SEP)));
             width += 1;
         }
-        let text = format!("{}{}", sym, n);
+        let text = format!("{} {}", sym, n);
         width += text.chars().count();
         spans.push(Span::styled(text, Style::default().fg(*color)));
     }
@@ -264,14 +264,14 @@ mod tests {
 
     #[test]
     fn breakdown_only_non_zero_categories() {
-        // success + skipped actifs, failed omis : "(", "✔6", " ", "◌1", ") ".
+        // success + skipped actifs, failed omis : "(", "✔ 6", " ", "◌ 1", ") ".
         let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, failed: 0, skipped: 1 });
         assert_eq!(spans.len(), 5);
     }
 
     #[test]
     fn breakdown_all_three_categories() {
-        // "(", "✔6", " ", "✕1", " ", "◌1", ") ".
+        // "(", "✔ 6", " ", "✕ 1", " ", "◌ 1", ") ".
         let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, failed: 1, skipped: 1 });
         assert_eq!(spans.len(), 7);
     }
