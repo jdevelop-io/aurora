@@ -126,6 +126,35 @@ async fn test_scheduler_cancellation_is_transitive() {
     assert!(!deploy_ran, "deploy ne devait produire aucune sortie");
 }
 
+// Vérifie que, lorsque pre_success n'est pas downward-closed (p est pre_success
+// mais sa propre dépendance q est dans le run set), p reste silencieux même si
+// q arrive à 0 d'in-degree — le scheduler ne doit pas le spawner.
+#[tokio::test]
+async fn test_pre_success_beam_not_spawned_when_dependency_completes() {
+    // Graphe : q <- p <- root   ;   pre_success = ["p"]
+    let beams = vec![
+        make_beam("q",    vec![],     vec!["echo q"]),
+        make_beam("p",    vec!["q"],  vec!["echo p"]),
+        make_beam("root", vec!["p"],  vec!["echo root"]),
+    ];
+    let (tx, mut rx) = mpsc::channel(64);
+    Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new())
+        .run("root", &["p".to_string()])
+        .await
+        .unwrap();
+
+    let mut events = vec![];
+    while let Ok(e) = rx.try_recv() { events.push(e); }
+
+    let p_events: Vec<_> = events.iter().filter(|e| match e {
+        SchedulerEvent::BeamStarted  { name }     => name == "p",
+        SchedulerEvent::BeamCompleted { name, .. } => name == "p",
+        SchedulerEvent::BeamOutput   { name, .. } => name == "p",
+        _ => false,
+    }).collect();
+    assert!(p_events.is_empty(), "p est pre_success et ne doit émettre aucun événement : {:?}", p_events);
+}
+
 // `slow` (3s) et `quick_a` (1s) n'ont aucune dépendance. `quick_b` dépend
 // UNIQUEMENT de `quick_a`, `root` dépend de `quick_b` et `slow`. Avec un vrai
 // pipelining, `quick_b` doit démarrer dès la fin de `quick_a` (~1s), sans

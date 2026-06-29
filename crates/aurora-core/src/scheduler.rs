@@ -144,7 +144,7 @@ impl Scheduler {
 
             // Succès : débloque les dépendants directs.
             for dep in graph.direct_dependents(&name) {
-                if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) {
+                if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) || pre.contains(&dep) {
                     continue;
                 }
                 if let Some(r) = remaining.get_mut(&dep) {
