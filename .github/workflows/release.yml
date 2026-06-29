@@ -6,14 +6,18 @@ on:
     tags:
       - "v*"
 
-# Nécessaire pour que l'action puisse créer la release et y attacher les binaires.
+# Par défaut, aucun job n'a d'accès en écriture : le droit est élevé au cas par
+# cas (ici sur le job build, qui publie la release).
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
+    # Droit d'écriture limité à ce job (création de release + upload des assets).
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -36,6 +40,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Ne pas laisser le token GITHUB_TOKEN dans .git/config pendant le
+          # build : les build.rs des dépendances s'exécutent sur le runner et ne
+          # doivent pas pouvoir lire un credential d'écriture.
+          persist-credentials: false
 
       - name: Installer la toolchain Rust
         uses: dtolnay/rust-toolchain@stable
@@ -53,11 +62,11 @@ jobs:
 
       - name: Build (cargo)
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} --bin aurora
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin aurora
 
       - name: Build (cross)
         if: matrix.cross
-        run: cross build --release --target ${{ matrix.target }} --bin aurora
+        run: cross build --release --locked --target ${{ matrix.target }} --bin aurora
 
       - name: Empaqueter l'archive
         shell: bash
@@ -75,17 +84,27 @@ jobs:
           cp README.md LICENSE "dist/${name}/" 2>/dev/null || true
           cd dist
           if [[ "$TARGET" == *windows* ]]; then
-            7z a "${name}.zip" "${name}" >/dev/null
-            echo "ASSET=dist/${name}.zip" >> "$GITHUB_ENV"
+            archive="${name}.zip"
+            7z a "$archive" "${name}" >/dev/null
           else
-            tar -czf "${name}.tar.gz" "${name}"
-            echo "ASSET=dist/${name}.tar.gz" >> "$GITHUB_ENV"
+            archive="${name}.tar.gz"
+            tar -czf "$archive" "${name}"
           fi
+          # Empreinte SHA-256 publiée à côté de l'archive, vérifiée par les
+          # installeurs avant exécution du binaire.
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$archive" > "${archive}.sha256"
+          else
+            shasum -a 256 "$archive" > "${archive}.sha256"
+          fi
+          echo "ASSET=dist/${archive}" >> "$GITHUB_ENV"
 
       - name: Publier sur la release
         uses: softprops/action-gh-release@v3
         with:
           # La release du tag est créée si elle n'existe pas ; chaque job y ajoute son archive.
-          files: ${{ env.ASSET }}
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
           fail_on_unmatched_files: true
           generate_release_notes: true

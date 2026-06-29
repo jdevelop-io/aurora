@@ -4,8 +4,10 @@
 #   curl -fsSL https://raw.githubusercontent.com/jdevelop-io/aurora/main/install.sh | sh
 #
 # Recognized environment variables:
-#   AURORA_VERSION      version to install (e.g. v0.2.0). Default: latest release.
-#   AURORA_INSTALL_DIR  install directory. Default: $HOME/.local/bin.
+#   AURORA_VERSION       version to install (e.g. v0.2.0). Default: latest release.
+#   AURORA_INSTALL_DIR   install directory. Default: $HOME/.local/bin.
+#   AURORA_SKIP_CHECKSUM set to 1 to skip SHA-256 verification (not recommended;
+#                        needed only for releases published before checksums).
 set -eu
 
 REPO="jdevelop-io/aurora"
@@ -70,6 +72,30 @@ resolve_version() {
   [ -n "$VERSION" ] || err "could not determine the latest version (GitHub rate limit?). Set AURORA_VERSION."
 }
 
+# --- integrity -------------------------------------------------------------
+sha256_of() { # file -> hex digest
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    err "no sha256 tool (sha256sum or shasum) available to verify the download."
+  fi
+}
+
+verify_checksum() { # file sum_url
+  if [ "${AURORA_SKIP_CHECKSUM:-0}" = "1" ]; then
+    warn "Checksum verification skipped (AURORA_SKIP_CHECKSUM=1)."
+    return 0
+  fi
+  info "Verifying checksum..."
+  expected="$(http_get "$2" 2>/dev/null | awk '{print $1}' | head -1)"
+  [ -n "$expected" ] || err "could not download the checksum ($2). This release may predate checksums; re-run with AURORA_SKIP_CHECKSUM=1 to bypass at your own risk."
+  actual="$(sha256_of "$1")"
+  [ "$expected" = "$actual" ] || err "checksum mismatch (expected $expected, got $actual). Aborting."
+  info "Checksum OK."
+}
+
 # --- installation ----------------------------------------------------------
 install_binary() {
   asset="${BIN}-${VERSION}-${TARGET}.tar.gz"
@@ -80,6 +106,8 @@ install_binary() {
 
   info "Downloading $asset ($VERSION)..."
   http_download "$url" "$tmp/$asset" || err "download failed: $url"
+
+  verify_checksum "$tmp/$asset" "${url}.sha256"
 
   tar -xzf "$tmp/$asset" -C "$tmp" || err "failed to extract the archive."
 
