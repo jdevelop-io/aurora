@@ -328,7 +328,16 @@ impl Scheduler {
                         status: BeamStatus::Cancelled,
                     }).await;
                     let _ = fwd_handle.await;
-                    return (beam.name, BeamOutcome::Cancelled);
+                    // Un beam `allow_failure` annulé est traité comme un échec
+                    // toléré : son statut affiché reste Cancelled, mais côté
+                    // ordonnancement il compte comme réussi (dépendants débloqués,
+                    // run global non échoué). Sinon, l'annulation est propagée.
+                    let outcome = if beam.allow_failure {
+                        BeamOutcome::Ok
+                    } else {
+                        BeamOutcome::Cancelled
+                    };
+                    return (beam.name, outcome);
                 }
             };
             let (stdout_lines, stderr_lines) = fwd_handle.await.unwrap_or_default();
