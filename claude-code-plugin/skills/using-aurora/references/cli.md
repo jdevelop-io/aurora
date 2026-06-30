@@ -11,6 +11,7 @@ Aurora reads the `Beamfile` in the current directory.
 - `BEAM` — the beam to run. When omitted on a TTY (and without `--no-tui`), the picker TUI opens (fuzzy search;
   multi-select runs the selected beams via a virtual aggregate beam). In headless mode (no TTY, or `--no-tui`),
   the `default` beam from the `aurora {}` block IS used to run when no beam is given, since there is no picker.
+  `-i`/`--interactive` forces the TUI even without a terminal, so the absence of a TTY does not always mean headless.
 
 ## Flags
 
@@ -35,8 +36,11 @@ Aurora reads the `Beamfile` in the current directory.
 ## Output mode and exit codes
 
 Aurora auto-detects the output mode via `stdout().is_terminal()`: a TTY gets the TUI, a pipe/redirect gets
-headless. `--no-tui` and `-i` override this. Headless exit codes: `0` if all beams succeed (`allow_failure`
-beams count as success), `1` if any beam fails. This makes Aurora usable as a CI step:
+headless. `--no-tui` and `-i` override this. ANSI colour is applied to a given stream (stdout or stderr) only
+when that stream itself is a terminal and `NO_COLOR` is unset, so redirecting one stream does not leak colour
+codes into it. Headless exit codes: `0` if all beams succeed (`allow_failure` beams count as success), `1` if
+any beam fails, which also covers a Beamfile error detected at DAG construction (a dependency cycle or an
+unknown dependency). This makes Aurora usable as a CI step:
 
 ```bash
 aurora test --no-tui   # plain logs, exit 1 on failure

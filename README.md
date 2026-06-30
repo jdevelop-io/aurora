@@ -187,9 +187,13 @@ Done: 1 ok, 1 failed
 ```
 
 Exit code: `0` when every beam succeeds (beams marked `allow_failure` count as
-success), `1` when any beam fails. In headless mode the target beam is taken
-from the `aurora { default = ... }` block when no beam is given; the interactive
-picker is only available with a TTY or `-i`.
+success), `1` when any beam fails, which also covers a malformed Beamfile
+(a dependency cycle or an unknown dependency) caught while building the DAG.
+In headless mode the target beam is taken from the `aurora { default = ... }`
+block when no beam is given; the interactive picker is only available with a
+TTY or `-i`. ANSI colour appears only when the target stream (stdout or
+stderr) is itself a terminal and `NO_COLOR` is unset, so redirecting one
+stream does not pollute it with colour codes.
 
 ## The Beamfile
 
