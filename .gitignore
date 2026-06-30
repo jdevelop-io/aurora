@@ -3,3 +3,6 @@
 
 # Annule l'ignore global de .claude pour suivre les commandes/réglages du projet.
 !.claude/
+
+# Fichiers de configuration des IDE JetBrains.
+/.idea/
