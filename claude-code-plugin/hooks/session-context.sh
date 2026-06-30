@@ -22,7 +22,9 @@ fi
 [ -f "$cwd/Beamfile" ] || exit 0
 
 if command -v aurora >/dev/null 2>&1; then
-  beams="$(cd "$cwd" && aurora --list 2>/dev/null || true)"
+  # Récupère la liste des beams ; vide en cas d'échec (cd ou aurora). Forme
+  # explicite plutôt que `&& ... || true` pour rester sans ambiguïté (SC2015).
+  beams="$(cd "$cwd" && aurora --list 2>/dev/null)" || beams=""
   context="This project uses Aurora (a Beamfile is present). Use the using-aurora skill to read or edit it and to run the CLI."$'\n\n'"$beams"
 else
   context="This project uses Aurora (a Beamfile is present), but the 'aurora' binary is not installed. Use the using-aurora skill for the DSL; ask the user to install Aurora to run beams."
