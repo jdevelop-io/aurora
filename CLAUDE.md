@@ -33,7 +33,12 @@ Tests live in each crate's `tests/` directory as integration tests (not `#[cfg(t
 the public crate API.
 
 Run the built tool against a Beamfile: `aurora`, `aurora <beam>`, `aurora --list`, `aurora --dry-run`,
-`aurora --no-cache`, `aurora --var key=val`. With no beam argument and a TTY, the picker TUI opens.
+`aurora --no-cache`, `aurora --var key=val`, `aurora --no-tui`, `aurora -i`. Output mode is auto-detected:
+with a TTY the execution TUI runs (and, when no beam is given, the picker opens first); when output is not a
+TTY, or with `--no-tui`, Aurora runs headless (plain prefixed logs, ASCII recap, exit `1` on any beam failure
+or on a malformed Beamfile such as a dependency cycle or an unknown dependency).
+`-i`/`--interactive` forces the TUI; in headless mode the target comes from the `default` beam since there is
+no picker.
 
 ## Releasing
 

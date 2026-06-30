@@ -31,9 +31,10 @@ called **beams** and are declared in a `Beamfile` (an HCL-inspired DSL).
 ## Workflow
 
 1. **Discover** what exists: read the `Beamfile`, or run `aurora --list` to see beams and descriptions.
-2. **Run** a beam: `aurora <beam>`. With no beam argument on a TTY, the picker TUI opens (fuzzy search). The `default`
-   from the `aurora {}` block is currently only used to resolve the target printed by `--dry-run`, not to run a beam
-   directly.
+2. **Run** a beam: `aurora <beam>`. With no beam argument on a TTY, the picker TUI opens (fuzzy search); in headless
+   mode (no TTY, or `--no-tui`) the `default` from the `aurora {}` block is used to run when no beam is given.
+   Aurora auto-detects the output mode: a TTY shows the ratatui TUI; a pipe or CI runs headless with plain
+   prefixed logs and a meaningful exit code (`--no-tui` forces headless, `-i` forces the TUI).
 3. **Preview** without executing: `aurora --dry-run` resolves the target and DAG and prints what would run.
 4. **Override** variables at the command line: `aurora --var key=value` (repeatable).
 5. **Bypass the cache** when needed: `aurora --no-cache`.
