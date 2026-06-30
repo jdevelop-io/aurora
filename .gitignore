@@ -3,6 +3,8 @@
 
 # Annule l'ignore global de .claude pour suivre les commandes/réglages du projet.
 !.claude/
+# Données runtime des superpowers, hors versionnement.
+/.claude/superpowers/
 
 # Fichiers de configuration des IDE JetBrains.
 /.idea/
