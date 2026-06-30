@@ -1,12 +1,18 @@
 mod plugins;
 
 use anyhow::{bail, Result};
-use aurora_core::{env::evaluate, parser::parse, scheduler::{Scheduler, SchedulerEvent}};
+use aurora::headless;
+use aurora_core::{
+    env::evaluate,
+    parser::parse,
+    scheduler::{Scheduler, SchedulerEvent},
+};
 use aurora_executor_api::Executor;
 use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
 use clap::{Arg, Command};
 use std::fs;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -17,11 +23,42 @@ async fn main() -> Result<()> {
         .version(env!("CARGO_PKG_VERSION"))
         .about("Aurora — task runner with HCL-inspired Beamfile DSL")
         .arg(Arg::new("beam").help("Beam to run").index(1))
-        .arg(Arg::new("no-cache").long("no-cache").action(clap::ArgAction::SetTrue))
-        .arg(Arg::new("dry-run").long("dry-run").action(clap::ArgAction::SetTrue))
-        .arg(Arg::new("list").long("list").short('l').action(clap::ArgAction::SetTrue))
-        .arg(Arg::new("var").long("var").action(clap::ArgAction::Append)
-             .help("Override variable: --var key=value"));
+        .arg(
+            Arg::new("no-cache")
+                .long("no-cache")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("dry-run")
+                .long("dry-run")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("list")
+                .long("list")
+                .short('l')
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("var")
+                .long("var")
+                .action(clap::ArgAction::Append)
+                .help("Override variable: --var key=value"),
+        )
+        .arg(
+            Arg::new("no-tui")
+                .long("no-tui")
+                .action(clap::ArgAction::SetTrue)
+                .help("Force plain output, even in a terminal"),
+        )
+        .arg(
+            Arg::new("interactive")
+                .long("interactive")
+                .short('i')
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("no-tui")
+                .help("Force the TUI, even when output is not a terminal"),
+        );
 
     let matches = cli.get_matches();
 
@@ -31,7 +68,8 @@ async fn main() -> Result<()> {
 
     if let Some(vars) = matches.get_many::<String>("var") {
         for var_str in vars {
-            let (key, val) = var_str.split_once('=')
+            let (key, val) = var_str
+                .split_once('=')
                 .ok_or_else(|| anyhow::anyhow!("Invalid --var format, expected key=value"))?;
             if let Some(v) = beam_file.variables.iter_mut().find(|v| v.name == key) {
                 v.default = val.to_string();
@@ -49,39 +87,59 @@ async fn main() -> Result<()> {
     }
 
     if matches.get_flag("dry-run") {
-        let target = resolve_target(&beam_file, matches.get_one::<String>("beam").map(|s| s.as_str()))?;
+        let target = resolve_target(
+            &beam_file,
+            matches.get_one::<String>("beam").map(|s| s.as_str()),
+        )?;
         println!("Would execute beam: {}", target);
         return Ok(());
     }
 
-    let target = if let Some(beam_name) = matches.get_one::<String>("beam") {
-        beam_name.clone()
-    } else if let Some(picker_results) = aurora_tui::run_picker(
-        beam_file.beams.iter().map(|b| (b.name.clone(), b.description.clone(), b.depends_on.clone())).collect()
-    )? {
-        if picker_results.len() == 1 {
-            picker_results.into_iter().next().unwrap()
+    let interactive = matches.get_flag("interactive")
+        || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui"));
+
+    // Résolution de la cible : picker en interactif, beam `default` en headless
+    // (le picker est intrinsèquement interactif et n'existe pas hors TTY).
+    let target = if interactive {
+        if let Some(beam_name) = matches.get_one::<String>("beam") {
+            beam_name.clone()
+        } else if let Some(picker_results) = aurora_tui::run_picker(
+            beam_file
+                .beams
+                .iter()
+                .map(|b| (b.name.clone(), b.description.clone(), b.depends_on.clone()))
+                .collect(),
+        )? {
+            if picker_results.len() == 1 {
+                picker_results.into_iter().next().unwrap()
+            } else {
+                // Multi-select : beam virtuel __multi__ dépendant des beams sélectionnés
+                let virtual_beam = aurora_core::ast::Beam {
+                    name: "__multi__".to_string(),
+                    description: Some("Multi-beam run".to_string()),
+                    depends_on: picker_results,
+                    inputs: vec![],
+                    outputs: vec![],
+                    skip_if: None,
+                    condition: None,
+                    run: None,
+                    allow_failure: false,
+                };
+                beam_file.beams.push(virtual_beam);
+                "__multi__".to_string()
+            }
         } else {
-            // Multi-select : beam virtuel __multi__ qui dépend de tous les beams sélectionnés
-            let virtual_beam = aurora_core::ast::Beam {
-                name: "__multi__".to_string(),
-                description: Some("Multi-beam run".to_string()),
-                depends_on: picker_results,
-                inputs: vec![],
-                outputs: vec![],
-                skip_if: None,
-                condition: None,
-                run: None,
-                allow_failure: false,
-            };
-            beam_file.beams.push(virtual_beam);
-            "__multi__".to_string()
+            return Ok(());
         }
     } else {
-        return Ok(());
+        resolve_target(
+            &beam_file,
+            matches.get_one::<String>("beam").map(|s| s.as_str()),
+        )?
     };
 
-    let mut executors: std::collections::HashMap<String, Arc<dyn Executor>> = std::collections::HashMap::new();
+    let mut executors: std::collections::HashMap<String, Arc<dyn Executor>> =
+        std::collections::HashMap::new();
     executors.insert("local".into(), Arc::new(LocalExecutor::new()));
     executors.insert("docker".into(), Arc::new(DockerExecutor::new()));
 
@@ -95,9 +153,10 @@ async fn main() -> Result<()> {
     };
 
     let (tx, rx) = mpsc::channel(128);
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
-    // Exclure le beam virtuel __multi__ de la liste affichée dans la TUI
-    let beam_info: Vec<(String, Vec<String>)> = beam_file.beams.iter()
+    // Exclure le beam virtuel __multi__ de la liste affichée / des préfixes
+    let beam_info: Vec<(String, Vec<String>)> = beam_file
+        .beams
+        .iter()
         .filter(|b| b.name != "__multi__")
         .map(|b| (b.name.clone(), b.depends_on.clone()))
         .collect();
@@ -112,39 +171,76 @@ async fn main() -> Result<()> {
         env.clone(),
     );
 
-    let target_clone = target.clone();
-    tokio::spawn(async move {
-        if let Err(e) = scheduler.run_cancellable(&target_clone, &[], cancel_rx).await {
-            eprintln!("Scheduler error: {}", e);
-        }
-    });
-
-    let rerun_beams: Vec<_> = beam_file.beams.iter().filter(|b| b.name != "__multi__").cloned().collect();
-    let rerun_executors = executors.clone();
-    let rerun_max_par = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
-    let rerun_working_dir = working_dir.clone();
-    let rerun_env = env.clone();
-
-    let rerun = move |root: String, pre_success: Vec<String>| -> (mpsc::Receiver<SchedulerEvent>, mpsc::UnboundedSender<String>) {
-        let (tx, rx) = mpsc::channel(128);
+    if interactive {
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
-        let scheduler = Scheduler::new(
-            rerun_beams.clone(),
-            rerun_executors.clone(),
-            tx,
-            rerun_max_par,
-            rerun_working_dir.clone(),
-            rerun_env.clone(),
-        );
-        tokio::runtime::Handle::current().spawn(async move {
-            if let Err(e) = scheduler.run_cancellable(&root, &pre_success, cancel_rx).await {
+        let target_clone = target.clone();
+        tokio::spawn(async move {
+            if let Err(e) = scheduler
+                .run_cancellable(&target_clone, &[], cancel_rx)
+                .await
+            {
                 eprintln!("Scheduler error: {}", e);
             }
         });
-        (rx, cancel_tx)
-    };
 
-    aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
+        let rerun_beams: Vec<_> = beam_file
+            .beams
+            .iter()
+            .filter(|b| b.name != "__multi__")
+            .cloned()
+            .collect();
+        let rerun_executors = executors.clone();
+        let rerun_max_par = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
+        let rerun_working_dir = working_dir.clone();
+        let rerun_env = env.clone();
+
+        let rerun = move |root: String,
+                          pre_success: Vec<String>|
+              -> (
+            mpsc::Receiver<SchedulerEvent>,
+            mpsc::UnboundedSender<String>,
+        ) {
+            let (tx, rx) = mpsc::channel(128);
+            let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
+            let scheduler = Scheduler::new(
+                rerun_beams.clone(),
+                rerun_executors.clone(),
+                tx,
+                rerun_max_par,
+                rerun_working_dir.clone(),
+                rerun_env.clone(),
+            );
+            tokio::runtime::Handle::current().spawn(async move {
+                if let Err(e) = scheduler
+                    .run_cancellable(&root, &pre_success, cancel_rx)
+                    .await
+                {
+                    eprintln!("Scheduler error: {}", e);
+                }
+            });
+            (rx, cancel_tx)
+        };
+
+        aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
+    } else {
+        // Mode headless : pas d'annulation interactive, `run` gère son propre canal.
+        let target_clone = target.clone();
+        tokio::spawn(async move {
+            if let Err(e) = scheduler.run(&target_clone, &[]).await {
+                eprintln!("Scheduler error: {}", e);
+            }
+        });
+
+        let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
+        let use_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        let mut stdout = std::io::stdout();
+        let mut stderr = std::io::stderr();
+        let success =
+            headless::run_headless(&beam_names, use_color, rx, &mut stdout, &mut stderr).await?;
+        if !success {
+            std::process::exit(1);
+        }
+    }
 
     Ok(())
 }
@@ -153,7 +249,9 @@ fn find_beamfile() -> Result<PathBuf> {
     let mut dir = std::env::current_dir()?;
     loop {
         let candidate = dir.join("Beamfile");
-        if candidate.exists() { return Ok(candidate); }
+        if candidate.exists() {
+            return Ok(candidate);
+        }
         match dir.parent() {
             Some(parent) => dir = parent.to_path_buf(),
             None => bail!("No Beamfile found in current directory or any parent"),
