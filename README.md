@@ -163,6 +163,34 @@ Launch Aurora without arguments to open the picker, then:
 - `r` to rerun the focused beam (and its dependents),
 - `q` to quit.
 
+### Non-interactive (headless) mode
+
+Aurora auto-detects whether to show the TUI: when standard output is a terminal
+it opens the ratatui interface; when output is piped or redirected (scripts, CI)
+it runs headless, streaming plain per-beam output and printing a final recap.
+
+Two flags force the choice explicitly:
+
+- `--no-tui` — force plain output, even in a terminal.
+- `-i`, `--interactive` — force the TUI, even when output is not a terminal.
+
+Headless output prefixes each line with its beam name (stdout and stderr are
+kept separate) and ends with an ASCII recap:
+
+```
+[build] Compiling aurora-core v0.5.0
+[test]  running 12 tests
+
+[OK]   build  4.2s
+[FAIL] test   exit 1 1.8s
+Done: 1 ok, 1 failed
+```
+
+Exit code: `0` when every beam succeeds (beams marked `allow_failure` count as
+success), `1` when any beam fails. In headless mode the target beam is taken
+from the `aurora { default = ... }` block when no beam is given; the interactive
+picker is only available with a TTY or `-i`.
+
 ## The Beamfile
 
 Minimal example (the one Aurora uses to build itself):
