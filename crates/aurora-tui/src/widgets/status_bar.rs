@@ -162,9 +162,11 @@ fn semantic(done: Option<bool>) -> (&'static str, &'static str, Color) {
 }
 
 /// Décompte des beams terminés par statut, pour le détail de la ligne de
-/// progression. `success` inclut les succès en cache, `failed` inclut les annulés.
+/// progression. `success` inclut les succès en cache, `failed` inclut les annulés,
+/// `warning` compte les échecs tolérés (allow_failure).
 pub struct StatusBreakdown {
     pub success: usize,
+    pub warning: usize,
     pub failed: usize,
     pub skipped: usize,
 }
@@ -174,6 +176,7 @@ pub struct StatusBreakdown {
 fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
     let parts = [
         (b.success, "✔", Color::Green),
+        (b.warning, "⚠", Color::Yellow),
         (b.failed, "✕", Color::Red),
         (b.skipped, "◌", Color::Cyan),
     ];
@@ -257,7 +260,7 @@ mod tests {
 
     #[test]
     fn breakdown_empty_when_all_zero() {
-        let (spans, w) = breakdown_spans(&StatusBreakdown { success: 0, failed: 0, skipped: 0 });
+        let (spans, w) = breakdown_spans(&StatusBreakdown { success: 0, warning: 0, failed: 0, skipped: 0 });
         assert!(spans.is_empty());
         assert_eq!(w, 0);
     }
@@ -265,14 +268,22 @@ mod tests {
     #[test]
     fn breakdown_only_non_zero_categories() {
         // success + skipped actifs, failed omis : "(", "✔ 6", " ", "◌ 1", ") ".
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, failed: 0, skipped: 1 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 0, skipped: 1 });
         assert_eq!(spans.len(), 5);
     }
 
     #[test]
     fn breakdown_all_three_categories() {
         // "(", "✔ 6", " ", "✕ 1", " ", "◌ 1", ") ".
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, failed: 1, skipped: 1 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 1, skipped: 1 });
         assert_eq!(spans.len(), 7);
+    }
+
+    #[test]
+    fn breakdown_includes_warning_category() {
+        // success + warning + failed + skipped tous actifs :
+        // "(", "✔ 6", " ", "⚠ 2", " ", "✕ 1", " ", "◌ 1", ") " => 9 spans.
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 2, failed: 1, skipped: 1 });
+        assert_eq!(spans.len(), 9);
     }
 }

@@ -28,6 +28,7 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
                 executor: None,
             })
         },
+        allow_failure: false,
     }
 }
 
@@ -153,6 +154,30 @@ async fn test_pre_success_beam_not_spawned_when_dependency_completes() {
         _ => false,
     }).collect();
     assert!(p_events.is_empty(), "p est pre_success et ne doit émettre aucun événement : {:?}", p_events);
+}
+
+#[tokio::test]
+async fn test_allow_failure_does_not_block_dependents() {
+    // `b` échoue mais est toléré ; `d` en dépend et doit s'exécuter, et le run
+    // global doit réussir (overall_success == true).
+    let mut b = make_beam("b", vec![], vec!["false"]);
+    b.allow_failure = true;
+    let d = make_beam("d", vec!["b"], vec!["echo d"]);
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let ok = Scheduler::new(vec![b, d], local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new())
+        .run("d", &[]).await.unwrap();
+    assert!(ok, "un échec toléré ne doit pas faire échouer le run");
+
+    let mut events = vec![];
+    while let Ok(evt) = rx.try_recv() { events.push(evt); }
+
+    let b_allowed = events.iter().any(|e| matches!(e,
+        SchedulerEvent::BeamCompleted { name, status: BeamStatus::FailedAllowed { .. } } if name == "b"));
+    let d_ran = events.iter().any(|e| matches!(e,
+        SchedulerEvent::BeamCompleted { name, status: BeamStatus::Success { .. } } if name == "d"));
+    assert!(b_allowed, "b doit être en échec toléré (FailedAllowed)");
+    assert!(d_ran, "d doit s'exécuter malgré l'échec toléré de b");
 }
 
 // `slow` (3s) et `quick_a` (1s) n'ont aucune dépendance. `quick_b` dépend

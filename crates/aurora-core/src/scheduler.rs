@@ -17,6 +17,7 @@ pub enum BeamStatus {
     Success { duration: Duration, cached: bool },
     Skipped { reason: SkipReason },
     Failed { exit_code: i32, duration: Duration },
+    FailedAllowed { exit_code: i32, duration: Duration },
     Cancelled,
 }
 
@@ -302,6 +303,8 @@ impl Scheduler {
                     }
                     let status = if success {
                         BeamStatus::Success { duration, cached: false }
+                    } else if beam.allow_failure {
+                        BeamStatus::FailedAllowed { exit_code: output.exit_code, duration }
                     } else {
                         BeamStatus::Failed { exit_code: output.exit_code, duration }
                     };
@@ -309,14 +312,22 @@ impl Scheduler {
                         name: beam.name.clone(),
                         status,
                     }).await;
-                    (beam.name, success)
+                    // Un échec toléré est compté comme réussi pour l'ordonnancement :
+                    // dépendants débloqués, run global non échoué.
+                    (beam.name, success || beam.allow_failure)
                 }
                 Err(_) => {
+                    let duration = start.elapsed();
+                    let status = if beam.allow_failure {
+                        BeamStatus::FailedAllowed { exit_code: -1, duration }
+                    } else {
+                        BeamStatus::Failed { exit_code: -1, duration }
+                    };
                     let _ = tx.send(SchedulerEvent::BeamCompleted {
                         name: beam.name.clone(),
-                        status: BeamStatus::Failed { exit_code: -1, duration: start.elapsed() },
+                        status,
                     }).await;
-                    (beam.name, false)
+                    (beam.name, beam.allow_failure)
                 }
             }
         });

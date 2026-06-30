@@ -68,7 +68,9 @@ pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: 
 
 fn duration_label(status: &BeamStatus, beam: &BeamView) -> String {
     match status {
-        BeamStatus::Success { duration, .. } | BeamStatus::Failed { duration, .. } => {
+        BeamStatus::Success { duration, .. }
+        | BeamStatus::Failed { duration, .. }
+        | BeamStatus::FailedAllowed { duration, .. } => {
             format!(" [{}]", compact_duration(duration.as_secs_f64(), true))
         }
         BeamStatus::Running => {
@@ -124,6 +126,7 @@ fn status_color(status: &BeamStatus) -> Color {
         BeamStatus::Success { .. } => Color::Green,
         BeamStatus::Skipped { .. } => Color::Cyan,
         BeamStatus::Failed { .. } => Color::Red,
+        BeamStatus::FailedAllowed { .. } => Color::Yellow,
         BeamStatus::Cancelled => Color::Magenta,
         BeamStatus::Running => Color::Yellow,
         BeamStatus::Pending => Color::DarkGray,

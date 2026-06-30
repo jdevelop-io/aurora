@@ -17,6 +17,7 @@ fn beam(name: &str, deps: Vec<&str>) -> Beam {
         skip_if: None,
         condition: None,
         run: Some(Run { commands: vec!["echo ok".to_string()], executor: None }),
+        allow_failure: false,
     }
 }
 

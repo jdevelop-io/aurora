@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
                 skip_if: None,
                 condition: None,
                 run: None,
+                allow_failure: false,
             };
             beam_file.beams.push(virtual_beam);
             "__multi__".to_string()

@@ -50,6 +50,7 @@ pub struct Beam {
     pub skip_if: Option<String>,
     pub condition: Option<Condition>,
     pub run: Option<Run>,
+    pub allow_failure: bool,
 }
 
 #[derive(Debug, Clone)]

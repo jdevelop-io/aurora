@@ -7,6 +7,7 @@ ident        = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "-")* }
 number       = @{ ASCII_DIGIT+ }
 string_inner = @{ (!"\"" ~ !"\\" ~ ANY | "\\" ~ ANY)* }
 string       = ${ "\"" ~ string_inner ~ "\"" }
+bool         = { "true" | "false" }
 
 // List of strings: ["a", "b"]
 string_list = { "[" ~ (string ~ ("," ~ string)* ~ ","?)? ~ "]" }
@@ -42,6 +43,7 @@ beam_field = {
     beam_inputs      |
     beam_outputs     |
     beam_skip_if     |
+    beam_allow_failure |
     beam_condition   |
     beam_run
 }
@@ -50,6 +52,7 @@ beam_depends_on  = { "depends_on"  ~ "=" ~ string_list }
 beam_inputs      = { "inputs"      ~ "=" ~ string_list }
 beam_outputs     = { "outputs"     ~ "=" ~ string_list }
 beam_skip_if     = { "skip_if"     ~ "=" ~ string }
+beam_allow_failure = { "allow_failure" ~ "=" ~ bool }
 
 // condition { any = [...] | all = [...] }
 beam_condition   = { "condition" ~ "{" ~ condition_body ~ "}" }
