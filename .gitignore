@@ -5,6 +5,7 @@
 !.claude/
 # Données runtime des superpowers, hors versionnement.
 /.claude/superpowers/
+/.superpowers/
 
 # Fichiers de configuration des IDE JetBrains.
 /.idea/
