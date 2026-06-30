@@ -65,9 +65,14 @@ fn recap_line(name: &str, status: &BeamStatus, width: usize, use_color: bool) ->
 
 /// Draine le flux d'événements jusqu'à `AllDone`, imprime les lignes préfixées
 /// puis le récap. Renvoie le succès global porté par `AllDone`.
+///
+/// La couleur est décidée par flux de sortie cible (`out_color` pour stdout,
+/// `err_color` pour stderr) et non globalement : un `2>fichier` ne doit pas
+/// hériter de la couleur décidée pour stdout (et inversement).
 pub async fn run_headless(
     beam_names: &[String],
-    use_color: bool,
+    out_color: bool,
+    err_color: bool,
     mut rx: mpsc::Receiver<SchedulerEvent>,
     out: &mut impl Write,
     err: &mut impl Write,
@@ -83,7 +88,8 @@ pub async fn run_headless(
                 line,
                 is_stderr,
             } => {
-                let prefix = paint(&format!("[{name:<width$}]"), "90", use_color);
+                let color = if is_stderr { err_color } else { out_color };
+                let prefix = paint(&format!("[{name:<width$}]"), "90", color);
                 if is_stderr {
                     writeln!(err, "{prefix} {line}")?;
                 } else {
@@ -103,7 +109,7 @@ pub async fn run_headless(
     let mut ok = 0usize;
     let mut failed = 0usize;
     for (name, status) in &recap {
-        if let Some(line) = recap_line(name, status, width, use_color) {
+        if let Some(line) = recap_line(name, status, width, out_color) {
             writeln!(out, "{line}")?;
         }
         match status {

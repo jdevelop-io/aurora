@@ -52,7 +52,7 @@ async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let success = run_headless(&beams, false, rx, &mut out, &mut err)
+    let success = run_headless(&beams, false, false, rx, &mut out, &mut err)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -94,7 +94,7 @@ async fn allow_failure_counts_as_ok_and_overall_can_be_true() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let success = run_headless(&beams, false, rx, &mut out, &mut err)
+    let success = run_headless(&beams, false, false, rx, &mut out, &mut err)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -131,7 +131,7 @@ async fn skipped_and_cancelled_markers_and_color_toggle() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    run_headless(&beams, true, rx, &mut out, &mut err)
+    run_headless(&beams, true, true, rx, &mut out, &mut err)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -143,4 +143,45 @@ async fn skipped_and_cancelled_markers_and_color_toggle() {
     // use_color = true encadre les marqueurs avec des séquences ANSI
     assert!(out.contains("\u{1b}["), "ansi escape present:\n{out:?}");
     assert!(out.contains("\u{1b}[0m"), "ansi reset present:\n{out:?}");
+}
+
+#[tokio::test]
+async fn stderr_color_gated_independently_of_stdout() {
+    let (tx, rx) = mpsc::channel(16);
+    let beams = vec!["build".to_string()];
+    tx.send(SchedulerEvent::BeamOutput {
+        name: "build".into(),
+        line: "warn".into(),
+        is_stderr: true,
+    })
+    .await
+    .unwrap();
+    tx.send(SchedulerEvent::BeamOutput {
+        name: "build".into(),
+        line: "info".into(),
+        is_stderr: false,
+    })
+    .await
+    .unwrap();
+    tx.send(SchedulerEvent::AllDone { success: true })
+        .await
+        .unwrap();
+    drop(tx);
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    // stdout sans couleur, stderr avec couleur : les deux flux sont gâtés indépendamment
+    run_headless(&beams, false, true, rx, &mut out, &mut err)
+        .await
+        .unwrap();
+    let out = String::from_utf8(out).unwrap();
+    let err = String::from_utf8(err).unwrap();
+    assert!(
+        err.contains("\u{1b}["),
+        "stderr prefix should be coloured: {err:?}"
+    );
+    let stdout_line = out.lines().find(|l| l.contains("info")).unwrap();
+    assert!(
+        !stdout_line.contains("\u{1b}["),
+        "stdout prefix must not be coloured: {stdout_line:?}"
+    );
 }

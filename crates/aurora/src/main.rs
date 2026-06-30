@@ -228,11 +228,21 @@ async fn main() -> Result<()> {
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
-        let use_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        // Couleur décidée par flux : stdout et stderr peuvent être redirigés
+        // indépendamment (ex. `aurora --no-tui 2>err.log` dans un terminal).
+        let out_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+        let err_color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         let mut stdout = std::io::stdout();
         let mut stderr = std::io::stderr();
-        let success =
-            headless::run_headless(&beam_names, use_color, rx, &mut stdout, &mut stderr).await?;
+        let success = headless::run_headless(
+            &beam_names,
+            out_color,
+            err_color,
+            rx,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await?;
 
         // Le scheduler peut échouer avant d'émettre AllDone (erreur de construction
         // du DAG : cycle, dépendance inconnue). On joint sa tâche pour propager
