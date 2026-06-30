@@ -11,6 +11,7 @@ input="$(cat)"
 # Prefer the project root Claude Code exposes; fall back to the event cwd, then pwd.
 cwd="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$cwd" ]; then
+  # Extraction regex (pas un parseur JSON complet) ; fallback bénin vers CLAUDE_PROJECT_DIR/pwd.
   cwd="$(printf '%s' "$input" \
     | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
     | head -n1)"
@@ -35,6 +36,9 @@ escape_for_json() {
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
+  # Supprime les octets de contrôle bruts restants (U+0000–U+001F, hormis les
+  # \n, \r, \t déjà échappés) pour garantir un additionalContext JSON valide.
+  s="$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\010\013\014\016-\037')"
   printf '%s' "$s"
 }
 

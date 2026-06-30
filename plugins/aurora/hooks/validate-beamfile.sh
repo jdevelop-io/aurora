@@ -9,6 +9,7 @@ set -euo pipefail
 input="$(cat)"
 
 # Extract the edited file path from the tool input JSON.
+# Extraction regex (pas un parseur JSON complet) ; en cas d'échec, le fallback est bénin (on ne valide pas).
 file_path="$(printf '%s' "$input" \
   | sed -n 's/.*"file_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
   | head -n1)"
