@@ -136,7 +136,7 @@ pub fn sanitize_log_line(input: &str) -> String {
                 // CSI : ESC [ ... octet final dans 0x40..=0x7E (ex. couleurs SGR).
                 Some('[') => {
                     chars.next();
-                    while let Some(n) = chars.next() {
+                    for n in chars.by_ref() {
                         if ('\x40'..='\x7e').contains(&n) {
                             break;
                         }

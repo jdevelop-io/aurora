@@ -1,3 +1,7 @@
+// Chargeur de plugins WASM présent mais pas encore câblé dans la map
+// d'exécuteurs (voir CLAUDE.md) : on tolère le code mort tant qu'il n'est pas
+// branché, plutôt que de le supprimer ou de le câbler prématurément.
+#[allow(dead_code)]
 mod plugins;
 
 use anyhow::{bail, Result};
