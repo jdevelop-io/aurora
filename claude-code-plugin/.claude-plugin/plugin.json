@@ -8,7 +8,7 @@
     "url": "https://github.com/jdevelop-io"
   },
   "license": "MIT",
-  "homepage": "https://github.com/jdevelop-io/aurora/tree/main/plugins/aurora",
+  "homepage": "https://github.com/jdevelop-io/aurora/tree/main/claude-code-plugin",
   "keywords": [
     "aurora",
     "task-runner",

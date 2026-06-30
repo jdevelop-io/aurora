@@ -241,7 +241,7 @@ Aurora ships a [Claude Code](https://claude.ai/code) plugin so the assistant und
 /plugin install aurora
 ```
 
-It adds a skill (Aurora's model, the Beamfile DSL, and the CLI), an `aurora-expert` agent (authoring and migration from make/just/taskfile/npm), and hooks that validate Beamfiles on edit and surface available beams at session start. See [`plugins/aurora`](plugins/aurora) for details.
+It adds a skill (Aurora's model, the Beamfile DSL, and the CLI), an `aurora-expert` agent (authoring and migration from make/just/taskfile/npm), and hooks that validate Beamfiles on edit and surface available beams at session start. See [`claude-code-plugin`](claude-code-plugin) for details.
 
 ## Status
 
