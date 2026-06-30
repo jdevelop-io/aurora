@@ -34,6 +34,7 @@ impl BeamView {
             BeamStatus::Success { cached: false, .. } => "✔",
             BeamStatus::Skipped { .. } => "◌",
             BeamStatus::Failed { .. } => "✕",
+            BeamStatus::FailedAllowed { .. } => "⚠",
             BeamStatus::Cancelled => "✕",
         }
     }
@@ -527,7 +528,7 @@ impl ExecutionState {
                     BeamStatus::Failed { .. } | BeamStatus::Cancelled => {
                         to_rerun.push(beam.name.clone());
                     }
-                    BeamStatus::Success { .. } | BeamStatus::Skipped { .. } => {
+                    BeamStatus::Success { .. } | BeamStatus::Skipped { .. } | BeamStatus::FailedAllowed { .. } => {
                         pre_success.push(beam.name.clone());
                     }
                     _ => {}
@@ -582,7 +583,7 @@ impl ExecutionState {
             KeyCode::Char('r') => {
                 if self.done.is_some() {
                     let beam = &self.beams[self.selected];
-                    if matches!(beam.status, BeamStatus::Failed { .. } | BeamStatus::Cancelled | BeamStatus::Success { .. } | BeamStatus::Skipped { .. }) {
+                    if matches!(beam.status, BeamStatus::Failed { .. } | BeamStatus::FailedAllowed { .. } | BeamStatus::Cancelled | BeamStatus::Success { .. } | BeamStatus::Skipped { .. }) {
                         let (root, to_rerun, pre_success) = self.compute_rerun(self.selected);
                         self.reset_for_rerun(&to_rerun);
                         return Some(ExecutionAction::Rerun { root, pre_success });
