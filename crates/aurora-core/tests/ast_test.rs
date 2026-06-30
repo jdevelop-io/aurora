@@ -18,6 +18,7 @@ fn test_beam_with_all_fields() {
                     .into_iter().collect(),
             }),
         }),
+        allow_failure: false,
     };
     assert_eq!(beam.name, "phpstan");
     assert!(beam.skip_if.is_some());
@@ -35,6 +36,7 @@ fn test_aggregate_beam() {
         skip_if: None,
         condition: None,
         run: None,
+        allow_failure: false,
     };
     assert!(beam.run.is_none());
     assert_eq!(beam.depends_on.len(), 2);

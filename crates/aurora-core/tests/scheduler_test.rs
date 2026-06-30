@@ -28,6 +28,7 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
                 executor: None,
             })
         },
+        allow_failure: false,
     }
 }
 

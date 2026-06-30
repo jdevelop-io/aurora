@@ -179,3 +179,21 @@ beam "lint" {
     let bf = parse(input).unwrap();
     assert_eq!(bf.beams[0].run.as_ref().unwrap().commands.len(), 2);
 }
+
+#[test]
+fn test_parse_allow_failure() {
+    let input = r#"
+beam "container" {
+  allow_failure = true
+  run { commands = ["false"] }
+}
+beam "build" {
+  run { commands = ["true"] }
+}
+"#;
+    let bf = parse(input).unwrap();
+    let container = bf.beams.iter().find(|b| b.name == "container").unwrap();
+    let build = bf.beams.iter().find(|b| b.name == "build").unwrap();
+    assert!(container.allow_failure, "allow_failure = true doit être lu");
+    assert!(!build.allow_failure, "absence du flag = false par défaut");
+}

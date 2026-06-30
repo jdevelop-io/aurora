@@ -154,6 +154,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
         skip_if: None,
         condition: None,
         run: None,
+        allow_failure: false,
     };
     for field_wrapper in inner {
         // beam_field is a wrapper rule — unwrap to get the actual field rule
@@ -176,6 +177,9 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
             }
             Rule::beam_skip_if => {
                 beam.skip_if = Some(unquote(field.into_inner().next().unwrap()));
+            }
+            Rule::beam_allow_failure => {
+                beam.allow_failure = field.into_inner().next().unwrap().as_str() == "true";
             }
             Rule::beam_condition => {
                 beam.condition = Some(parse_condition(field)?);
