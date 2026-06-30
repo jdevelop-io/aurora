@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "aurora",
+  "version": "0.1.0",
+  "description": "Marketplace for Aurora, the Rust task runner. Hosts the Aurora Claude Code plugin.",
+  "owner": {
+    "name": "Jean-Denis VIDOT",
+    "email": "admin@jdevelop.io",
+    "url": "https://github.com/jdevelop-io"
+  },
+  "plugins": [
+    {
+      "name": "aurora",
+      "source": "./plugins/aurora",
+      "description": "Teaches Claude Code how Aurora works: read and write Beamfiles, run the CLI, and migrate make/just/taskfile/npm scripts to Aurora.",
+      "version": "0.1.0",
+      "category": "development"
+    }
+  ]
+}

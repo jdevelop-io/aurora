@@ -1,0 +1,19 @@
+{
+  "name": "aurora",
+  "version": "0.1.0",
+  "description": "Teaches Claude Code how Aurora works: read and write Beamfiles, run the CLI, and migrate make/just/taskfile/npm scripts to Aurora.",
+  "author": {
+    "name": "Jean-Denis VIDOT",
+    "email": "admin@jdevelop.io",
+    "url": "https://github.com/jdevelop-io"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/jdevelop-io/aurora/tree/main/plugins/aurora",
+  "keywords": [
+    "aurora",
+    "task-runner",
+    "build-tool",
+    "beamfile",
+    "rust"
+  ]
+}
