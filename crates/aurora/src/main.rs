@@ -95,6 +95,7 @@ async fn main() -> Result<()> {
     };
 
     let (tx, rx) = mpsc::channel(128);
+    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
     // Exclure le beam virtuel __multi__ de la liste affichée dans la TUI
     let beam_info: Vec<(String, Vec<String>)> = beam_file.beams.iter()
         .filter(|b| b.name != "__multi__")
@@ -113,7 +114,7 @@ async fn main() -> Result<()> {
 
     let target_clone = target.clone();
     tokio::spawn(async move {
-        if let Err(e) = scheduler.run(&target_clone, &[]).await {
+        if let Err(e) = scheduler.run_cancellable(&target_clone, &[], cancel_rx).await {
             eprintln!("Scheduler error: {}", e);
         }
     });
@@ -124,8 +125,9 @@ async fn main() -> Result<()> {
     let rerun_working_dir = working_dir.clone();
     let rerun_env = env.clone();
 
-    let rerun = move |root: String, pre_success: Vec<String>| -> mpsc::Receiver<SchedulerEvent> {
+    let rerun = move |root: String, pre_success: Vec<String>| -> (mpsc::Receiver<SchedulerEvent>, mpsc::UnboundedSender<String>) {
         let (tx, rx) = mpsc::channel(128);
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
         let scheduler = Scheduler::new(
             rerun_beams.clone(),
             rerun_executors.clone(),
@@ -135,14 +137,14 @@ async fn main() -> Result<()> {
             rerun_env.clone(),
         );
         tokio::runtime::Handle::current().spawn(async move {
-            if let Err(e) = scheduler.run(&root, &pre_success).await {
+            if let Err(e) = scheduler.run_cancellable(&root, &pre_success, cancel_rx).await {
                 eprintln!("Scheduler error: {}", e);
             }
         });
-        rx
+        (rx, cancel_tx)
     };
 
-    aurora_tui::run_execution_tui(beam_info, rx, rerun).await?;
+    aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
 
     Ok(())
 }
