@@ -35,7 +35,7 @@ impl BeamView {
             BeamStatus::Skipped { .. } => "◌",
             BeamStatus::Failed { .. } => "✕",
             BeamStatus::FailedAllowed { .. } => "⚠",
-            BeamStatus::Cancelled => "✕",
+            BeamStatus::Cancelled => "⊘",
         }
     }
 

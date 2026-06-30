@@ -5,7 +5,7 @@ pub mod widgets;
 
 use anyhow::Result;
 use app::{ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction, PickerState};
-use aurora_core::scheduler::SchedulerEvent;
+use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -21,7 +21,8 @@ use tokio::sync::mpsc;
 pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
     mut rx: mpsc::Receiver<SchedulerEvent>,
-    rerun: impl Fn(String, Vec<String>) -> mpsc::Receiver<SchedulerEvent>,
+    mut cancel_tx: mpsc::UnboundedSender<String>,
+    rerun: impl Fn(String, Vec<String>) -> (mpsc::Receiver<SchedulerEvent>, mpsc::UnboundedSender<String>),
 ) -> Result<()> {
     tokio::task::block_in_place(move || {
         enable_raw_mode()?;
@@ -106,7 +107,12 @@ pub async fn run_execution_tui(
                         }
 
                         match key.code {
-                            KeyCode::Char('q') => return Ok(()),
+                            KeyCode::Char('q') => {
+                                let beam = &exec.beams[exec.selected];
+                                if matches!(beam.status, BeamStatus::Running) {
+                                    let _ = cancel_tx.send(beam.name.clone());
+                                }
+                            }
                             KeyCode::Char('c')
                                 if key.modifiers.contains(KeyModifiers::CONTROL) =>
                             {
@@ -203,6 +209,7 @@ pub async fn run_execution_tui(
                             KeyCode::Esc if search.is_active() => {
                                 search.clear();
                             }
+                            KeyCode::Esc => return Ok(()),
                             KeyCode::Char('g') => {
                                 log_state.scroll_to_top();
                             }
@@ -219,7 +226,9 @@ pub async fn run_execution_tui(
                                 if let Some(ExecutionAction::Rerun { root, pre_success }) = exec.handle_key(key) {
                                     log_state = LogViewState::new(exec.selected);
                                     search.clear();
-                                    rx = rerun(root, pre_success);
+                                    let (new_rx, new_cancel) = rerun(root, pre_success);
+                                    rx = new_rx;
+                                    cancel_tx = new_cancel;
                                 }
                             }
                             _ => {}

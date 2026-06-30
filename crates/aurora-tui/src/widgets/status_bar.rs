@@ -1,3 +1,4 @@
+use aurora_core::scheduler::BeamStatus;
 use ratatui::{
     layout::Rect,
     style::{Color, Style},
@@ -162,13 +163,39 @@ fn semantic(done: Option<bool>) -> (&'static str, &'static str, Color) {
 }
 
 /// Décompte des beams terminés par statut, pour le détail de la ligne de
-/// progression. `success` inclut les succès en cache, `failed` inclut les annulés,
-/// `warning` compte les échecs tolérés (allow_failure).
+/// progression. `success` inclut les succès en cache, `warning` compte les échecs
+/// tolérés (allow_failure), `cancelled` compte les beams annulés (catégorie neutre,
+/// distincte des échecs).
 pub struct StatusBreakdown {
     pub success: usize,
     pub warning: usize,
     pub failed: usize,
     pub skipped: usize,
+    pub cancelled: usize,
+}
+
+impl StatusBreakdown {
+    /// Compte les beams terminés par statut. Les statuts non terminés (Pending,
+    /// Running) sont ignorés. `Cancelled` est compté à part, jamais comme un échec.
+    pub fn from_statuses<'a>(statuses: impl Iterator<Item = &'a BeamStatus>) -> Self {
+        let mut b = StatusBreakdown { success: 0, warning: 0, failed: 0, skipped: 0, cancelled: 0 };
+        for s in statuses {
+            match s {
+                BeamStatus::Success { .. } => b.success += 1,
+                BeamStatus::FailedAllowed { .. } => b.warning += 1,
+                BeamStatus::Failed { .. } => b.failed += 1,
+                BeamStatus::Skipped { .. } => b.skipped += 1,
+                BeamStatus::Cancelled => b.cancelled += 1,
+                BeamStatus::Pending | BeamStatus::Running => {}
+            }
+        }
+        b
+    }
+
+    /// Nombre total de beams terminés (toutes catégories comptées ici).
+    pub fn done_count(&self) -> usize {
+        self.success + self.warning + self.failed + self.skipped + self.cancelled
+    }
 }
 
 /// Spans du détail « (✔ n ✕ n ◌ n) », uniquement les catégories non nulles, avec
@@ -178,6 +205,7 @@ fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
         (b.success, "✔", Color::Green),
         (b.warning, "⚠", Color::Yellow),
         (b.failed, "✕", Color::Red),
+        (b.cancelled, "⊘", Color::Magenta),
         (b.skipped, "◌", Color::Cyan),
     ];
     let active: Vec<_> = parts.iter().filter(|(n, _, _)| *n > 0).collect();
@@ -260,7 +288,7 @@ mod tests {
 
     #[test]
     fn breakdown_empty_when_all_zero() {
-        let (spans, w) = breakdown_spans(&StatusBreakdown { success: 0, warning: 0, failed: 0, skipped: 0 });
+        let (spans, w) = breakdown_spans(&StatusBreakdown { success: 0, warning: 0, failed: 0, skipped: 0, cancelled: 0 });
         assert!(spans.is_empty());
         assert_eq!(w, 0);
     }
@@ -268,14 +296,14 @@ mod tests {
     #[test]
     fn breakdown_only_non_zero_categories() {
         // success + skipped actifs, failed omis : "(", "✔ 6", " ", "◌ 1", ") ".
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 0, skipped: 1 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 0, skipped: 1, cancelled: 0 });
         assert_eq!(spans.len(), 5);
     }
 
     #[test]
     fn breakdown_all_three_categories() {
         // "(", "✔ 6", " ", "✕ 1", " ", "◌ 1", ") ".
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 1, skipped: 1 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 1, skipped: 1, cancelled: 0 });
         assert_eq!(spans.len(), 7);
     }
 
@@ -283,7 +311,33 @@ mod tests {
     fn breakdown_includes_warning_category() {
         // success + warning + failed + skipped tous actifs :
         // "(", "✔ 6", " ", "⚠ 2", " ", "✕ 1", " ", "◌ 1", ") " => 9 spans.
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 2, failed: 1, skipped: 1 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 2, failed: 1, skipped: 1, cancelled: 0 });
         assert_eq!(spans.len(), 9);
+    }
+
+    #[test]
+    fn breakdown_includes_cancelled_category() {
+        // success + cancelled actifs : "(", "✔ 6", " ", "⊘ 2", ") " => 5 spans.
+        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 0, skipped: 0, cancelled: 2 });
+        assert_eq!(spans.len(), 5);
+    }
+
+    #[test]
+    fn from_statuses_counts_cancelled_apart_from_failed() {
+        use std::time::Duration;
+        let statuses = [
+            BeamStatus::Success { duration: Duration::ZERO, cached: false },
+            BeamStatus::Failed { exit_code: 1, duration: Duration::ZERO },
+            BeamStatus::Cancelled,
+            BeamStatus::Cancelled,
+            BeamStatus::Running,
+            BeamStatus::Pending,
+        ];
+        let b = StatusBreakdown::from_statuses(statuses.iter());
+        assert_eq!(b.success, 1);
+        assert_eq!(b.failed, 1, "un Cancelled ne doit pas être compté comme un échec");
+        assert_eq!(b.cancelled, 2);
+        // Running et Pending ne sont pas terminés : 1 + 1 + 2 = 4.
+        assert_eq!(b.done_count(), 4);
     }
 }

@@ -79,6 +79,7 @@ impl Executor for DockerExecutor {
         let script = format!("set -e\n{}", input.commands.join("\n"));
 
         let mut cmd = Command::new("docker");
+        cmd.kill_on_drop(true);
         cmd.arg("run").arg("--rm");
         // Empêche l'escalade de privilèges via binaires setuid dans l'image.
         cmd.arg("--security-opt").arg("no-new-privileges");

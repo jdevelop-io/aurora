@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinSet;
 
 #[derive(Debug, Clone)]
@@ -33,6 +33,16 @@ pub enum SchedulerEvent {
     BeamCompleted { name: String, status: BeamStatus },
     BeamOutput { name: String, line: String, is_stderr: bool },
     AllDone { success: bool },
+}
+
+/// Issue d'une tâche de beam, pour piloter l'ordonnancement aval.
+enum BeamOutcome {
+    /// Compte comme un succès (succès réel, skip, cache, ou échec toléré).
+    Ok,
+    /// Échec non toléré.
+    Failed,
+    /// Annulé par l'utilisateur.
+    Cancelled,
 }
 
 pub struct Scheduler {
@@ -66,7 +76,19 @@ impl Scheduler {
         }
     }
 
+    /// Variante non annulable, signature historique : délègue avec un canal muet
+    /// (l'émetteur reste vivant pour la durée du run, donc aucune annulation).
     pub async fn run(self, root: &str, pre_success: &[String]) -> Result<bool> {
+        let (_cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
+        self.run_cancellable(root, pre_success, cancel_rx).await
+    }
+
+    pub async fn run_cancellable(
+        self,
+        root: &str,
+        pre_success: &[String],
+        mut cancel_rx: mpsc::UnboundedReceiver<String>,
+    ) -> Result<bool> {
         use std::collections::HashSet;
 
         let deps: Vec<(String, Vec<String>)> = self.beams.values()
@@ -74,24 +96,16 @@ impl Scheduler {
             .collect();
         let graph = BeamGraph::from_deps(deps)?;
 
-        // `execution_levels` valide le graphe (cycle, beam inconnu) et nous donne
-        // l'ensemble exact des beams à jouer pour `root`. On ignore le découpage
-        // en niveaux : l'ordonnancement réel se fait par file de prêts.
         let nodes: HashSet<String> = graph.execution_levels(root)?
             .into_iter()
             .flatten()
             .collect();
 
-        // `max_parallelism` vient du Beamfile : un 0 créerait un sémaphore qui ne
-        // délivre jamais de permis, figeant le run indéfiniment. On borne à 1.
         let semaphore = self.max_parallelism.map(|n| Arc::new(Semaphore::new(n.max(1))));
         let mut overall_success = true;
 
         let pre: HashSet<&String> = pre_success.iter().collect();
 
-        // In-degree de chaque beam : nombre de dépendances directes présentes dans
-        // l'ensemble à jouer et non déjà réussies (pre_success). Un beam est prêt
-        // quand son compteur tombe à zéro.
         let mut remaining: HashMap<String, usize> = HashMap::new();
         for n in &nodes {
             let deg = graph.direct_dependencies(n)
@@ -103,56 +117,73 @@ impl Scheduler {
 
         let mut cancelled: HashSet<String> = HashSet::new();
         let mut spawned: HashSet<String> = HashSet::new();
-        let mut set: JoinSet<(String, bool)> = JoinSet::new();
+        let mut set: JoinSet<(String, BeamOutcome)> = JoinSet::new();
+        // Émetteur d'annulation par beam lancé : sa réception dans la tâche fait
+        // gagner le `select!` et déclenche l'annulation.
+        let mut cancels: HashMap<String, oneshot::Sender<()>> = HashMap::new();
 
-        // Beams prêts d'emblée (aucune dépendance restante), hors pre_success.
         for n in &nodes {
             if pre.contains(n) {
                 continue;
             }
             if remaining[n] == 0 {
-                self.spawn_beam(&mut set, &semaphore, n);
+                let s = self.spawn_beam(&mut set, &semaphore, n);
+                cancels.insert(n.clone(), s);
                 spawned.insert(n.clone());
             }
         }
 
-        while let Some(result) = set.join_next().await {
-            let (name, success) = match result {
-                Ok(pair) => pair,
-                Err(_) => {
-                    // Tâche paniquée : on ne peut pas débloquer ses dépendants,
-                    // mais la boucle se termine quand le JoinSet se vide.
-                    overall_success = false;
-                    continue;
-                }
-            };
+        loop {
+            tokio::select! {
+                joined = set.join_next() => {
+                    let Some(result) = joined else { break };
+                    let (name, outcome) = match result {
+                        Ok(pair) => pair,
+                        Err(_) => {
+                            // Tâche paniquée : on ne peut pas débloquer ses
+                            // dépendants ; la boucle se termine quand le set se vide.
+                            overall_success = false;
+                            continue;
+                        }
+                    };
 
-            if !success {
-                overall_success = false;
-                // Annule toute la fermeture aval. Ces beams n'atteindront jamais
-                // un in-degree nul, donc ne seront jamais lancés ; on émet leur
-                // statut Cancelled une seule fois.
-                for dep in graph.transitive_dependents(&name) {
-                    if nodes.contains(&dep) && !spawned.contains(&dep) && cancelled.insert(dep.clone()) {
-                        let _ = self.tx.send(SchedulerEvent::BeamCompleted {
-                            name: dep,
-                            status: BeamStatus::Cancelled,
-                        }).await;
+                    match outcome {
+                        BeamOutcome::Ok => {
+                            // Succès : débloque les dépendants directs.
+                            for dep in graph.direct_dependents(&name) {
+                                if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) || pre.contains(&dep) {
+                                    continue;
+                                }
+                                if let Some(r) = remaining.get_mut(&dep) {
+                                    *r = r.saturating_sub(1);
+                                    if *r == 0 {
+                                        let s = self.spawn_beam(&mut set, &semaphore, &dep);
+                                        cancels.insert(dep.clone(), s);
+                                        spawned.insert(dep);
+                                    }
+                                }
+                            }
+                        }
+                        BeamOutcome::Failed | BeamOutcome::Cancelled => {
+                            overall_success = false;
+                            // Annule toute la fermeture aval : ces beams n'atteindront
+                            // jamais un in-degree nul, on émet leur Cancelled une fois.
+                            for dep in graph.transitive_dependents(&name) {
+                                if nodes.contains(&dep) && !spawned.contains(&dep) && cancelled.insert(dep.clone()) {
+                                    let _ = self.tx.send(SchedulerEvent::BeamCompleted {
+                                        name: dep,
+                                        status: BeamStatus::Cancelled,
+                                    }).await;
+                                }
+                            }
+                        }
                     }
                 }
-                continue;
-            }
-
-            // Succès : débloque les dépendants directs.
-            for dep in graph.direct_dependents(&name) {
-                if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) || pre.contains(&dep) {
-                    continue;
-                }
-                if let Some(r) = remaining.get_mut(&dep) {
-                    *r = r.saturating_sub(1);
-                    if *r == 0 {
-                        self.spawn_beam(&mut set, &semaphore, &dep);
-                        spawned.insert(dep);
+                Some(name) = cancel_rx.recv() => {
+                    // Demande d'annulation depuis la TUI : déclencher le oneshot du
+                    // beam s'il est en cours. Ignoré s'il est déjà terminé.
+                    if let Some(s) = cancels.remove(&name) {
+                        let _ = s.send(());
                     }
                 }
             }
@@ -164,10 +195,12 @@ impl Scheduler {
 
     fn spawn_beam(
         &self,
-        set: &mut JoinSet<(String, bool)>,
+        set: &mut JoinSet<(String, BeamOutcome)>,
         semaphore: &Option<Arc<Semaphore>>,
         beam_name: &str,
-    ) {
+    ) -> oneshot::Sender<()> {
+        let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
+
         let beam = self.beams[beam_name].clone();
         let env = self.env.clone();
         let executor_name = beam.run.as_ref()
@@ -197,7 +230,7 @@ impl Scheduler {
                     name: beam.name.clone(),
                     status: BeamStatus::Success { duration: Duration::ZERO, cached: false },
                 }).await;
-                return (beam.name, true);
+                return (beam.name, BeamOutcome::Ok);
             }
 
             if let Some(cond) = &beam.skip_if {
@@ -212,7 +245,7 @@ impl Scheduler {
                         name: beam.name.clone(),
                         status: BeamStatus::Skipped { reason: SkipReason::ConditionFalse },
                     }).await;
-                    return (beam.name, true);
+                    return (beam.name, BeamOutcome::Ok);
                 }
             }
 
@@ -243,7 +276,7 @@ impl Scheduler {
                         name: beam.name.clone(),
                         status: BeamStatus::Skipped { reason: SkipReason::Cached },
                     }).await;
-                    return (beam.name, true);
+                    return (beam.name, BeamOutcome::Ok);
                 }
             }
 
@@ -284,7 +317,29 @@ impl Scheduler {
             };
 
             let start = Instant::now();
-            let result = executor.execute(input).await;
+            // Course entre l'exécution et une demande d'annulation. Si l'annulation
+            // gagne, le future `executor.execute(input)` est drop : son process
+            // enfant est tué (kill_on_drop) et on émet Cancelled.
+            let result = tokio::select! {
+                r = executor.execute(input) => r,
+                _ = &mut cancel_rx => {
+                    let _ = tx.send(SchedulerEvent::BeamCompleted {
+                        name: beam.name.clone(),
+                        status: BeamStatus::Cancelled,
+                    }).await;
+                    let _ = fwd_handle.await;
+                    // Un beam `allow_failure` annulé est traité comme un échec
+                    // toléré : son statut affiché reste Cancelled, mais côté
+                    // ordonnancement il compte comme réussi (dépendants débloqués,
+                    // run global non échoué). Sinon, l'annulation est propagée.
+                    let outcome = if beam.allow_failure {
+                        BeamOutcome::Ok
+                    } else {
+                        BeamOutcome::Cancelled
+                    };
+                    return (beam.name, outcome);
+                }
+            };
             let (stdout_lines, stderr_lines) = fwd_handle.await.unwrap_or_default();
 
             match result {
@@ -312,9 +367,8 @@ impl Scheduler {
                         name: beam.name.clone(),
                         status,
                     }).await;
-                    // Un échec toléré est compté comme réussi pour l'ordonnancement :
-                    // dépendants débloqués, run global non échoué.
-                    (beam.name, success || beam.allow_failure)
+                    let counts = success || beam.allow_failure;
+                    (beam.name, if counts { BeamOutcome::Ok } else { BeamOutcome::Failed })
                 }
                 Err(_) => {
                     let duration = start.elapsed();
@@ -327,9 +381,11 @@ impl Scheduler {
                         name: beam.name.clone(),
                         status,
                     }).await;
-                    (beam.name, beam.allow_failure)
+                    (beam.name, if beam.allow_failure { BeamOutcome::Ok } else { BeamOutcome::Failed })
                 }
             }
         });
+
+        cancel_tx
     }
 }
