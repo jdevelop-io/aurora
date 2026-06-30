@@ -66,7 +66,7 @@ async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
         "stderr prefix/padding:\n{err}"
     );
     assert!(!out.contains("boom"), "stderr line must not leak to stdout");
-    assert!(out.contains("[OK]"), "recap ok marker:\n{out}");
+    assert!(out.contains("[PASS]"), "recap pass marker:\n{out}");
     assert!(out.contains("4.2s"), "recap duration:\n{out}");
     assert!(out.contains("[FAIL]"), "recap fail marker:\n{out}");
     assert!(out.contains("exit 1"), "recap exit code:\n{out}");
@@ -140,6 +140,11 @@ async fn skipped_and_cancelled_markers_and_color_toggle() {
     assert!(out.contains("cached"), "skip reason:\n{out}");
     assert!(out.contains("[CANC]"), "cancelled marker:\n{out}");
     assert!(out.contains("cancelled"), "cancelled reason:\n{out}");
+    // Le bilan distingue les annulations des échecs (catégorie neutre)
+    assert!(
+        out.contains("Done: 1 ok, 0 failed, 1 cancelled"),
+        "summary distinguishes cancelled from failed:\n{out}"
+    );
     // use_color = true encadre les marqueurs avec des séquences ANSI
     assert!(out.contains("\u{1b}["), "ansi escape present:\n{out:?}");
     assert!(out.contains("\u{1b}[0m"), "ansi reset present:\n{out:?}");

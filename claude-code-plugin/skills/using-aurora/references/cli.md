@@ -30,7 +30,8 @@ Aurora reads the `Beamfile` in the current directory.
 - `--var key=value` — override a variable's default. Repeatable: `--var a=1 --var b=2`. Invalid format (missing `=`) is an error.
 - `--no-tui` — force plain, non-interactive output even in a terminal. Output is streamed per beam (lines
   prefixed with the beam name, stdout and stderr kept separate) and ends with an ASCII recap
-  (`[OK]`/`[FAIL]`/`[SKIP]`/`[WARN]`/`[CANC]`) plus a `Done: N ok, M failed` summary.
+  (`[PASS]`/`[FAIL]`/`[SKIP]`/`[WARN]`/`[CANC]`) plus a `Done: N ok, M failed` summary, with `, K cancelled`
+  appended when one or more beams were cancelled (cancelled beams are a neutral category, not counted as failures).
 - `-i`, `--interactive` — force the TUI even when output is not a terminal. Mutually exclusive with `--no-tui`.
 
 ## Output mode and exit codes

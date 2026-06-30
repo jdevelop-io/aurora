@@ -48,7 +48,7 @@ fn passing_beam_streams_prefixed_output_and_exits_zero() {
         "command output streamed:\n{stdout}"
     );
     assert!(stdout.contains("[ok"), "per-beam prefix present:\n{stdout}");
-    assert!(stdout.contains("[OK]"), "recap ok marker:\n{stdout}");
+    assert!(stdout.contains("[PASS]"), "recap pass marker:\n{stdout}");
     let _ = fs::remove_dir_all(&dir);
 }
 

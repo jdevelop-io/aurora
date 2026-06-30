@@ -181,7 +181,7 @@ kept separate) and ends with an ASCII recap:
 [build] Compiling aurora-core v0.5.0
 [test]  running 12 tests
 
-[OK]   build  4.2s
+[PASS] build  4.2s
 [FAIL] test   exit 1 1.8s
 Done: 1 ok, 1 failed
 ```

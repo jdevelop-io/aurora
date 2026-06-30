@@ -28,8 +28,8 @@ fn recap_line(name: &str, status: &BeamStatus, width: usize, use_color: bool) ->
         BeamStatus::Success {
             duration,
             cached: false,
-        } => ("OK", "32", fmt_duration(*duration)),
-        BeamStatus::Success { cached: true, .. } => ("OK", "32", "cached".to_string()),
+        } => ("PASS", "32", fmt_duration(*duration)),
+        BeamStatus::Success { cached: true, .. } => ("PASS", "32", "cached".to_string()),
         BeamStatus::Skipped { reason } => {
             let r = match reason {
                 SkipReason::Cached => "cached",
@@ -108,19 +108,30 @@ pub async fn run_headless(
     writeln!(out)?;
     let mut ok = 0usize;
     let mut failed = 0usize;
+    let mut cancelled = 0usize;
     for (name, status) in &recap {
         if let Some(line) = recap_line(name, status, width, out_color) {
             writeln!(out, "{line}")?;
         }
+        // Comme le runner interactif : `cancelled` est une catégorie neutre,
+        // jamais comptée comme un échec. Seul un beam réellement en échec
+        // (hors allow_failure) alimente `failed`.
         match status {
             BeamStatus::Success { .. }
             | BeamStatus::Skipped { .. }
             | BeamStatus::FailedAllowed { .. } => ok += 1,
-            BeamStatus::Failed { .. } | BeamStatus::Cancelled => failed += 1,
+            BeamStatus::Failed { .. } => failed += 1,
+            BeamStatus::Cancelled => cancelled += 1,
             BeamStatus::Pending | BeamStatus::Running => {}
         }
     }
-    writeln!(out, "Done: {ok} ok, {failed} failed")?;
+    // La catégorie `cancelled` n'apparaît que lorsqu'elle est non nulle, pour
+    // garder le bilan d'un run propre lisible.
+    let mut summary = format!("Done: {ok} ok, {failed} failed");
+    if cancelled > 0 {
+        summary.push_str(&format!(", {cancelled} cancelled"));
+    }
+    writeln!(out, "{summary}")?;
 
     Ok(overall)
 }
