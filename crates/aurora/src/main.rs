@@ -225,11 +225,7 @@ async fn main() -> Result<()> {
     } else {
         // Mode headless : pas d'annulation interactive, `run` gère son propre canal.
         let target_clone = target.clone();
-        tokio::spawn(async move {
-            if let Err(e) = scheduler.run(&target_clone, &[]).await {
-                eprintln!("Scheduler error: {}", e);
-            }
-        });
+        let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
         let use_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
@@ -237,7 +233,22 @@ async fn main() -> Result<()> {
         let mut stderr = std::io::stderr();
         let success =
             headless::run_headless(&beam_names, use_color, rx, &mut stdout, &mut stderr).await?;
-        if !success {
+
+        // Le scheduler peut échouer avant d'émettre AllDone (erreur de construction
+        // du DAG : cycle, dépendance inconnue). On joint sa tâche pour propager
+        // l'échec, sinon un Beamfile invalide sortirait en 0.
+        let scheduler_ok = match handle.await {
+            Ok(Ok(ok)) => ok,
+            Ok(Err(e)) => {
+                eprintln!("Scheduler error: {}", e);
+                false
+            }
+            Err(e) => {
+                eprintln!("Scheduler task panicked: {}", e);
+                false
+            }
+        };
+        if !success || !scheduler_ok {
             std::process::exit(1);
         }
     }

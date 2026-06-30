@@ -52,6 +52,37 @@ fn passing_beam_streams_prefixed_output_and_exits_zero() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+const BROKEN_BEAMFILE: &str = r#"
+aurora {
+  version = "1"
+  default = "broken"
+}
+
+beam "broken" {
+  description = "depends on a missing beam"
+  depends_on = ["does_not_exist"]
+  run { commands = ["echo nope"] }
+}
+"#;
+
+#[test]
+fn unknown_dependency_exits_one() {
+    let dir = fixture_dir("broken", BROKEN_BEAMFILE);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["broken", "--no-tui"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "expected exit 1 on DAG error\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn failing_beam_exits_one() {
     let dir = fixture_dir("boom", BEAMFILE);
