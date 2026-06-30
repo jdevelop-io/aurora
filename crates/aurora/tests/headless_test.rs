@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 #[tokio::test]
 async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
     let (tx, rx) = mpsc::channel(16);
-    let beams = vec!["build".to_string(), "test".to_string()]; // width = 5
+    let beams = vec!["build".to_string(), "test".to_string()]; // largeur = 5
 
     tx.send(SchedulerEvent::BeamStarted {
         name: "build".into(),
@@ -60,7 +60,7 @@ async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
 
     assert!(!success);
     assert!(out.contains("[build] compiling"), "stdout prefix:\n{out}");
-    // "test" is padded to the width of "build" (5) → "[test ]"
+    // "test" est complété à la largeur de "build" (5) → "[test ]"
     assert!(
         err.contains("[test ] boom"),
         "stderr prefix/padding:\n{err}"
@@ -108,13 +108,19 @@ async fn allow_failure_counts_as_ok_and_overall_can_be_true() {
 #[tokio::test]
 async fn skipped_and_cancelled_markers_and_color_toggle() {
     let (tx, rx) = mpsc::channel(16);
-    let beams = vec!["lint".to_string()];
+    let beams = vec!["lint".to_string(), "deploy".to_string()];
 
     tx.send(SchedulerEvent::BeamCompleted {
         name: "lint".into(),
         status: BeamStatus::Skipped {
             reason: SkipReason::Cached,
         },
+    })
+    .await
+    .unwrap();
+    tx.send(SchedulerEvent::BeamCompleted {
+        name: "deploy".into(),
+        status: BeamStatus::Cancelled,
     })
     .await
     .unwrap();
@@ -132,7 +138,9 @@ async fn skipped_and_cancelled_markers_and_color_toggle() {
 
     assert!(out.contains("[SKIP]"), "skip marker:\n{out}");
     assert!(out.contains("cached"), "skip reason:\n{out}");
-    // use_color = true wraps markers in ANSI
+    assert!(out.contains("[CANC]"), "cancelled marker:\n{out}");
+    assert!(out.contains("cancelled"), "cancelled reason:\n{out}");
+    // use_color = true encadre les marqueurs avec des séquences ANSI
     assert!(out.contains("\u{1b}["), "ansi escape present:\n{out:?}");
     assert!(out.contains("\u{1b}[0m"), "ansi reset present:\n{out:?}");
 }
