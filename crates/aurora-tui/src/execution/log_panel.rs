@@ -74,7 +74,13 @@ pub fn render_log_panel(
         let bottom = beam.logical_line_at_visual(bottom_visual, width) + 1;
         format!("  {}/{}", bottom, beam.log_line_count())
     };
-    let title = format!(" {} — Logs{}{} ", beam.name, auto_indicator, position);
+    // Signale que les logs sont rejoués depuis le cache (dernière exécution),
+    // sinon rien ne les distinguait d'une exécution fraîche.
+    let cache_marker = if beam.is_cached() { " (cache)" } else { "" };
+    let title = format!(
+        " {} — Logs{}{}{} ",
+        beam.name, cache_marker, auto_indicator, position
+    );
 
     let border_style = if focused {
         Style::default().fg(Color::Yellow)

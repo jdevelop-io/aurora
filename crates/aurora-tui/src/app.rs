@@ -1,4 +1,4 @@
-use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
+use aurora_core::scheduler::{BeamStatus, SchedulerEvent, SkipReason};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::Instant;
 
@@ -46,6 +46,12 @@ impl BeamView {
             all.extend(self.stderr.clone());
         }
         all
+    }
+
+    /// Le beam affiche-t-il des logs rejoués depuis le cache plutôt que d'une
+    /// exécution fraîche ? Sert à signaler que les logs datent du dernier run.
+    pub fn is_cached(&self) -> bool {
+        matches!(self.status, BeamStatus::Skipped { reason: SkipReason::Cached })
     }
 
     /// Texte du placeholder affiché quand le beam n'a aucune sortie,
