@@ -1,5 +1,5 @@
-use aurora_tui::app::{ExecutionState, ExecutionAction};
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
+use aurora_tui::app::{ExecutionAction, ExecutionState};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::time::Duration;
 
@@ -21,16 +21,26 @@ fn make_state() -> ExecutionState {
 fn set_done(state: &mut ExecutionState) {
     state.done = Some(false);
     // test = Success
-    state.apply_event(SchedulerEvent::BeamStarted { name: "test".to_string() });
+    state.apply_event(SchedulerEvent::BeamStarted {
+        name: "test".to_string(),
+    });
     state.apply_event(SchedulerEvent::BeamCompleted {
         name: "test".to_string(),
-        status: BeamStatus::Success { duration: Duration::from_secs(1), cached: false },
+        status: BeamStatus::Success {
+            duration: Duration::from_secs(1),
+            cached: false,
+        },
     });
     // build = Failed
-    state.apply_event(SchedulerEvent::BeamStarted { name: "build".to_string() });
+    state.apply_event(SchedulerEvent::BeamStarted {
+        name: "build".to_string(),
+    });
     state.apply_event(SchedulerEvent::BeamCompleted {
         name: "build".to_string(),
-        status: BeamStatus::Failed { exit_code: 1, duration: Duration::from_secs(1) },
+        status: BeamStatus::Failed {
+            exit_code: 1,
+            duration: Duration::from_secs(1),
+        },
     });
     // deploy = Cancelled
     state.apply_event(SchedulerEvent::BeamCompleted {

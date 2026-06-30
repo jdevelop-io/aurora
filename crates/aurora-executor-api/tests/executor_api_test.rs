@@ -38,6 +38,10 @@ fn test_execution_output_failure() {
 
 #[test]
 fn test_execution_output_nonzero_exit() {
-    let output = ExecutionOutput { exit_code: 127, stdout: vec![], stderr: vec![] };
+    let output = ExecutionOutput {
+        exit_code: 127,
+        stdout: vec![],
+        stderr: vec![],
+    };
     assert!(!output.success());
 }

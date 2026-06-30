@@ -27,7 +27,13 @@ pub struct BeamCache {
 fn safe_file_stem(beam_name: &str) -> String {
     let sanitized: String = beam_name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
+                c
+            } else {
+                '_'
+            }
+        })
         .take(64)
         .collect();
     let mut hasher = Sha256::new();
@@ -43,7 +49,8 @@ impl BeamCache {
     }
 
     fn entry_path(&self, beam_name: &str) -> PathBuf {
-        self.cache_dir.join(format!("{}.json", safe_file_stem(beam_name)))
+        self.cache_dir
+            .join(format!("{}.json", safe_file_stem(beam_name)))
     }
 
     pub fn is_valid(&self, beam_name: &str, inputs_hash: &str, outputs: &[String]) -> bool {
@@ -93,7 +100,9 @@ impl BeamCache {
 
     pub fn invalidate(&self, beam_name: &str) -> Result<()> {
         let path = self.entry_path(beam_name);
-        if path.exists() { fs::remove_file(path)?; }
+        if path.exists() {
+            fs::remove_file(path)?;
+        }
         Ok(())
     }
 
@@ -105,7 +114,9 @@ impl BeamCache {
             let full_pattern = base_dir.join(pattern).to_string_lossy().to_string();
             for entry in glob::glob(&full_pattern)? {
                 let path = entry?;
-                if path.is_file() { files.push(path); }
+                if path.is_file() {
+                    files.push(path);
+                }
             }
         }
 

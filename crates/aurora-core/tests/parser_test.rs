@@ -50,8 +50,14 @@ beam "b" {
     let bf = parse(input).unwrap();
     let env = bf.environment.as_ref().unwrap();
     assert_eq!(env.vars.len(), 2);
-    assert!(matches!(&env.vars[0].value, aurora_core::ast::EnvValue::Shell(_)));
-    assert!(matches!(&env.vars[1].value, aurora_core::ast::EnvValue::Literal(_)));
+    assert!(matches!(
+        &env.vars[0].value,
+        aurora_core::ast::EnvValue::Shell(_)
+    ));
+    assert!(matches!(
+        &env.vars[1].value,
+        aurora_core::ast::EnvValue::Literal(_)
+    ));
 }
 
 #[test]

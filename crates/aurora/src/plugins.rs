@@ -11,14 +11,21 @@ pub struct WasmExecutor {
 
 impl WasmExecutor {
     pub fn load(name: String, path: PathBuf) -> Result<Self> {
-        if !path.exists() { anyhow::bail!("Plugin not found: {:?}", path); }
-        Ok(WasmExecutor { name, plugin_path: path })
+        if !path.exists() {
+            anyhow::bail!("Plugin not found: {:?}", path);
+        }
+        Ok(WasmExecutor {
+            name,
+            plugin_path: path,
+        })
     }
 }
 
 #[async_trait]
 impl Executor for WasmExecutor {
-    fn name(&self) -> &str { &self.name }
+    fn name(&self) -> &str {
+        &self.name
+    }
 
     async fn execute(&self, input: ExecutionInput) -> Result<ExecutionOutput> {
         let plugin_path = self.plugin_path.clone();
@@ -30,7 +37,8 @@ impl Executor for WasmExecutor {
             let mut plugin = Plugin::new(&manifest, [], false)?;
             let output_bytes = plugin.call::<&[u8], &[u8]>("execute", &input_json)?;
             Ok(serde_json::from_slice(output_bytes)?)
-        }).await?
+        })
+        .await?
     }
 }
 
@@ -39,7 +47,9 @@ pub fn discover_plugins() -> Vec<(String, PathBuf)> {
         .map(|h| h.join(".aurora/plugins"))
         .unwrap_or_default();
 
-    if !plugins_dir.exists() { return vec![]; }
+    if !plugins_dir.exists() {
+        return vec![];
+    }
 
     std::fs::read_dir(&plugins_dir)
         .into_iter()
@@ -50,7 +60,9 @@ pub fn discover_plugins() -> Vec<(String, PathBuf)> {
             if path.extension()?.to_str()? == "wasm" {
                 let name = path.file_stem()?.to_string_lossy().to_string();
                 Some((name, path))
-            } else { None }
+            } else {
+                None
+            }
         })
         .collect()
 }

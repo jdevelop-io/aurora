@@ -26,7 +26,11 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
         } else {
             let last = beam.depends_on.len() - 1;
             for (i, dep) in beam.depends_on.iter().enumerate() {
-                let prefix = if i == last { "  └── " } else { "  ├── " };
+                let prefix = if i == last {
+                    "  └── "
+                } else {
+                    "  ├── "
+                };
                 lines.push(Line::from(Span::styled(
                     format!("{}{}", prefix, dep),
                     Style::default().fg(Color::Cyan),
@@ -63,7 +67,10 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
         vec![Line::from("")]
     };
 
-    let panel = Paragraph::new(content)
-        .block(Block::default().borders(Borders::ALL).title(" Dépendances "));
+    let panel = Paragraph::new(content).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Dépendances "),
+    );
     f.render_widget(panel, area);
 }

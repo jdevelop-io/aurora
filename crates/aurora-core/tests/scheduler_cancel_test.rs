@@ -1,5 +1,5 @@
-use aurora_core::scheduler::{Scheduler, SchedulerEvent, BeamStatus};
 use aurora_core::ast::{Beam, Run};
+use aurora_core::scheduler::{BeamStatus, Scheduler, SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
 use std::collections::HashMap;
@@ -22,7 +22,9 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
         outputs: vec![],
         skip_if: None,
         condition: None,
-        run: if commands.is_empty() { None } else {
+        run: if commands.is_empty() {
+            None
+        } else {
             Some(Run {
                 commands: commands.iter().map(|s| s.to_string()).collect(),
                 executor: None,
@@ -38,20 +40,27 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
 #[tokio::test]
 async fn test_cancel_running_beam_cancels_it_and_dependents() {
     let beams = vec![
-        make_beam("slow",        vec![],       vec!["sleep 30"]),
-        make_beam("after",       vec!["slow"], vec!["echo after"]),
-        make_beam("independent", vec![],       vec!["echo indep"]),
-        make_beam("root",        vec!["after", "independent"], vec!["echo root"]),
+        make_beam("slow", vec![], vec!["sleep 30"]),
+        make_beam("after", vec!["slow"], vec!["echo after"]),
+        make_beam("independent", vec![], vec!["echo indep"]),
+        make_beam("root", vec!["after", "independent"], vec!["echo root"]),
     ];
 
     let (tx, mut rx) = mpsc::channel(256);
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
 
     let handle = tokio::spawn(async move {
-        Scheduler::new(beams, local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new())
-            .run_cancellable("root", &[], cancel_rx)
-            .await
-            .unwrap()
+        Scheduler::new(
+            beams,
+            local_executors(),
+            tx,
+            None,
+            std::path::PathBuf::from("/tmp"),
+            HashMap::new(),
+        )
+        .run_cancellable("root", &[], cancel_rx)
+        .await
+        .unwrap()
     });
 
     // Attendre que `slow` démarre, puis l'annuler.
@@ -66,7 +75,9 @@ async fn test_cancel_running_beam_cancels_it_and_dependents() {
         }
         let done = matches!(evt, SchedulerEvent::AllDone { .. });
         events.push(evt);
-        if done { break; }
+        if done {
+            break;
+        }
     }
 
     let overall = tokio::time::timeout(Duration::from_secs(5), handle)
@@ -82,12 +93,23 @@ async fn test_cancel_running_beam_cancels_it_and_dependents() {
     };
 
     assert!(slow_started, "slow aurait dû démarrer");
-    assert!(matches!(status_of("slow"),  Some(BeamStatus::Cancelled)), "slow doit être annulé");
-    assert!(matches!(status_of("after"), Some(BeamStatus::Cancelled)), "after (dépendant) doit être annulé");
-    assert!(matches!(status_of("independent"), Some(BeamStatus::Success { .. })), "independent doit réussir");
+    assert!(
+        matches!(status_of("slow"), Some(BeamStatus::Cancelled)),
+        "slow doit être annulé"
+    );
+    assert!(
+        matches!(status_of("after"), Some(BeamStatus::Cancelled)),
+        "after (dépendant) doit être annulé"
+    );
+    assert!(
+        matches!(status_of("independent"), Some(BeamStatus::Success { .. })),
+        "independent doit réussir"
+    );
     assert!(!overall, "le run global doit échouer après une annulation");
 
-    let done_ok = events.iter().any(|e| matches!(e, SchedulerEvent::AllDone { success: false }));
+    let done_ok = events
+        .iter()
+        .any(|e| matches!(e, SchedulerEvent::AllDone { success: false }));
     assert!(done_ok, "AllDone doit reporter success=false");
 }
 
@@ -104,10 +126,17 @@ async fn test_cancel_allow_failure_beam_does_not_cancel_dependents() {
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
 
     let handle = tokio::spawn(async move {
-        Scheduler::new(vec![slow, after], local_executors(), tx, None, std::path::PathBuf::from("/tmp"), HashMap::new())
-            .run_cancellable("after", &[], cancel_rx)
-            .await
-            .unwrap()
+        Scheduler::new(
+            vec![slow, after],
+            local_executors(),
+            tx,
+            None,
+            std::path::PathBuf::from("/tmp"),
+            HashMap::new(),
+        )
+        .run_cancellable("after", &[], cancel_rx)
+        .await
+        .unwrap()
     });
 
     let mut slow_started = false;
@@ -121,7 +150,9 @@ async fn test_cancel_allow_failure_beam_does_not_cancel_dependents() {
         }
         let done = matches!(evt, SchedulerEvent::AllDone { .. });
         events.push(evt);
-        if done { break; }
+        if done {
+            break;
+        }
     }
 
     let overall = tokio::time::timeout(Duration::from_secs(5), handle)
@@ -137,7 +168,16 @@ async fn test_cancel_allow_failure_beam_does_not_cancel_dependents() {
     };
 
     assert!(slow_started, "slow aurait dû démarrer");
-    assert!(matches!(status_of("slow"), Some(BeamStatus::Cancelled)), "slow annulé doit s'afficher Cancelled");
-    assert!(matches!(status_of("after"), Some(BeamStatus::Success { .. })), "after doit tourner malgré l'annulation de slow (allow_failure)");
-    assert!(overall, "annuler un beam allow_failure ne doit pas faire échouer le run");
+    assert!(
+        matches!(status_of("slow"), Some(BeamStatus::Cancelled)),
+        "slow annulé doit s'afficher Cancelled"
+    );
+    assert!(
+        matches!(status_of("after"), Some(BeamStatus::Success { .. })),
+        "after doit tourner malgré l'annulation de slow (allow_failure)"
+    );
+    assert!(
+        overall,
+        "annuler un beam allow_failure ne doit pas faire échouer le run"
+    );
 }

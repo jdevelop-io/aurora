@@ -7,9 +7,9 @@ fn test_topological_levels_simple() {
     // test -> [composer]
     // composer -> []
     let deps = vec![
-        ("qa",       vec!["lint", "test"]),
-        ("lint",     vec!["composer"]),
-        ("test",     vec!["composer"]),
+        ("qa", vec!["lint", "test"]),
+        ("lint", vec!["composer"]),
+        ("test", vec!["composer"]),
         ("composer", vec![]),
     ];
     let graph = BeamGraph::from_deps(deps).unwrap();
@@ -40,9 +40,7 @@ fn test_cycle_detection() {
 
 #[test]
 fn test_unknown_dependency_error() {
-    let deps = vec![
-        ("qa", vec!["nonexistent"]),
-    ];
+    let deps = vec![("qa", vec!["nonexistent"])];
     let result = BeamGraph::from_deps(deps);
     assert!(matches!(result, Err(DagError::UnknownBeam(_))));
 }
@@ -50,9 +48,9 @@ fn test_unknown_dependency_error() {
 #[test]
 fn test_transitive_deps_includes_all() {
     let deps = vec![
-        ("qa",        vec!["lint"]),
-        ("lint",      vec!["composer"]),
-        ("composer",  vec![]),
+        ("qa", vec!["lint"]),
+        ("lint", vec!["composer"]),
+        ("composer", vec![]),
         ("unrelated", vec![]),
     ];
     let graph = BeamGraph::from_deps(deps).unwrap();
@@ -65,8 +63,8 @@ fn test_transitive_deps_includes_all() {
 #[test]
 fn test_direct_dependents() {
     let deps = vec![
-        ("qa",       vec!["lint"]),
-        ("lint",     vec!["composer"]),
+        ("qa", vec!["lint"]),
+        ("lint", vec!["composer"]),
         ("composer", vec![]),
     ];
     let graph = BeamGraph::from_deps(deps).unwrap();
@@ -91,7 +89,11 @@ fn test_deep_dependency_chain_no_stack_overflow() {
     let n = 100_000usize;
     let mut deps: Vec<(String, Vec<String>)> = Vec::with_capacity(n);
     for i in 0..n {
-        let d = if i + 1 < n { vec![format!("b{}", i + 1)] } else { vec![] };
+        let d = if i + 1 < n {
+            vec![format!("b{}", i + 1)]
+        } else {
+            vec![]
+        };
         deps.push((format!("b{i}"), d));
     }
     let graph = BeamGraph::from_deps(deps).unwrap();
@@ -111,9 +113,9 @@ fn test_unknown_root_beam() {
 #[test]
 fn test_direct_dependencies() {
     let deps = vec![
-        ("qa",       vec!["lint", "test"]),
-        ("lint",     vec!["composer"]),
-        ("test",     vec!["composer"]),
+        ("qa", vec!["lint", "test"]),
+        ("lint", vec!["composer"]),
+        ("test", vec!["composer"]),
         ("composer", vec![]),
     ];
     let graph = BeamGraph::from_deps(deps).unwrap();

@@ -41,7 +41,9 @@ pub fn render_log_panel(
                         let hl = if current_line == Some(idx) {
                             Style::default().fg(Color::Black).bg(Color::Yellow)
                         } else {
-                            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(Modifier::BOLD)
                         };
                         Line::from(highlight_spans(segment, &ranges, base, hl))
                     }

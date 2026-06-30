@@ -10,7 +10,13 @@ use ratatui::{
 
 const SPINNER_FRAMES: &[&str] = &["⣇", "⣦", "⣴", "⣸", "⢹", "⠻", "⠟", "⡏"];
 
-pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: Rect, focused: bool) {
+pub fn render_beam_list(
+    f: &mut Frame,
+    state: &ExecutionState,
+    tick: u64,
+    area: Rect,
+    focused: bool,
+) {
     let title = " Aurora ";
 
     let items: Vec<ListItem> = state
@@ -41,7 +47,9 @@ pub fn render_beam_list(f: &mut Frame, state: &ExecutionState, tick: u64, area: 
                 Span::styled(
                     name,
                     if i == state.selected {
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(Color::Gray)
                     },
@@ -163,7 +171,6 @@ mod tests {
         assert_eq!(compact_duration(3900.0, true), "1h05m");
         assert_eq!(compact_duration(90000.0, true), "25h00m");
     }
-
 
     #[test]
     fn pads_short_name_to_budget() {

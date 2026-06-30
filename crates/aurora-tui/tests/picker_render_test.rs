@@ -4,7 +4,11 @@ use ratatui::{backend::TestBackend, Terminal};
 
 fn state() -> PickerState {
     PickerState::new(vec![
-        ("build".to_string(), Some("compile".to_string()), vec!["fmt".to_string()]),
+        (
+            "build".to_string(),
+            Some("compile".to_string()),
+            vec!["fmt".to_string()],
+        ),
         ("test".to_string(), None, vec![]),
         ("fmt".to_string(), None, vec![]),
     ])

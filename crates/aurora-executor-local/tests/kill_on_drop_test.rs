@@ -37,5 +37,8 @@ async fn test_kill_on_drop_terminates_child() {
     // `fut` est drop ici.
 
     tokio::time::sleep(Duration::from_millis(2500)).await;
-    assert!(!marker.exists(), "l'enfant aurait dû être tué (kill_on_drop)");
+    assert!(
+        !marker.exists(),
+        "l'enfant aurait dû être tué (kill_on_drop)"
+    );
 }

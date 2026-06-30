@@ -4,7 +4,9 @@ pub mod picker;
 pub mod widgets;
 
 use anyhow::Result;
-use app::{ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction, PickerState};
+use app::{
+    ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction, PickerState,
+};
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -22,7 +24,13 @@ pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
     mut rx: mpsc::Receiver<SchedulerEvent>,
     mut cancel_tx: mpsc::UnboundedSender<String>,
-    rerun: impl Fn(String, Vec<String>) -> (mpsc::Receiver<SchedulerEvent>, mpsc::UnboundedSender<String>),
+    rerun: impl Fn(
+        String,
+        Vec<String>,
+    ) -> (
+        mpsc::Receiver<SchedulerEvent>,
+        mpsc::UnboundedSender<String>,
+    ),
 ) -> Result<()> {
     tokio::task::block_in_place(move || {
         enable_raw_mode()?;
@@ -95,11 +103,23 @@ pub async fn run_execution_tui(
                                 KeyCode::Enter => search.input_active = false,
                                 KeyCode::Backspace => {
                                     search.query.pop();
-                                    refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
+                                    refresh_search(
+                                        &mut search,
+                                        &exec,
+                                        &mut log_state,
+                                        log_w,
+                                        log_h,
+                                    );
                                 }
                                 KeyCode::Char(c) => {
                                     search.query.push(c);
-                                    refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
+                                    refresh_search(
+                                        &mut search,
+                                        &exec,
+                                        &mut log_state,
+                                        log_w,
+                                        log_h,
+                                    );
                                 }
                                 _ => {}
                             }
@@ -113,84 +133,94 @@ pub async fn run_execution_tui(
                                     let _ = cancel_tx.send(beam.name.clone());
                                 }
                             }
-                            KeyCode::Char('c')
-                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                            {
+                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 return Ok(());
                             }
-                            KeyCode::Char('u')
-                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                            {
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 let half = (log_h / 2).max(1) as i32;
                                 log_state.scroll_lines(-half, total_visual, log_h);
                             }
-                            KeyCode::Char('d')
-                                if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                            {
+                            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                                 let half = (log_h / 2).max(1) as i32;
                                 log_state.scroll_lines(half, total_visual, log_h);
                             }
                             KeyCode::Char('?') => show_help = true,
-                            KeyCode::Down | KeyCode::Char('j') => {
-                                match exec.focus {
-                                    FocusPanel::Beams => {
-                                        exec.select_next();
-                                        log_state.beam_index = exec.selected;
-                                        log_state.scroll_locked = false;
-                                        if search.is_active() {
-                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
-                                        }
-                                    }
-                                    FocusPanel::Logs => {
-                                        log_state.handle_key(key, total_visual, log_h);
-                                    }
-                                }
-                            }
-                            KeyCode::Up | KeyCode::Char('k') => {
-                                match exec.focus {
-                                    FocusPanel::Beams => {
-                                        exec.select_prev();
-                                        log_state.beam_index = exec.selected;
-                                        log_state.scroll_locked = false;
-                                        if search.is_active() {
-                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
-                                        }
-                                    }
-                                    FocusPanel::Logs => {
-                                        log_state.handle_key(key, total_visual, log_h);
+                            KeyCode::Down | KeyCode::Char('j') => match exec.focus {
+                                FocusPanel::Beams => {
+                                    exec.select_next();
+                                    log_state.beam_index = exec.selected;
+                                    log_state.scroll_locked = false;
+                                    if search.is_active() {
+                                        refresh_search(
+                                            &mut search,
+                                            &exec,
+                                            &mut log_state,
+                                            log_w,
+                                            log_h,
+                                        );
                                     }
                                 }
-                            }
-                            KeyCode::Home => {
-                                match exec.focus {
-                                    FocusPanel::Beams => {
-                                        exec.select_first();
-                                        log_state.beam_index = exec.selected;
-                                        log_state.scroll_locked = false;
-                                        if search.is_active() {
-                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
-                                        }
-                                    }
-                                    FocusPanel::Logs => {
-                                        log_state.scroll_to_top();
+                                FocusPanel::Logs => {
+                                    log_state.handle_key(key, total_visual, log_h);
+                                }
+                            },
+                            KeyCode::Up | KeyCode::Char('k') => match exec.focus {
+                                FocusPanel::Beams => {
+                                    exec.select_prev();
+                                    log_state.beam_index = exec.selected;
+                                    log_state.scroll_locked = false;
+                                    if search.is_active() {
+                                        refresh_search(
+                                            &mut search,
+                                            &exec,
+                                            &mut log_state,
+                                            log_w,
+                                            log_h,
+                                        );
                                     }
                                 }
-                            }
-                            KeyCode::End => {
-                                match exec.focus {
-                                    FocusPanel::Beams => {
-                                        exec.select_last();
-                                        log_state.beam_index = exec.selected;
-                                        log_state.scroll_locked = false;
-                                        if search.is_active() {
-                                            refresh_search(&mut search, &exec, &mut log_state, log_w, log_h);
-                                        }
-                                    }
-                                    FocusPanel::Logs => {
-                                        log_state.scroll_to_bottom(total_visual, log_h);
+                                FocusPanel::Logs => {
+                                    log_state.handle_key(key, total_visual, log_h);
+                                }
+                            },
+                            KeyCode::Home => match exec.focus {
+                                FocusPanel::Beams => {
+                                    exec.select_first();
+                                    log_state.beam_index = exec.selected;
+                                    log_state.scroll_locked = false;
+                                    if search.is_active() {
+                                        refresh_search(
+                                            &mut search,
+                                            &exec,
+                                            &mut log_state,
+                                            log_w,
+                                            log_h,
+                                        );
                                     }
                                 }
-                            }
+                                FocusPanel::Logs => {
+                                    log_state.scroll_to_top();
+                                }
+                            },
+                            KeyCode::End => match exec.focus {
+                                FocusPanel::Beams => {
+                                    exec.select_last();
+                                    log_state.beam_index = exec.selected;
+                                    log_state.scroll_locked = false;
+                                    if search.is_active() {
+                                        refresh_search(
+                                            &mut search,
+                                            &exec,
+                                            &mut log_state,
+                                            log_w,
+                                            log_h,
+                                        );
+                                    }
+                                }
+                                FocusPanel::Logs => {
+                                    log_state.scroll_to_bottom(total_visual, log_h);
+                                }
+                            },
                             KeyCode::Tab | KeyCode::Left | KeyCode::Right => {
                                 let _ = exec.handle_key(key);
                             }
@@ -200,11 +230,23 @@ pub async fn run_execution_tui(
                             }
                             KeyCode::Char('n') if search.is_active() => {
                                 search.next();
-                                apply_search_jump(&search, &exec.beams[log_state.beam_index], log_w, log_h, &mut log_state);
+                                apply_search_jump(
+                                    &search,
+                                    &exec.beams[log_state.beam_index],
+                                    log_w,
+                                    log_h,
+                                    &mut log_state,
+                                );
                             }
                             KeyCode::Char('N') if search.is_active() => {
                                 search.prev();
-                                apply_search_jump(&search, &exec.beams[log_state.beam_index], log_w, log_h, &mut log_state);
+                                apply_search_jump(
+                                    &search,
+                                    &exec.beams[log_state.beam_index],
+                                    log_w,
+                                    log_h,
+                                    &mut log_state,
+                                );
                             }
                             KeyCode::Esc if search.is_active() => {
                                 search.clear();
@@ -223,7 +265,9 @@ pub async fn run_execution_tui(
                                 copy_logs_to_clipboard(&exec.beams[exec.selected]);
                             }
                             KeyCode::Char('r') => {
-                                if let Some(ExecutionAction::Rerun { root, pre_success }) = exec.handle_key(key) {
+                                if let Some(ExecutionAction::Rerun { root, pre_success }) =
+                                    exec.handle_key(key)
+                                {
                                     log_state = LogViewState::new(exec.selected);
                                     search.clear();
                                     let (new_rx, new_cancel) = rerun(root, pre_success);
@@ -292,7 +336,10 @@ fn log_panel_dims(width: u16, height: u16) -> (u16, u16) {
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
         .split(outer[0]);
-    (split[1].width.saturating_sub(2), split[1].height.saturating_sub(2))
+    (
+        split[1].width.saturating_sub(2),
+        split[1].height.saturating_sub(2),
+    )
 }
 
 /// Recalcule les correspondances pour le beam sélectionné et saute au match

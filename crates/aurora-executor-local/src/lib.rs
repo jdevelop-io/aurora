@@ -7,16 +7,22 @@ use tokio::process::Command;
 pub struct LocalExecutor;
 
 impl LocalExecutor {
-    pub fn new() -> Self { LocalExecutor }
+    pub fn new() -> Self {
+        LocalExecutor
+    }
 }
 
 impl Default for LocalExecutor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl Executor for LocalExecutor {
-    fn name(&self) -> &str { "local" }
+    fn name(&self) -> &str {
+        "local"
+    }
 
     async fn execute(&self, input: ExecutionInput) -> Result<ExecutionOutput> {
         let script = format!("set -e\n{}", input.commands.join("\n"));

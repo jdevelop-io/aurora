@@ -51,7 +51,12 @@ impl BeamView {
     /// Le beam affiche-t-il des logs rejoués depuis le cache plutôt que d'une
     /// exécution fraîche ? Sert à signaler que les logs datent du dernier run.
     pub fn is_cached(&self) -> bool {
-        matches!(self.status, BeamStatus::Skipped { reason: SkipReason::Cached })
+        matches!(
+            self.status,
+            BeamStatus::Skipped {
+                reason: SkipReason::Cached
+            }
+        )
     }
 
     /// Texte du placeholder affiché quand le beam n'a aucune sortie,
@@ -97,7 +102,9 @@ impl BeamView {
 
     /// Nombre total de lignes visuelles (après wrap) à la largeur `width`.
     pub fn total_visual_rows(&self, width: u16) -> u16 {
-        self.iter_log_lines().map(|(t, _)| visual_rows(t, width)).sum()
+        self.iter_log_lines()
+            .map(|(t, _)| visual_rows(t, width))
+            .sum()
     }
 
     /// Index de la ligne logique affichée à l'offset visuel `offset`
@@ -308,8 +315,13 @@ pub enum PickerAction {
 #[derive(Debug, PartialEq)]
 pub enum ExecutionAction {
     Quit,
-    OpenLogView { beam_index: usize },
-    Rerun { root: String, pre_success: Vec<String> },
+    OpenLogView {
+        beam_index: usize,
+    },
+    Rerun {
+        root: String,
+        pre_success: Vec<String>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -409,7 +421,10 @@ impl PickerState {
                         return Some(PickerAction::Launch(vec![beam.name.clone()]));
                     }
                 } else {
-                    let names = checked.iter().map(|&i| self.beams[i].name.clone()).collect();
+                    let names = checked
+                        .iter()
+                        .map(|&i| self.beams[i].name.clone())
+                        .collect();
                     return Some(PickerAction::Launch(names));
                 }
             }
@@ -474,7 +489,10 @@ pub struct ExecutionState {
 impl ExecutionState {
     pub fn new(beam_info: Vec<(String, Vec<String>)>) -> Self {
         ExecutionState {
-            beams: beam_info.into_iter().map(|(name, deps)| BeamView::new(name, deps)).collect(),
+            beams: beam_info
+                .into_iter()
+                .map(|(name, deps)| BeamView::new(name, deps))
+                .collect(),
             selected: 0,
             done: None,
             focus: FocusPanel::Beams,
@@ -494,7 +512,11 @@ impl ExecutionState {
                     b.status = status;
                 }
             }
-            SchedulerEvent::BeamOutput { name, line, is_stderr } => {
+            SchedulerEvent::BeamOutput {
+                name,
+                line,
+                is_stderr,
+            } => {
                 if let Some(b) = self.beams.iter_mut().find(|b| b.name == name) {
                     let line = sanitize_log_line(&line);
                     if is_stderr {
@@ -534,7 +556,9 @@ impl ExecutionState {
                     BeamStatus::Failed { .. } | BeamStatus::Cancelled => {
                         to_rerun.push(beam.name.clone());
                     }
-                    BeamStatus::Success { .. } | BeamStatus::Skipped { .. } | BeamStatus::FailedAllowed { .. } => {
+                    BeamStatus::Success { .. }
+                    | BeamStatus::Skipped { .. }
+                    | BeamStatus::FailedAllowed { .. } => {
                         pre_success.push(beam.name.clone());
                     }
                     _ => {}
@@ -589,7 +613,14 @@ impl ExecutionState {
             KeyCode::Char('r') => {
                 if self.done.is_some() {
                     let beam = &self.beams[self.selected];
-                    if matches!(beam.status, BeamStatus::Failed { .. } | BeamStatus::FailedAllowed { .. } | BeamStatus::Cancelled | BeamStatus::Success { .. } | BeamStatus::Skipped { .. }) {
+                    if matches!(
+                        beam.status,
+                        BeamStatus::Failed { .. }
+                            | BeamStatus::FailedAllowed { .. }
+                            | BeamStatus::Cancelled
+                            | BeamStatus::Success { .. }
+                            | BeamStatus::Skipped { .. }
+                    ) {
                         let (root, to_rerun, pre_success) = self.compute_rerun(self.selected);
                         self.reset_for_rerun(&to_rerun);
                         return Some(ExecutionAction::Rerun { root, pre_success });
@@ -745,7 +776,10 @@ pub struct App {
 impl App {
     pub fn new(beam_names: Vec<String>) -> Self {
         App {
-            beams: beam_names.into_iter().map(|n| BeamView::new(n, vec![])).collect(),
+            beams: beam_names
+                .into_iter()
+                .map(|n| BeamView::new(n, vec![]))
+                .collect(),
             mode: AppMode::Running,
             selected: 0,
             log_scroll: 0,
@@ -765,7 +799,11 @@ impl App {
                     b.status = status;
                 }
             }
-            SchedulerEvent::BeamOutput { name, line, is_stderr } => {
+            SchedulerEvent::BeamOutput {
+                name,
+                line,
+                is_stderr,
+            } => {
                 if let Some(b) = self.beams.iter_mut().find(|b| b.name == name) {
                     let line = sanitize_log_line(&line);
                     if is_stderr {

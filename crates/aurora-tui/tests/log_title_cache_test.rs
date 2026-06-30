@@ -26,7 +26,9 @@ fn rendered_text(beam: &BeamView) -> String {
 #[test]
 fn cached_beam_log_title_mentions_cache() {
     let mut beam = BeamView::new("build".to_string(), vec![]);
-    beam.status = BeamStatus::Skipped { reason: SkipReason::Cached };
+    beam.status = BeamStatus::Skipped {
+        reason: SkipReason::Cached,
+    };
     beam.stdout = vec!["compiled ok".to_string()];
 
     let text = rendered_text(&beam);

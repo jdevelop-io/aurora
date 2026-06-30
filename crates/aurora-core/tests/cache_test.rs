@@ -41,7 +41,11 @@ fn test_cache_hit_if_output_present() {
     fs::create_dir_all(&vendor).unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
     cache.save("composer", "abc123").unwrap();
-    assert!(cache.is_valid("composer", "abc123", &[vendor.to_string_lossy().to_string()]));
+    assert!(cache.is_valid(
+        "composer",
+        "abc123",
+        &[vendor.to_string_lossy().to_string()]
+    ));
 }
 
 #[test]
@@ -78,8 +82,12 @@ fn test_hash_files() {
     let tmp = tempdir().unwrap();
     fs::write(tmp.path().join("file.txt"), b"content").unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
-    let hash = cache.hash_inputs_at(tmp.path(), &["file.txt".to_string()]).unwrap();
+    let hash = cache
+        .hash_inputs_at(tmp.path(), &["file.txt".to_string()])
+        .unwrap();
     assert!(!hash.is_empty());
-    let hash2 = cache.hash_inputs_at(tmp.path(), &["file.txt".to_string()]).unwrap();
+    let hash2 = cache
+        .hash_inputs_at(tmp.path(), &["file.txt".to_string()])
+        .unwrap();
     assert_eq!(hash, hash2);
 }

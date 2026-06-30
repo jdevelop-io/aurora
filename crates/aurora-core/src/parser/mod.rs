@@ -10,8 +10,7 @@ use std::collections::HashMap;
 struct AuroraParser;
 
 pub fn parse(input: &str) -> Result<BeamFile> {
-    let pairs = AuroraParser::parse(Rule::beamfile, input)
-        .context("Failed to parse Beamfile")?;
+    let pairs = AuroraParser::parse(Rule::beamfile, input).context("Failed to parse Beamfile")?;
 
     let mut bf = BeamFile {
         config: None,
@@ -36,7 +35,9 @@ pub fn parse(input: &str) -> Result<BeamFile> {
     }
 
     // Résoudre les var_ref dans les configs d'executor
-    let vars: HashMap<String, String> = bf.variables.iter()
+    let vars: HashMap<String, String> = bf
+        .variables
+        .iter()
         .map(|v| (v.name.clone(), v.default.clone()))
         .collect();
     for beam in &mut bf.beams {
@@ -58,10 +59,10 @@ pub fn parse(input: &str) -> Result<BeamFile> {
 
 fn parse_block(pair: Pair<Rule>, bf: &mut BeamFile) -> Result<()> {
     match pair.as_rule() {
-        Rule::aurora_block      => bf.config = Some(parse_aurora_block(pair)?),
-        Rule::variable_block    => bf.variables.push(parse_variable_block(pair)?),
+        Rule::aurora_block => bf.config = Some(parse_aurora_block(pair)?),
+        Rule::variable_block => bf.variables.push(parse_variable_block(pair)?),
         Rule::environment_block => bf.environment = Some(parse_environment_block(pair)?),
-        Rule::beam_block        => bf.beams.push(parse_beam_block(pair)?),
+        Rule::beam_block => bf.beams.push(parse_beam_block(pair)?),
         _ => {}
     }
     Ok(())
@@ -87,8 +88,7 @@ fn parse_aurora_block(pair: Pair<Rule>) -> Result<AuroraConfig> {
                 cfg.default = Some(unquote(field.into_inner().next().unwrap()));
             }
             Rule::aurora_parallelism => {
-                cfg.max_parallelism =
-                    Some(field.into_inner().next().unwrap().as_str().parse()?);
+                cfg.max_parallelism = Some(field.into_inner().next().unwrap().as_str().parse()?);
             }
             _ => {}
         }
@@ -99,7 +99,11 @@ fn parse_aurora_block(pair: Pair<Rule>) -> Result<AuroraConfig> {
 fn parse_variable_block(pair: Pair<Rule>) -> Result<Variable> {
     let mut inner = pair.into_inner();
     let name = unquote(inner.next().unwrap());
-    let mut var = Variable { name, default: String::new(), description: None };
+    let mut var = Variable {
+        name,
+        default: String::new(),
+        description: None,
+    };
     for field_wrapper in inner {
         // variable_field is a wrapper rule — unwrap to get the actual field rule
         let field = match field_wrapper.as_rule() {
@@ -240,7 +244,7 @@ fn parse_run(pair: Pair<Rule>) -> Result<Run> {
                         let key = kv_inner.next().unwrap().as_str().to_string();
                         let val_pair = kv_inner.next().unwrap();
                         let value = match val_pair.as_rule() {
-                            Rule::string  => unquote(val_pair),
+                            Rule::string => unquote(val_pair),
                             Rule::var_ref => val_pair.as_str().to_string(),
                             _ => val_pair.as_str().to_string(),
                         };
@@ -265,10 +269,7 @@ fn parse_string_list(pair: Pair<Rule>) -> Vec<String> {
 /// Strips quotes from a `string` rule pair and processes escape sequences.
 fn unquote(pair: Pair<Rule>) -> String {
     let raw = if pair.as_rule() == Rule::string {
-        pair.into_inner()
-            .next()
-            .map(|p| p.as_str())
-            .unwrap_or("")
+        pair.into_inner().next().map(|p| p.as_str()).unwrap_or("")
     } else {
         pair.as_str()
     };

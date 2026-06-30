@@ -30,7 +30,9 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
         HelpContext::Picker => vec![
             Line::from(Span::styled(
                 " Picker",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(" ↑↓ / jk    Naviguer"),
@@ -41,7 +43,9 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
             Line::from(""),
             Line::from(Span::styled(
                 " Recherche",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(" (typer)    Filtrer par nom/description"),
@@ -50,7 +54,9 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
         HelpContext::Execution => vec![
             Line::from(Span::styled(
                 " Exécution",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(" ↑↓ / jk    Naviguer beams (ou scroller logs si focus logs)"),
@@ -69,7 +75,9 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
         HelpContext::LogView => vec![
             Line::from(Span::styled(
                 " Vue logs",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
             Line::from(" ↑↓ / jk    Scroller ligne par ligne"),

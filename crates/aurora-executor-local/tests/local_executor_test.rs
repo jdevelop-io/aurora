@@ -5,7 +5,10 @@ use std::collections::HashMap;
 /// L'exécuteur n'hérite plus de l'environnement ambiant : il faut donc fournir
 /// au moins PATH pour que `sh` et les binaires soient résolus.
 fn base_env() -> HashMap<String, String> {
-    HashMap::from([("PATH".to_string(), std::env::var("PATH").unwrap_or_default())])
+    HashMap::from([(
+        "PATH".to_string(),
+        std::env::var("PATH").unwrap_or_default(),
+    )])
 }
 
 #[tokio::test]
@@ -27,10 +30,7 @@ async fn test_execute_echo() {
 async fn test_execute_multi_commands() {
     let executor = LocalExecutor::new();
     let input = ExecutionInput {
-        commands: vec![
-            "echo line1".to_string(),
-            "echo line2".to_string(),
-        ],
+        commands: vec!["echo line1".to_string(), "echo line2".to_string()],
         env: base_env(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),

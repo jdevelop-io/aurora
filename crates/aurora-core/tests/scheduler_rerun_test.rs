@@ -1,5 +1,5 @@
-use aurora_core::scheduler::{Scheduler, SchedulerEvent};
 use aurora_core::ast::{Beam, Run};
+use aurora_core::scheduler::{Scheduler, SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
 use std::collections::HashMap;
@@ -16,7 +16,10 @@ fn beam(name: &str, deps: Vec<&str>) -> Beam {
         outputs: vec![],
         skip_if: None,
         condition: None,
-        run: Some(Run { commands: vec!["echo ok".to_string()], executor: None }),
+        run: Some(Run {
+            commands: vec!["echo ok".to_string()],
+            executor: None,
+        }),
         allow_failure: false,
     }
 }
@@ -29,10 +32,7 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
 
 #[tokio::test]
 async fn pre_success_beams_emit_no_events() {
-    let beams = vec![
-        beam("dep", vec![]),
-        beam("main", vec!["dep"]),
-    ];
+    let beams = vec![beam("dep", vec![]), beam("main", vec!["dep"])];
 
     let (tx, mut rx) = mpsc::channel(32);
     let scheduler = Scheduler::new(
@@ -53,13 +53,24 @@ async fn pre_success_beams_emit_no_events() {
     }
 
     // Aucun BeamStarted ni BeamCompleted pour "dep"
-    let dep_events: Vec<_> = events.iter().filter(|e| match e {
-        SchedulerEvent::BeamStarted { name } | SchedulerEvent::BeamCompleted { name, .. } => name == "dep",
-        _ => false,
-    }).collect();
-    assert!(dep_events.is_empty(), "dep ne doit pas émettre d'événements : {:?}", dep_events);
+    let dep_events: Vec<_> = events
+        .iter()
+        .filter(|e| match e {
+            SchedulerEvent::BeamStarted { name } | SchedulerEvent::BeamCompleted { name, .. } => {
+                name == "dep"
+            }
+            _ => false,
+        })
+        .collect();
+    assert!(
+        dep_events.is_empty(),
+        "dep ne doit pas émettre d'événements : {:?}",
+        dep_events
+    );
 
     // "main" doit avoir été exécuté normalement
-    let main_started = events.iter().any(|e| matches!(e, SchedulerEvent::BeamStarted { name } if name == "main"));
+    let main_started = events
+        .iter()
+        .any(|e| matches!(e, SchedulerEvent::BeamStarted { name } if name == "main"));
     assert!(main_started, "main doit avoir été démarré");
 }

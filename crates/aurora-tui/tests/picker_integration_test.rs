@@ -61,19 +61,12 @@ fn picker_esc_quits() {
 fn picker_ctrl_c_quits() {
     let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
     let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
-    assert!(matches!(
-        state.handle_key(ctrl_c),
-        Some(PickerAction::Quit)
-    ));
+    assert!(matches!(state.handle_key(ctrl_c), Some(PickerAction::Quit)));
 }
 
 #[test]
 fn picker_tab_toggles_deps() {
-    let mut state = PickerState::new(vec![(
-        "build".to_string(),
-        None,
-        vec!["lint".to_string()],
-    )]);
+    let mut state = PickerState::new(vec![("build".to_string(), None, vec!["lint".to_string()])]);
     // Visible par défaut, Tab le replie puis le rouvre.
     assert!(state.show_deps);
     state.handle_key(key(KeyCode::Tab));

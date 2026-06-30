@@ -14,12 +14,35 @@ use std::path::Path;
 /// être déclarée explicitement dans le bloc `environment { }`.
 const ENV_ALLOWLIST: &[&str] = &[
     // POSIX / Unix
-    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "PWD", "TMPDIR", "TMP", "TEMP",
-    "LANG", "LANGUAGE", "TERM", "TZ", "COLORTERM",
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "PWD",
+    "TMPDIR",
+    "TMP",
+    "TEMP",
+    "LANG",
+    "LANGUAGE",
+    "TERM",
+    "TZ",
+    "COLORTERM",
     // Windows
-    "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "PATHEXT", "COMSPEC", "HOMEDRIVE",
-    "HOMEPATH", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMFILES",
-    "PROGRAMFILES(X86)", "PROGRAMDATA", "NUMBER_OF_PROCESSORS",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "PATHEXT",
+    "COMSPEC",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMDATA",
+    "NUMBER_OF_PROCESSORS",
 ];
 
 /// Construit l'environnement de base à partir de la liste blanche (plus les
@@ -47,7 +70,9 @@ pub fn evaluate(env_block: &Environment, working_dir: &Path) -> Result<HashMap<S
                     .env_clear()
                     .envs(&result)
                     .output()?;
-                String::from_utf8_lossy(&output.stdout).trim_end_matches('\n').to_string()
+                String::from_utf8_lossy(&output.stdout)
+                    .trim_end_matches('\n')
+                    .to_string()
             }
         };
         result.insert(var.name.clone(), value);

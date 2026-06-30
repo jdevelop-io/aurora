@@ -1,5 +1,5 @@
-use aurora_tui::app::ExecutionState;
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
+use aurora_tui::app::ExecutionState;
 use std::time::Duration;
 
 fn make_state() -> ExecutionState {
@@ -20,9 +20,30 @@ fn complete(state: &mut ExecutionState, name: &str, status: BeamStatus) {
 #[test]
 fn selects_first_failed_beam() {
     let mut state = make_state();
-    complete(&mut state, "test", BeamStatus::Success { duration: Duration::from_secs(1), cached: false });
-    complete(&mut state, "build", BeamStatus::Failed { exit_code: 1, duration: Duration::from_secs(1) });
-    complete(&mut state, "deploy", BeamStatus::Failed { exit_code: 1, duration: Duration::from_secs(1) });
+    complete(
+        &mut state,
+        "test",
+        BeamStatus::Success {
+            duration: Duration::from_secs(1),
+            cached: false,
+        },
+    );
+    complete(
+        &mut state,
+        "build",
+        BeamStatus::Failed {
+            exit_code: 1,
+            duration: Duration::from_secs(1),
+        },
+    );
+    complete(
+        &mut state,
+        "deploy",
+        BeamStatus::Failed {
+            exit_code: 1,
+            duration: Duration::from_secs(1),
+        },
+    );
     state.selected = 0;
 
     let found = state.select_first_failed();
@@ -34,9 +55,23 @@ fn selects_first_failed_beam() {
 #[test]
 fn ignores_cancelled_and_success() {
     let mut state = make_state();
-    complete(&mut state, "test", BeamStatus::Success { duration: Duration::from_secs(1), cached: false });
+    complete(
+        &mut state,
+        "test",
+        BeamStatus::Success {
+            duration: Duration::from_secs(1),
+            cached: false,
+        },
+    );
     complete(&mut state, "build", BeamStatus::Cancelled);
-    complete(&mut state, "deploy", BeamStatus::Failed { exit_code: 1, duration: Duration::from_secs(1) });
+    complete(
+        &mut state,
+        "deploy",
+        BeamStatus::Failed {
+            exit_code: 1,
+            duration: Duration::from_secs(1),
+        },
+    );
     state.selected = 0;
 
     let found = state.select_first_failed();
@@ -48,7 +83,14 @@ fn ignores_cancelled_and_success() {
 #[test]
 fn does_not_move_when_no_failed() {
     let mut state = make_state();
-    complete(&mut state, "test", BeamStatus::Success { duration: Duration::from_secs(1), cached: false });
+    complete(
+        &mut state,
+        "test",
+        BeamStatus::Success {
+            duration: Duration::from_secs(1),
+            cached: false,
+        },
+    );
     complete(&mut state, "build", BeamStatus::Cancelled);
     complete(&mut state, "deploy", BeamStatus::Cancelled);
     state.selected = 1;

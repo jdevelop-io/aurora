@@ -1,4 +1,4 @@
-use aurora_tui::app::{ExecutionState, FocusPanel, PickerAction, PickerState, ExecutionAction};
+use aurora_tui::app::{ExecutionAction, ExecutionState, FocusPanel, PickerAction, PickerState};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn key(code: KeyCode) -> KeyEvent {
@@ -12,7 +12,10 @@ fn picker_enter_with_selection_returns_beam_name() {
         ("test".to_string(), None, vec![]),
     ]);
     let result = picker.handle_key(key(KeyCode::Enter));
-    assert_eq!(result, Some(PickerAction::Launch(vec!["build".to_string()])));
+    assert_eq!(
+        result,
+        Some(PickerAction::Launch(vec!["build".to_string()]))
+    );
 }
 
 #[test]
@@ -24,7 +27,10 @@ fn picker_esc_returns_quit() {
 
 #[test]
 fn execution_q_returns_quit() {
-    let mut exec = ExecutionState::new(vec![("build".to_string(), vec![]), ("test".to_string(), vec![])]);
+    let mut exec = ExecutionState::new(vec![
+        ("build".to_string(), vec![]),
+        ("test".to_string(), vec![]),
+    ]);
     let result = exec.handle_key(key(KeyCode::Char('q')));
     assert_eq!(result, Some(ExecutionAction::Quit));
 }

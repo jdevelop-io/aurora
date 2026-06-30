@@ -36,8 +36,7 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow))
         .title(
-            Line::from(Span::styled(" Aurora ", Style::default().fg(Color::Yellow)))
-                .left_aligned(),
+            Line::from(Span::styled(" Aurora ", Style::default().fg(Color::Yellow))).left_aligned(),
         );
     let inner = block.inner(main_area);
     f.render_widget(block, main_area);
@@ -54,7 +53,9 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
             Span::styled(" 🔍 ", Style::default().fg(Color::DarkGray)),
             Span::styled(
                 "Rechercher",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
         ])
     } else {
@@ -97,7 +98,9 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
                     vec![Span::styled(
                         beam.name.clone(),
                         if is_selected {
-                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD)
                         } else {
                             Style::default().fg(Color::Gray)
                         },
@@ -189,11 +192,15 @@ fn status_line(
 
 fn highlight_name(name: &str, indices: &[usize], selected: bool) -> Vec<Span<'static>> {
     let base_style = if selected {
-        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Gray)
     };
-    let highlight_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let highlight_style = Style::default()
+        .fg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
     let mut spans = vec![];
     for (i, ch) in name.char_indices() {
         let style = if indices.contains(&i) {

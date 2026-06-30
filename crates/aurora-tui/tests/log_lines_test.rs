@@ -1,7 +1,9 @@
 use aurora_tui::app::{BeamView, LogKind};
 
 fn lines(beam: &BeamView) -> Vec<(String, LogKind)> {
-    beam.iter_log_lines().map(|(t, k)| (t.to_string(), k)).collect()
+    beam.iter_log_lines()
+        .map(|(t, k)| (t.to_string(), k))
+        .collect()
 }
 
 #[test]
@@ -11,10 +13,13 @@ fn stdout_only() {
 
     let l = lines(&beam);
 
-    assert_eq!(l, vec![
-        ("un".to_string(), LogKind::Stdout),
-        ("deux".to_string(), LogKind::Stdout),
-    ]);
+    assert_eq!(
+        l,
+        vec![
+            ("un".to_string(), LogKind::Stdout),
+            ("deux".to_string(), LogKind::Stdout),
+        ]
+    );
     assert_eq!(beam.log_line_count(), 2);
 }
 
@@ -26,11 +31,14 @@ fn stdout_then_stderr_with_separator() {
 
     let l = lines(&beam);
 
-    assert_eq!(l, vec![
-        ("out".to_string(), LogKind::Stdout),
-        ("── stderr ──".to_string(), LogKind::Separator),
-        ("err".to_string(), LogKind::Stderr),
-    ]);
+    assert_eq!(
+        l,
+        vec![
+            ("out".to_string(), LogKind::Stdout),
+            ("── stderr ──".to_string(), LogKind::Separator),
+            ("err".to_string(), LogKind::Stderr),
+        ]
+    );
     assert_eq!(beam.log_line_count(), 3);
 }
 

@@ -1,8 +1,8 @@
 use crate::ast::Beam;
 use crate::cache::BeamCache;
 use crate::dag::BeamGraph;
-use aurora_executor_api::{Executor, ExecutionInput};
 use anyhow::Result;
+use aurora_executor_api::{ExecutionInput, Executor};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,10 +29,21 @@ pub enum SkipReason {
 
 #[derive(Debug)]
 pub enum SchedulerEvent {
-    BeamStarted { name: String },
-    BeamCompleted { name: String, status: BeamStatus },
-    BeamOutput { name: String, line: String, is_stderr: bool },
-    AllDone { success: bool },
+    BeamStarted {
+        name: String,
+    },
+    BeamCompleted {
+        name: String,
+        status: BeamStatus,
+    },
+    BeamOutput {
+        name: String,
+        line: String,
+        is_stderr: bool,
+    },
+    AllDone {
+        success: bool,
+    },
 }
 
 /// Issue d'une tâche de beam, pour piloter l'ordonnancement aval.
@@ -91,24 +102,30 @@ impl Scheduler {
     ) -> Result<bool> {
         use std::collections::HashSet;
 
-        let deps: Vec<(String, Vec<String>)> = self.beams.values()
+        let deps: Vec<(String, Vec<String>)> = self
+            .beams
+            .values()
             .map(|b| (b.name.clone(), b.depends_on.clone()))
             .collect();
         let graph = BeamGraph::from_deps(deps)?;
 
-        let nodes: HashSet<String> = graph.execution_levels(root)?
+        let nodes: HashSet<String> = graph
+            .execution_levels(root)?
             .into_iter()
             .flatten()
             .collect();
 
-        let semaphore = self.max_parallelism.map(|n| Arc::new(Semaphore::new(n.max(1))));
+        let semaphore = self
+            .max_parallelism
+            .map(|n| Arc::new(Semaphore::new(n.max(1))));
         let mut overall_success = true;
 
         let pre: HashSet<&String> = pre_success.iter().collect();
 
         let mut remaining: HashMap<String, usize> = HashMap::new();
         for n in &nodes {
-            let deg = graph.direct_dependencies(n)
+            let deg = graph
+                .direct_dependencies(n)
                 .into_iter()
                 .filter(|d| nodes.contains(d) && !pre.contains(d))
                 .count();
@@ -189,7 +206,12 @@ impl Scheduler {
             }
         }
 
-        let _ = self.tx.send(SchedulerEvent::AllDone { success: overall_success }).await;
+        let _ = self
+            .tx
+            .send(SchedulerEvent::AllDone {
+                success: overall_success,
+            })
+            .await;
         Ok(overall_success)
     }
 
@@ -203,12 +225,15 @@ impl Scheduler {
 
         let beam = self.beams[beam_name].clone();
         let env = self.env.clone();
-        let executor_name = beam.run.as_ref()
+        let executor_name = beam
+            .run
+            .as_ref()
             .and_then(|r| r.executor.as_ref())
             .map(|e| e.name.as_str())
             .unwrap_or("local")
             .to_string();
-        let executor = self.executors
+        let executor = self
+            .executors
             .get(&executor_name)
             .or_else(|| self.executors.get("local"))
             .cloned()
@@ -221,30 +246,48 @@ impl Scheduler {
         set.spawn(async move {
             let _permit = if let Some(s) = sem {
                 Some(s.acquire_owned().await.unwrap())
-            } else { None };
+            } else {
+                None
+            };
 
-            let _ = tx.send(SchedulerEvent::BeamStarted { name: beam.name.clone() }).await;
+            let _ = tx
+                .send(SchedulerEvent::BeamStarted {
+                    name: beam.name.clone(),
+                })
+                .await;
 
             if beam.run.is_none() {
-                let _ = tx.send(SchedulerEvent::BeamCompleted {
-                    name: beam.name.clone(),
-                    status: BeamStatus::Success { duration: Duration::ZERO, cached: false },
-                }).await;
+                let _ = tx
+                    .send(SchedulerEvent::BeamCompleted {
+                        name: beam.name.clone(),
+                        status: BeamStatus::Success {
+                            duration: Duration::ZERO,
+                            cached: false,
+                        },
+                    })
+                    .await;
                 return (beam.name, BeamOutcome::Ok);
             }
 
             if let Some(cond) = &beam.skip_if {
                 let skip = tokio::process::Command::new("sh")
-                    .arg("-c").arg(cond)
+                    .arg("-c")
+                    .arg(cond)
                     .env_clear()
                     .envs(&env)
-                    .status().await
-                    .map(|s| s.success()).unwrap_or(false);
+                    .status()
+                    .await
+                    .map(|s| s.success())
+                    .unwrap_or(false);
                 if skip {
-                    let _ = tx.send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status: BeamStatus::Skipped { reason: SkipReason::ConditionFalse },
-                    }).await;
+                    let _ = tx
+                        .send(SchedulerEvent::BeamCompleted {
+                            name: beam.name.clone(),
+                            status: BeamStatus::Skipped {
+                                reason: SkipReason::ConditionFalse,
+                            },
+                        })
+                        .await;
                     return (beam.name, BeamOutcome::Ok);
                 }
             }
@@ -259,32 +302,44 @@ impl Scheduler {
                 if cache.is_valid(&beam.name, hash, &beam.outputs) {
                     let (stdout, stderr) = cache.load_logs(&beam.name);
                     for line in stdout {
-                        let _ = tx.send(SchedulerEvent::BeamOutput {
-                            name: beam.name.clone(),
-                            line,
-                            is_stderr: false,
-                        }).await;
+                        let _ = tx
+                            .send(SchedulerEvent::BeamOutput {
+                                name: beam.name.clone(),
+                                line,
+                                is_stderr: false,
+                            })
+                            .await;
                     }
                     for line in stderr {
-                        let _ = tx.send(SchedulerEvent::BeamOutput {
-                            name: beam.name.clone(),
-                            line,
-                            is_stderr: true,
-                        }).await;
+                        let _ = tx
+                            .send(SchedulerEvent::BeamOutput {
+                                name: beam.name.clone(),
+                                line,
+                                is_stderr: true,
+                            })
+                            .await;
                     }
-                    let _ = tx.send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status: BeamStatus::Skipped { reason: SkipReason::Cached },
-                    }).await;
+                    let _ = tx
+                        .send(SchedulerEvent::BeamCompleted {
+                            name: beam.name.clone(),
+                            status: BeamStatus::Skipped {
+                                reason: SkipReason::Cached,
+                            },
+                        })
+                        .await;
                     return (beam.name, BeamOutcome::Ok);
                 }
             }
 
             let run = beam.run.as_ref().unwrap();
 
-            let executor_config = run.executor.as_ref()
+            let executor_config = run
+                .executor
+                .as_ref()
                 .map(|e| {
-                    let map: serde_json::Map<String, serde_json::Value> = e.config.iter()
+                    let map: serde_json::Map<String, serde_json::Value> = e
+                        .config
+                        .iter()
                         .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
                         .collect();
                     serde_json::Value::Object(map)
@@ -298,12 +353,18 @@ impl Scheduler {
                 let mut stdout_lines: Vec<String> = vec![];
                 let mut stderr_lines: Vec<String> = vec![];
                 while let Some((line, is_stderr)) = out_rx.recv().await {
-                    let _ = tx_fwd.send(SchedulerEvent::BeamOutput {
-                        name: beam_name_fwd.clone(),
-                        line: line.clone(),
-                        is_stderr,
-                    }).await;
-                    if is_stderr { stderr_lines.push(line); } else { stdout_lines.push(line); }
+                    let _ = tx_fwd
+                        .send(SchedulerEvent::BeamOutput {
+                            name: beam_name_fwd.clone(),
+                            line: line.clone(),
+                            is_stderr,
+                        })
+                        .await;
+                    if is_stderr {
+                        stderr_lines.push(line);
+                    } else {
+                        stdout_lines.push(line);
+                    }
                 }
                 (stdout_lines, stderr_lines)
             });
@@ -357,31 +418,64 @@ impl Scheduler {
                         }
                     }
                     let status = if success {
-                        BeamStatus::Success { duration, cached: false }
+                        BeamStatus::Success {
+                            duration,
+                            cached: false,
+                        }
                     } else if beam.allow_failure {
-                        BeamStatus::FailedAllowed { exit_code: output.exit_code, duration }
+                        BeamStatus::FailedAllowed {
+                            exit_code: output.exit_code,
+                            duration,
+                        }
                     } else {
-                        BeamStatus::Failed { exit_code: output.exit_code, duration }
+                        BeamStatus::Failed {
+                            exit_code: output.exit_code,
+                            duration,
+                        }
                     };
-                    let _ = tx.send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status,
-                    }).await;
+                    let _ = tx
+                        .send(SchedulerEvent::BeamCompleted {
+                            name: beam.name.clone(),
+                            status,
+                        })
+                        .await;
                     let counts = success || beam.allow_failure;
-                    (beam.name, if counts { BeamOutcome::Ok } else { BeamOutcome::Failed })
+                    (
+                        beam.name,
+                        if counts {
+                            BeamOutcome::Ok
+                        } else {
+                            BeamOutcome::Failed
+                        },
+                    )
                 }
                 Err(_) => {
                     let duration = start.elapsed();
                     let status = if beam.allow_failure {
-                        BeamStatus::FailedAllowed { exit_code: -1, duration }
+                        BeamStatus::FailedAllowed {
+                            exit_code: -1,
+                            duration,
+                        }
                     } else {
-                        BeamStatus::Failed { exit_code: -1, duration }
+                        BeamStatus::Failed {
+                            exit_code: -1,
+                            duration,
+                        }
                     };
-                    let _ = tx.send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status,
-                    }).await;
-                    (beam.name, if beam.allow_failure { BeamOutcome::Ok } else { BeamOutcome::Failed })
+                    let _ = tx
+                        .send(SchedulerEvent::BeamCompleted {
+                            name: beam.name.clone(),
+                            status,
+                        })
+                        .await;
+                    (
+                        beam.name,
+                        if beam.allow_failure {
+                            BeamOutcome::Ok
+                        } else {
+                            BeamOutcome::Failed
+                        },
+                    )
                 }
             }
         });

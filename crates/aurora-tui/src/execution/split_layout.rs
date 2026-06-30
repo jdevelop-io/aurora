@@ -48,7 +48,9 @@ pub fn render_execution(
     let done_count = breakdown.done_count();
 
     // Ligne 1 : toujours l'état + la barre (reste visible même en recherche).
-    crate::widgets::status_bar::render_progress_line(f, footer[0], exec.done, done_count, total, &breakdown);
+    crate::widgets::status_bar::render_progress_line(
+        f, footer[0], exec.done, done_count, total, &breakdown,
+    );
 
     // Ligne 2 : raccourcis, ou invite de recherche si une recherche est active.
     if search.is_active() {

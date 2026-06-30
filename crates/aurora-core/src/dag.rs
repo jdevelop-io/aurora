@@ -35,9 +35,9 @@ impl BeamGraph {
         for (name, beam_deps) in &deps {
             let beam_idx = *index.get(name.as_ref()).unwrap();
             for dep in beam_deps {
-                let dep_idx = index.get(dep.as_ref()).ok_or_else(|| {
-                    DagError::UnknownBeam(dep.as_ref().to_string())
-                })?;
+                let dep_idx = index
+                    .get(dep.as_ref())
+                    .ok_or_else(|| DagError::UnknownBeam(dep.as_ref().to_string()))?;
                 // dep must complete before beam: edge dep_idx → beam_idx
                 graph.add_edge(*dep_idx, beam_idx, ());
             }
@@ -144,8 +144,7 @@ impl BeamGraph {
         }
 
         // Topological sort
-        let sorted = toposort(&sub.graph, None)
-            .map_err(|_| DagError::Cycle(root.to_string()))?;
+        let sorted = toposort(&sub.graph, None).map_err(|_| DagError::Cycle(root.to_string()))?;
 
         // Compute the level (longest path from any source) for each node
         // Level = max(level of all incoming neighbors) + 1, or 0 if no incoming
@@ -193,6 +192,9 @@ impl BeamGraph {
             }
         }
 
-        BeamGraph { graph: new_graph, index: new_index }
+        BeamGraph {
+            graph: new_graph,
+            index: new_index,
+        }
     }
 }

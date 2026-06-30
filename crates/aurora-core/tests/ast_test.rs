@@ -15,7 +15,8 @@ fn test_beam_with_all_fields() {
             executor: Some(ExecutorConfig {
                 name: "docker".to_string(),
                 config: [("image".to_string(), "omega-tools:v1".to_string())]
-                    .into_iter().collect(),
+                    .into_iter()
+                    .collect(),
             }),
         }),
         allow_failure: false,
@@ -59,8 +60,14 @@ fn test_condition_any() {
 fn test_environment_sequential_vars() {
     let env = Environment {
         vars: vec![
-            EnvVar { name: "BRANCH".to_string(), value: EnvValue::Shell("git branch --show-current".to_string()) },
-            EnvVar { name: "MODE".to_string(), value: EnvValue::Literal("production".to_string()) },
+            EnvVar {
+                name: "BRANCH".to_string(),
+                value: EnvValue::Shell("git branch --show-current".to_string()),
+            },
+            EnvVar {
+                name: "MODE".to_string(),
+                value: EnvValue::Literal("production".to_string()),
+            },
         ],
     };
     assert_eq!(env.vars.len(), 2);

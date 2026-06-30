@@ -42,16 +42,22 @@ fn validate_volume(spec: &str) -> Result<()> {
 pub struct DockerExecutor;
 
 impl DockerExecutor {
-    pub fn new() -> Self { DockerExecutor }
+    pub fn new() -> Self {
+        DockerExecutor
+    }
 }
 
 impl Default for DockerExecutor {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl Executor for DockerExecutor {
-    fn name(&self) -> &str { "docker" }
+    fn name(&self) -> &str {
+        "docker"
+    }
 
     async fn execute(&self, input: ExecutionInput) -> Result<ExecutionOutput> {
         let image = input.config["image"]
@@ -94,11 +100,11 @@ impl Executor for DockerExecutor {
         }
 
         cmd.arg(&image)
-           .arg("sh")
-           .arg("-c")
-           .arg(&script)
-           .stdout(std::process::Stdio::piped())
-           .stderr(std::process::Stdio::piped());
+            .arg("sh")
+            .arg("-c")
+            .arg(&script)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
 
         let mut child = cmd.spawn()?;
         let stdout = child.stdout.take().unwrap();

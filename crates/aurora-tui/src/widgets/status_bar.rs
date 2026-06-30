@@ -144,7 +144,10 @@ fn hint_spans_justified(hints: &[(&str, &str)], width: usize) -> Vec<Span<'stati
             let mut spans = Vec::new();
             for (i, (key, label)) in hints.iter().enumerate() {
                 if i > 0 {
-                    spans.push(Span::styled(separator(gaps[i - 1]), Style::default().fg(SEP)));
+                    spans.push(Span::styled(
+                        separator(gaps[i - 1]),
+                        Style::default().fg(SEP),
+                    ));
                 }
                 spans.extend(key_label_spans(key, label));
             }
@@ -178,7 +181,13 @@ impl StatusBreakdown {
     /// Compte les beams terminés par statut. Les statuts non terminés (Pending,
     /// Running) sont ignorés. `Cancelled` est compté à part, jamais comme un échec.
     pub fn from_statuses<'a>(statuses: impl Iterator<Item = &'a BeamStatus>) -> Self {
-        let mut b = StatusBreakdown { success: 0, warning: 0, failed: 0, skipped: 0, cancelled: 0 };
+        let mut b = StatusBreakdown {
+            success: 0,
+            warning: 0,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+        };
         for s in statuses {
             match s {
                 BeamStatus::Success { .. } => b.success += 1,
@@ -288,7 +297,13 @@ mod tests {
 
     #[test]
     fn breakdown_empty_when_all_zero() {
-        let (spans, w) = breakdown_spans(&StatusBreakdown { success: 0, warning: 0, failed: 0, skipped: 0, cancelled: 0 });
+        let (spans, w) = breakdown_spans(&StatusBreakdown {
+            success: 0,
+            warning: 0,
+            failed: 0,
+            skipped: 0,
+            cancelled: 0,
+        });
         assert!(spans.is_empty());
         assert_eq!(w, 0);
     }
@@ -296,14 +311,26 @@ mod tests {
     #[test]
     fn breakdown_only_non_zero_categories() {
         // success + skipped actifs, failed omis : "(", "✔ 6", " ", "◌ 1", ") ".
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 0, skipped: 1, cancelled: 0 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown {
+            success: 6,
+            warning: 0,
+            failed: 0,
+            skipped: 1,
+            cancelled: 0,
+        });
         assert_eq!(spans.len(), 5);
     }
 
     #[test]
     fn breakdown_all_three_categories() {
         // "(", "✔ 6", " ", "✕ 1", " ", "◌ 1", ") ".
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 1, skipped: 1, cancelled: 0 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown {
+            success: 6,
+            warning: 0,
+            failed: 1,
+            skipped: 1,
+            cancelled: 0,
+        });
         assert_eq!(spans.len(), 7);
     }
 
@@ -311,14 +338,26 @@ mod tests {
     fn breakdown_includes_warning_category() {
         // success + warning + failed + skipped tous actifs :
         // "(", "✔ 6", " ", "⚠ 2", " ", "✕ 1", " ", "◌ 1", ") " => 9 spans.
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 2, failed: 1, skipped: 1, cancelled: 0 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown {
+            success: 6,
+            warning: 2,
+            failed: 1,
+            skipped: 1,
+            cancelled: 0,
+        });
         assert_eq!(spans.len(), 9);
     }
 
     #[test]
     fn breakdown_includes_cancelled_category() {
         // success + cancelled actifs : "(", "✔ 6", " ", "⊘ 2", ") " => 5 spans.
-        let (spans, _w) = breakdown_spans(&StatusBreakdown { success: 6, warning: 0, failed: 0, skipped: 0, cancelled: 2 });
+        let (spans, _w) = breakdown_spans(&StatusBreakdown {
+            success: 6,
+            warning: 0,
+            failed: 0,
+            skipped: 0,
+            cancelled: 2,
+        });
         assert_eq!(spans.len(), 5);
     }
 
@@ -326,8 +365,14 @@ mod tests {
     fn from_statuses_counts_cancelled_apart_from_failed() {
         use std::time::Duration;
         let statuses = [
-            BeamStatus::Success { duration: Duration::ZERO, cached: false },
-            BeamStatus::Failed { exit_code: 1, duration: Duration::ZERO },
+            BeamStatus::Success {
+                duration: Duration::ZERO,
+                cached: false,
+            },
+            BeamStatus::Failed {
+                exit_code: 1,
+                duration: Duration::ZERO,
+            },
             BeamStatus::Cancelled,
             BeamStatus::Cancelled,
             BeamStatus::Running,
@@ -335,7 +380,10 @@ mod tests {
         ];
         let b = StatusBreakdown::from_statuses(statuses.iter());
         assert_eq!(b.success, 1);
-        assert_eq!(b.failed, 1, "un Cancelled ne doit pas être compté comme un échec");
+        assert_eq!(
+            b.failed, 1,
+            "un Cancelled ne doit pas être compté comme un échec"
+        );
         assert_eq!(b.cancelled, 2);
         // Running et Pending ne sont pas terminés : 1 + 1 + 2 = 4.
         assert_eq!(b.done_count(), 4);
