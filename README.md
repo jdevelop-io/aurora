@@ -232,6 +232,17 @@ cargo clippy --workspace -- -D warnings
 cargo test --workspace
 ```
 
+## Claude Code plugin
+
+Aurora ships a [Claude Code](https://claude.ai/code) plugin so the assistant understands Aurora and can read, write, and run `Beamfile`s in your project. Install it from this repository's marketplace:
+
+```text
+/plugin marketplace add jdevelop-io/aurora
+/plugin install aurora
+```
+
+It adds a skill (Aurora's model, the Beamfile DSL, and the CLI), an `aurora-expert` agent (authoring and migration from make/just/taskfile/npm), and hooks that validate Beamfiles on edit and surface available beams at session start. See [`plugins/aurora`](plugins/aurora) for details.
+
 ## Status
 
 Project at v0.5.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place. See `docs/plans/` for the roadmap.
