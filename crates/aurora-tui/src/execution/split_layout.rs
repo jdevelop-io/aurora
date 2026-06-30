@@ -1,4 +1,3 @@
-use aurora_core::scheduler::BeamStatus;
 use crate::app::{ExecutionState, FocusPanel, LogSearch, LogViewState};
 use crate::execution::{beam_list, log_panel};
 use ratatui::{
@@ -41,14 +40,12 @@ pub fn render_execution(
         .split(outer[1]);
 
     let total = exec.beams.len();
-    let count_status = |pred: fn(&BeamStatus) -> bool| exec.beams.iter().filter(|b| pred(&b.status)).count();
-    // Succès (cache inclus), avertissements (échecs tolérés), échecs (annulés inclus), skipped.
-    let success = count_status(|s| matches!(s, BeamStatus::Success { .. }));
-    let warning = count_status(|s| matches!(s, BeamStatus::FailedAllowed { .. }));
-    let failed = count_status(|s| matches!(s, BeamStatus::Failed { .. } | BeamStatus::Cancelled));
-    let skipped = count_status(|s| matches!(s, BeamStatus::Skipped { .. }));
-    let done_count = success + warning + failed + skipped;
-    let breakdown = crate::widgets::status_bar::StatusBreakdown { success, warning, failed, skipped };
+    // Décompte par statut : succès (cache inclus), avertissements (échecs tolérés),
+    // échecs, annulés (catégorie neutre, distincte des échecs), skipped.
+    let breakdown = crate::widgets::status_bar::StatusBreakdown::from_statuses(
+        exec.beams.iter().map(|b| &b.status),
+    );
+    let done_count = breakdown.done_count();
 
     // Ligne 1 : toujours l'état + la barre (reste visible même en recherche).
     crate::widgets::status_bar::render_progress_line(f, footer[0], exec.done, done_count, total, &breakdown);
