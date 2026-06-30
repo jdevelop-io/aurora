@@ -134,10 +134,12 @@ git commit -m ":sparkles: feat(plugin): initialiser la marketplace et le manifes
 
 Create `plugins/aurora/skills/using-aurora/SKILL.md`:
 
+Write the body in imperative/infinitive form (no "you"), and the description in third person with concrete trigger phrases.
+
 ```markdown
 ---
 name: using-aurora
-description: Use when a Beamfile is present in the project, or when the user mentions Aurora, beams, the task runner, or asks to build, run, test, list, create, or edit tasks in a project that uses Aurora. Covers the Beamfile DSL, the aurora CLI, and Aurora's execution model.
+description: This skill should be used when a Beamfile is present in the project, or when the user mentions Aurora, beams, the task runner, or asks to "build", "run", "test", "list", "create a beam", or "edit the Beamfile" in a project that uses Aurora. Covers the Beamfile DSL, the aurora CLI, and Aurora's execution model.
 ---
 
 # Using Aurora
@@ -179,6 +181,11 @@ Read `references/cli.md` for the complete flag set and behaviours.
 - Declaring too few `inputs` (stale cache hits) or forgetting `outputs` (cache never validates).
 - Relying on an environment variable without declaring it in `environment {}` or passing `--var`.
 - Referencing a beam name in `depends_on` that does not exist (DAG error) or that forms a cycle.
+
+## Additional resources
+
+- **`references/beamfile-dsl.md`** — the complete Beamfile grammar (blocks, beam fields, conditions, executors), with worked examples. Read it before writing or substantially editing a `Beamfile`.
+- **`references/cli.md`** — every CLI flag and behaviour, with examples. Read it for the full command surface.
 ```
 
 - [ ] **Step 2: Write the Beamfile DSL reference**
@@ -371,7 +378,7 @@ Run:
 test -f plugins/aurora/skills/using-aurora/SKILL.md
 head -1 plugins/aurora/skills/using-aurora/SKILL.md | grep -qx -- '---'
 grep -q '^name: using-aurora$' plugins/aurora/skills/using-aurora/SKILL.md
-grep -q '^description: Use when' plugins/aurora/skills/using-aurora/SKILL.md
+grep -q '^description: This skill should be used when' plugins/aurora/skills/using-aurora/SKILL.md
 test -f plugins/aurora/skills/using-aurora/references/beamfile-dsl.md
 test -f plugins/aurora/skills/using-aurora/references/cli.md
 echo OK
@@ -414,11 +421,19 @@ Create `plugins/aurora/agents/aurora-expert.md`:
 ```markdown
 ---
 name: aurora-expert
-description: Use this agent to author or migrate Aurora Beamfiles. Trigger when the user asks to "create a Beamfile", "add beams", "set up Aurora for this project", or "migrate my Makefile/justfile/Taskfile/npm scripts to Aurora". The agent inspects the project, designs the beam DAG, writes the Beamfile with correct inputs/outputs for caching, and validates the result with aurora --dry-run.
-tools: Read, Glob, Grep, Write, Edit, Bash
+description: Use this agent to author or migrate Aurora Beamfiles. Typical triggers include "create a Beamfile", "add beams", "set up Aurora for this project", and "migrate my Makefile/justfile/Taskfile/npm scripts to Aurora". See "When to invoke" in the agent body for worked scenarios.
+model: inherit
+color: magenta
+tools: ["Read", "Glob", "Grep", "Write", "Edit", "Bash"]
 ---
 
 You are an Aurora expert. You author and migrate `Beamfile`s for projects that use Aurora, the Rust task runner. Follow the `using-aurora` skill for the Beamfile DSL and CLI details; do not invent syntax.
+
+## When to invoke
+
+- **Author a Beamfile from scratch.** The project has no `Beamfile` and the user wants to set up Aurora. Inspect the project and design the beams.
+- **Extend an existing Beamfile.** The user wants to add or restructure beams, or fix a broken DAG.
+- **Migrate another task runner.** The user wants to convert a `Makefile`, `justfile`, `Taskfile.yml`, or npm scripts into an equivalent `Beamfile`.
 
 ## Operating modes
 
@@ -447,7 +462,10 @@ Run:
 ```bash
 grep -q '^name: aurora-expert$' plugins/aurora/agents/aurora-expert.md
 grep -q '^description: Use this agent' plugins/aurora/agents/aurora-expert.md
+grep -q '^model: inherit$' plugins/aurora/agents/aurora-expert.md
+grep -q '^color: ' plugins/aurora/agents/aurora-expert.md
 grep -q '^tools: ' plugins/aurora/agents/aurora-expert.md
+grep -q '## When to invoke' plugins/aurora/agents/aurora-expert.md
 echo OK
 ```
 
@@ -531,9 +549,13 @@ set -euo pipefail
 
 input="$(cat)"
 
-cwd="$(printf '%s' "$input" \
-  | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-  | head -n1)"
+# Prefer the project root Claude Code exposes; fall back to the event cwd, then pwd.
+cwd="${CLAUDE_PROJECT_DIR:-}"
+if [ -z "$cwd" ]; then
+  cwd="$(printf '%s' "$input" \
+    | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    | head -n1)"
+fi
 [ -n "$cwd" ] || cwd="$(pwd)"
 
 # No Beamfile -> not an Aurora project, stay silent.
@@ -618,11 +640,11 @@ Expected: no output, `exit=0`.
 
 - [ ] **Step 5: Test — validation script degrades gracefully without aurora on PATH**
 
-Run (forces an empty PATH so `aurora` is not found, while still locating bash builtins):
+Run with a minimal PATH that keeps the standard utilities (`cat`, `sed`, `basename`, `dirname`) but excludes any user-installed `aurora` (which lives in `~/.cargo/bin`, `~/.local/bin`, or `/usr/local/bin`):
 
 ```bash
 printf '{"tool_name":"Edit","tool_input":{"file_path":"/tmp/Beamfile"}}' \
-  | PATH="/nonexistent" bash plugins/aurora/hooks/validate-beamfile.sh; echo "exit=$?"
+  | PATH="/usr/bin:/bin" bash plugins/aurora/hooks/validate-beamfile.sh; echo "exit=$?"
 ```
 
 Expected: no output, `exit=0` (the `command -v aurora` check fails, so the script exits silently).
@@ -634,7 +656,7 @@ Run:
 ```bash
 tmp="$(mktemp -d)"
 printf '{"cwd":"%s"}' "$tmp" \
-  | bash plugins/aurora/hooks/session-context.sh; echo "exit=$?"
+  | CLAUDE_PROJECT_DIR="$tmp" bash plugins/aurora/hooks/session-context.sh; echo "exit=$?"
 rm -rf "$tmp"
 ```
 
@@ -646,7 +668,7 @@ Run:
 
 ```bash
 tmp="$(mktemp -d)"; : > "$tmp/Beamfile"
-out="$(printf '{"cwd":"%s"}' "$tmp" | PATH="/nonexistent" bash plugins/aurora/hooks/session-context.sh)"
+out="$(printf '{"cwd":"%s"}' "$tmp" | CLAUDE_PROJECT_DIR="$tmp" PATH="/usr/bin:/bin" bash plugins/aurora/hooks/session-context.sh)"
 rm -rf "$tmp"
 printf '%s\n' "$out" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart" and (.hookSpecificOutput.additionalContext | contains("Aurora"))'
 ```
