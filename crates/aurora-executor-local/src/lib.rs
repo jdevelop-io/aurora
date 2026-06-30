@@ -32,6 +32,7 @@ impl Executor for LocalExecutor {
             .envs(&input.env)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
             .spawn()?;
 
         let stdout = child.stdout.take().unwrap();
