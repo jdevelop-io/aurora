@@ -1,0 +1,33 @@
+name: CI
+
+# Lint des scripts shell du plugin Claude Code. Déclenché sur main et sur chaque
+# pull request qui touche les hooks (ou ce workflow), pour garder les scripts
+# sains au fil des évolutions du plugin.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "claude-code-plugin/hooks/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "claude-code-plugin/hooks/**"
+      - ".github/workflows/ci.yml"
+
+# Aucun droit d'écriture : le lint n'a besoin que de lire le code.
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: Shellcheck des hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Le lint ne pousse rien : pas besoin de garder le token dans .git.
+          persist-credentials: false
+
+      # shellcheck est préinstallé sur les runners ubuntu-latest.
+      - name: Lint des scripts de hooks
+        run: shellcheck claude-code-plugin/hooks/*.sh
