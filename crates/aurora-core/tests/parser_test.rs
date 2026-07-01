@@ -143,6 +143,29 @@ beam "b" {
 }
 
 #[test]
+fn test_parse_executor_docker_volumes() {
+    // Volumes are declared as a comma-separated string, the only shape the
+    // executor config carries end to end.
+    let input = r#"
+beam "b" {
+  run {
+    commands = ["echo"]
+    executor "docker" {
+      image   = "alpine:3.19"
+      volumes = "/data:/data:ro,/cache:/cache:rw"
+    }
+  }
+}
+"#;
+    let bf = parse(input).unwrap();
+    let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
+    assert_eq!(
+        exec.config.get("volumes").unwrap(),
+        "/data:/data:ro,/cache:/cache:rw"
+    );
+}
+
+#[test]
 fn test_parse_inputs_outputs() {
     let input = r#"
 beam "composer" {

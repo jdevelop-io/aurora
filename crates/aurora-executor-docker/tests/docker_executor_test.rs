@@ -18,12 +18,33 @@ async fn test_dangerous_volume_is_rejected() {
             commands: vec!["echo nope".to_string()],
             env: HashMap::new(),
             working_dir: std::env::current_dir().unwrap(),
-            config: serde_json::json!({ "image": "alpine:3.19", "volumes": [vol] }),
+            // `volumes` is a comma-separated string, matching what the
+            // executor config actually carries through the real pipeline.
+            config: serde_json::json!({ "image": "alpine:3.19", "volumes": vol }),
             output_tx: None,
         };
         let result = executor.execute(input).await;
         assert!(result.is_err(), "dangerous volume accepted: {vol}");
     }
+}
+
+// Does NOT require Docker: a dangerous volume hidden among several
+// comma-separated specs must still be rejected.
+#[tokio::test]
+async fn test_dangerous_volume_in_list_is_rejected() {
+    let executor = DockerExecutor::new();
+    let input = ExecutionInput {
+        commands: vec!["echo nope".to_string()],
+        env: HashMap::new(),
+        working_dir: std::env::current_dir().unwrap(),
+        config: serde_json::json!({
+            "image": "alpine:3.19",
+            "volumes": "/tmp/ok:/ok:ro,/etc:/etc:ro",
+        }),
+        output_tx: None,
+    };
+    let result = executor.execute(input).await;
+    assert!(result.is_err(), "dangerous volume in a list accepted");
 }
 
 // Does NOT require Docker: a symlink pointing at a forbidden path must not
@@ -42,7 +63,7 @@ async fn test_symlink_to_forbidden_path_is_rejected() {
         commands: vec!["echo nope".to_string()],
         env: HashMap::new(),
         working_dir: std::env::current_dir().unwrap(),
-        config: serde_json::json!({ "image": "alpine:3.19", "volumes": [spec] }),
+        config: serde_json::json!({ "image": "alpine:3.19", "volumes": spec }),
         output_tx: None,
     };
     let result = executor.execute(input).await;

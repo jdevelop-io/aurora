@@ -98,20 +98,32 @@ impl Executor for DockerExecutor {
         }
 
         let working_dir_str = input.working_dir.to_string_lossy().to_string();
-        let volumes = match input.config["volumes"].as_array() {
-            Some(arr) => {
-                let vols: Vec<String> = arr
-                    .iter()
-                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
-                    .collect();
-                // Volumes provided via the config are validated: we fail
-                // rather than silently mounting a dangerous path.
-                for v in &vols {
-                    validate_volume(v)?;
-                }
-                vols
+        // `volumes` is a comma-separated list of `-v` specs. The executor
+        // config only carries strings (see aurora-core `build_executor_config`
+        // and the Beamfile grammar, where executor fields are strings), so a
+        // JSON array would never reach here through the real pipeline. Absent
+        // or empty falls back to the default working-directory mount.
+        let requested: Vec<String> = input
+            .config
+            .get("volumes")
+            .and_then(|v| v.as_str())
+            .map(|spec| {
+                spec.split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let volumes = if requested.is_empty() {
+            vec![format!("{}:/app:rw", working_dir_str)]
+        } else {
+            // Volumes provided via the config are validated: we fail rather
+            // than silently mounting a dangerous path.
+            for v in &requested {
+                validate_volume(v)?;
             }
-            None => vec![format!("{}:/app:rw", working_dir_str)],
+            requested
         };
 
         let script = format!("set -e\n{}", input.commands.join("\n"));
