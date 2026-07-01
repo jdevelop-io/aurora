@@ -108,35 +108,23 @@ impl Scheduler {
             remaining.insert(n.clone(), in_degree);
         }
 
-        let mut cancelled: HashSet<String> = HashSet::new();
-        let mut spawned: HashSet<String> = HashSet::new();
-        let mut set: JoinSet<(String, BeamOutcome)> = JoinSet::new();
-        // One cancellation sender per spawned beam: receiving it inside the
-        // task makes the `select!` win and triggers the cancellation.
-        let mut cancels: HashMap<String, oneshot::Sender<()>> = HashMap::new();
-        // Maps each running task's id to its beam name, so a panicked task
-        // (whose return value is lost) can still be attributed to its beam.
-        let mut task_names: HashMap<tokio::task::Id, String> = HashMap::new();
+        let mut run = RunLoop::new(remaining);
 
+        // Seed the loop with every beam that is ready from the start
+        // (in-degree zero and not already satisfied by a previous run).
         for n in &nodes {
-            if pre.contains(n) {
-                continue;
-            }
-            if remaining[n] == 0 {
-                let (cancel_tx, id) = self.spawn_beam(&mut set, &semaphore, n);
-                cancels.insert(n.clone(), cancel_tx);
-                task_names.insert(id, n.clone());
-                spawned.insert(n.clone());
+            if !pre.contains(n) && run.remaining[n] == 0 {
+                self.spawn_and_track(&mut run, &semaphore, n);
             }
         }
 
         loop {
             tokio::select! {
-                joined = set.join_next_with_id() => {
+                joined = run.set.join_next_with_id() => {
                     let Some(result) = joined else { break };
                     let (name, outcome) = match result {
                         Ok((id, pair)) => {
-                            task_names.remove(&id);
+                            run.task_names.remove(&id);
                             pair
                         }
                         Err(join_err) => {
@@ -145,7 +133,7 @@ impl Scheduler {
                             // as failed and cancel its dependents, so nothing is
                             // left stuck Pending.
                             overall_success = false;
-                            let Some(name) = task_names.remove(&join_err.id()) else {
+                            let Some(name) = run.task_names.remove(&join_err.id()) else {
                                 continue;
                             };
                             let _ = self
@@ -164,47 +152,22 @@ impl Scheduler {
 
                     // The beam is done: drop its cancellation sender so the map
                     // does not retain entries for finished beams.
-                    cancels.remove(&name);
+                    run.cancels.remove(&name);
 
                     match outcome {
                         BeamOutcome::Ok => {
-                            // Success: unblock the direct dependents.
-                            for dep in graph.direct_dependents(&name) {
-                                if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) || pre.contains(&dep) {
-                                    continue;
-                                }
-                                if let Some(r) = remaining.get_mut(&dep) {
-                                    *r = r.saturating_sub(1);
-                                    if *r == 0 {
-                                        let (cancel_tx, id) =
-                                            self.spawn_beam(&mut set, &semaphore, &dep);
-                                        cancels.insert(dep.clone(), cancel_tx);
-                                        task_names.insert(id, dep.clone());
-                                        spawned.insert(dep);
-                                    }
-                                }
-                            }
+                            self.unblock_dependents(&mut run, &graph, &name, &nodes, &pre, &semaphore);
                         }
                         BeamOutcome::Failed | BeamOutcome::Cancelled => {
                             overall_success = false;
-                            // Cancel the whole downstream closure: these beams
-                            // will never reach an in-degree of zero, so we emit
-                            // their Cancelled once.
-                            for dep in graph.transitive_dependents(&name) {
-                                if nodes.contains(&dep) && !spawned.contains(&dep) && cancelled.insert(dep.clone()) {
-                                    let _ = self.tx.send(SchedulerEvent::BeamCompleted {
-                                        name: dep,
-                                        status: BeamStatus::Cancelled,
-                                    }).await;
-                                }
-                            }
+                            self.cancel_dependents(&mut run, &graph, &name, &nodes).await;
                         }
                     }
                 }
                 Some(name) = cancel_rx.recv() => {
                     // Cancellation request from the TUI: trigger the beam's
                     // oneshot if it is running. Ignored if it has already finished.
-                    if let Some(s) = cancels.remove(&name) {
+                    if let Some(s) = run.cancels.remove(&name) {
                         let _ = s.send(());
                     }
                 }
@@ -218,6 +181,74 @@ impl Scheduler {
             })
             .await;
         Ok(overall_success)
+    }
+
+    /// Spawns a beam and records its cancellation handle, task id and spawned
+    /// mark in one place, so the three bookkeeping insertions cannot drift
+    /// between the initial seed and the unblock path.
+    fn spawn_and_track(&self, run: &mut RunLoop, semaphore: &Option<Arc<Semaphore>>, name: &str) {
+        let (cancel_tx, id) = self.spawn_beam(&mut run.set, semaphore, name);
+        run.cancels.insert(name.to_string(), cancel_tx);
+        run.task_names.insert(id, name.to_string());
+        run.spawned.insert(name.to_string());
+    }
+
+    /// A beam succeeded: decrement each not-yet-handled direct dependent's
+    /// in-degree and spawn the ones that just reached zero.
+    fn unblock_dependents(
+        &self,
+        run: &mut RunLoop,
+        graph: &BeamGraph,
+        name: &str,
+        nodes: &HashSet<String>,
+        pre: &HashSet<&String>,
+        semaphore: &Option<Arc<Semaphore>>,
+    ) {
+        for dep in graph.direct_dependents(name) {
+            if !nodes.contains(&dep)
+                || run.cancelled.contains(&dep)
+                || run.spawned.contains(&dep)
+                || pre.contains(&dep)
+            {
+                continue;
+            }
+            let Some(r) = run.remaining.get_mut(&dep) else {
+                continue;
+            };
+            *r = r.saturating_sub(1);
+            // Release the borrow of `run.remaining` before spawning, which
+            // needs `run` mutably again.
+            let ready = *r == 0;
+            if ready {
+                self.spawn_and_track(run, semaphore, &dep);
+            }
+        }
+    }
+
+    /// A beam failed or was cancelled: emit a single Cancelled for every
+    /// not-yet-spawned beam in its downstream closure. Those beams can never
+    /// reach an in-degree of zero, so they would otherwise stay Pending.
+    async fn cancel_dependents(
+        &self,
+        run: &mut RunLoop,
+        graph: &BeamGraph,
+        name: &str,
+        nodes: &HashSet<String>,
+    ) {
+        for dep in graph.transitive_dependents(name) {
+            if nodes.contains(&dep)
+                && !run.spawned.contains(&dep)
+                && run.cancelled.insert(dep.clone())
+            {
+                let _ = self
+                    .tx
+                    .send(SchedulerEvent::BeamCompleted {
+                        name: dep,
+                        status: BeamStatus::Cancelled,
+                    })
+                    .await;
+            }
+        }
     }
 
     /// Selects the executor for a beam from its `run.executor` name. A beam
@@ -271,6 +302,41 @@ impl Scheduler {
 
         let handle = set.spawn(run_beam_task(beam, executor, cancel_rx, task_env));
         (cancel_tx, handle.id())
+    }
+}
+
+/// Mutable bookkeeping for one in-flight run: per-beam in-degree tracking, the
+/// sets of already-spawned and already-cancelled beams, the live tasks and
+/// their cancellation handles. Grouping this state lets the scheduling steps
+/// be methods (`spawn_and_track`, `unblock_dependents`, `cancel_dependents`)
+/// instead of an event loop juggling six parallel maps inline.
+struct RunLoop {
+    /// Remaining unmet dependencies per beam; a beam spawns when this hits 0.
+    remaining: HashMap<String, usize>,
+    /// Beams already emitted as Cancelled, so each is cancelled at most once.
+    cancelled: HashSet<String>,
+    /// Beams already spawned, so none is spawned twice.
+    spawned: HashSet<String>,
+    /// One cancellation sender per spawned beam: sending it makes the beam
+    /// task's `select!` win and triggers cancellation.
+    cancels: HashMap<String, oneshot::Sender<()>>,
+    /// Maps each running task's id to its beam name, so a panicked task (whose
+    /// return value is lost) can still be attributed to its beam.
+    task_names: HashMap<tokio::task::Id, String>,
+    /// The live beam tasks.
+    set: JoinSet<(String, BeamOutcome)>,
+}
+
+impl RunLoop {
+    fn new(remaining: HashMap<String, usize>) -> Self {
+        Self {
+            remaining,
+            cancelled: HashSet::new(),
+            spawned: HashSet::new(),
+            cancels: HashMap::new(),
+            task_names: HashMap::new(),
+            set: JoinSet::new(),
+        }
     }
 }
 
