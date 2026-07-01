@@ -220,21 +220,32 @@ impl Scheduler {
         Ok(overall_success)
     }
 
-    /// Selects the executor for a beam from its `run.executor` name, falling
-    /// back to `local`. `local` is registered by the composition root, so its
-    /// absence is a programming error rather than a runtime condition.
-    fn resolve_executor(&self, beam: &Beam) -> Arc<dyn Executor> {
-        let executor_name = beam
+    /// Selects the executor for a beam from its `run.executor` name. A beam
+    /// that declares none defaults to `local`, which the composition root
+    /// always registers (its absence is a programming error). A beam that
+    /// names an executor which is not registered is a configuration error:
+    /// it is reported as `Err(name)` so the beam fails loudly, rather than
+    /// being silently downgraded to running its commands on the host `local`
+    /// executor. That downgrade would defeat the point of an untrusted beam
+    /// asking to run sandboxed (for example in Docker).
+    fn resolve_executor(&self, beam: &Beam) -> std::result::Result<Arc<dyn Executor>, String> {
+        match beam
             .run
             .as_ref()
             .and_then(|r| r.executor.as_ref())
             .map(|e| e.name.as_str())
-            .unwrap_or("local");
-        self.executors
-            .get(executor_name)
-            .or_else(|| self.executors.get("local"))
-            .cloned()
-            .expect("no local executor registered")
+        {
+            Some(name) => self
+                .executors
+                .get(name)
+                .cloned()
+                .ok_or_else(|| name.to_string()),
+            None => Ok(self
+                .executors
+                .get("local")
+                .cloned()
+                .expect("no local executor registered")),
+        }
     }
 
     /// Spawns a beam task and returns its cancellation sender together with the
@@ -279,7 +290,7 @@ struct TaskEnv {
 /// lifecycle events and returns its scheduling outcome.
 async fn run_beam_task(
     beam: Beam,
-    executor: Arc<dyn Executor>,
+    executor: std::result::Result<Arc<dyn Executor>, String>,
     mut cancel_rx: oneshot::Receiver<()>,
     task_env: TaskEnv,
 ) -> (String, BeamOutcome) {
@@ -341,6 +352,35 @@ async fn run_beam_task(
             .await;
         return (beam.name, BeamOutcome::Ok);
     }
+
+    // A beam that named an executor which is not registered is a
+    // configuration error: fail it loudly instead of silently downgrading
+    // to the host `local` executor. Checked before gating and cache so a
+    // typo cannot hide behind a skip or a cache hit.
+    let executor = match executor {
+        Ok(executor) => executor,
+        Err(name) => {
+            let _ = tx
+                .send(SchedulerEvent::BeamOutput {
+                    name: beam.name.clone(),
+                    line: format!("aurora: unknown executor '{name}'"),
+                    is_stderr: true,
+                })
+                .await;
+            let (status, outcome) = classify_execution(
+                &Err(anyhow::anyhow!("unknown executor '{name}'")),
+                beam.allow_failure,
+                Duration::ZERO,
+            );
+            let _ = tx
+                .send(SchedulerEvent::BeamCompleted {
+                    name: beam.name.clone(),
+                    status,
+                })
+                .await;
+            return (beam.name, outcome);
+        }
+    };
 
     // Gating: skip when `skip_if` succeeds, then when `condition` is
     // not met. Either way the beam counts as a success for scheduling.
