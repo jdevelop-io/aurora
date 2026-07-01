@@ -1,0 +1,39 @@
+name: Security audit
+
+# Scans the Rust dependency tree for known vulnerabilities (RustSec advisories).
+# Runs when the dependency graph changes and weekly, so newly disclosed
+# advisories against unchanged dependencies are still caught.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/audit.yml"
+  pull_request:
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/audit.yml"
+  schedule:
+    - cron: "0 6 * * 1" # Mondays, 06:00 UTC
+
+# No write permission: the audit only needs to read the code.
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The audit does not push anything: no need to keep the token in .git.
+          persist-credentials: false
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies for known vulnerabilities
+        run: cargo audit
