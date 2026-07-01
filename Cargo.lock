@@ -163,6 +163,7 @@ name = "aurora-core"
 version = "0.6.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "aurora-executor-api",
  "aurora-executor-local",
  "chrono",

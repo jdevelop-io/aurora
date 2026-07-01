@@ -492,8 +492,18 @@ impl Scheduler {
                         },
                     )
                 }
-                Err(_) => {
+                Err(e) => {
                     let duration = start.elapsed();
+                    // Surface the executor error instead of dropping it: an
+                    // unreachable Docker daemon, a missing image or a rejected
+                    // volume would otherwise fail with an opaque exit code -1.
+                    let _ = tx
+                        .send(SchedulerEvent::BeamOutput {
+                            name: beam.name.clone(),
+                            line: format!("aurora: executor error: {e:#}"),
+                            is_stderr: true,
+                        })
+                        .await;
                     let status = if beam.allow_failure {
                         BeamStatus::FailedAllowed {
                             exit_code: -1,
