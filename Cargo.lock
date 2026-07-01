@@ -209,6 +209,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "aurora-executor-api",
+ "libc",
  "serde_json",
  "tokio",
 ]

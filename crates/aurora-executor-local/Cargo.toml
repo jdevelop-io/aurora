@@ -9,5 +9,10 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 aurora-executor-api = { path = "../aurora-executor-api" }
 
+# Killing the child's whole process group on cancellation is a POSIX
+# operation (kill(2) on a negative pgid); needed only on unix.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 serde_json = { workspace = true }
