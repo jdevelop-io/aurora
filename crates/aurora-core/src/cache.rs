@@ -42,6 +42,19 @@ fn safe_file_stem(beam_name: &str) -> String {
     format!("{}-{}", sanitized, &hash[..16])
 }
 
+/// True when a declared input/output pattern would resolve outside `base_dir`
+/// (the Beamfile directory): an absolute path, which `PathBuf::join` lets
+/// replace the base entirely, or one containing a `..` component. A Beamfile
+/// is untrusted, so such a pattern must never reach the filesystem outside its
+/// own directory.
+fn escapes_base_dir(pattern: &str) -> bool {
+    let candidate = Path::new(pattern);
+    candidate.is_absolute()
+        || candidate
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
 impl BeamCache {
     /// Creates a cache handle. The directory is created lazily on the first
     /// write, so a run that never persists anything (for example `--no-cache`)
@@ -79,7 +92,12 @@ impl BeamCache {
         // like inputs in `hash_inputs_at`. A relative output would otherwise be
         // checked against the process working directory, so a valid cache entry
         // could be wrongly rejected when Aurora is invoked from a subdirectory.
-        outputs.iter().all(|out| base_dir.join(out).exists())
+        // An output that escapes base_dir (absolute or `..`) is treated as a
+        // miss rather than probed on disk, so the check cannot become an
+        // existence oracle for arbitrary paths from an untrusted Beamfile.
+        outputs
+            .iter()
+            .all(|out| !escapes_base_dir(out) && base_dir.join(out).exists())
     }
 
     pub fn save(&self, beam_name: &str, inputs_hash: &str) -> Result<()> {
@@ -126,12 +144,7 @@ impl BeamCache {
             // Confine inputs to the Beamfile directory: an absolute pattern or
             // a `..` traversal (from an untrusted Beamfile) would otherwise
             // read files outside base_dir via `PathBuf::join`.
-            let candidate = Path::new(pattern);
-            if candidate.is_absolute()
-                || candidate
-                    .components()
-                    .any(|c| matches!(c, std::path::Component::ParentDir))
-            {
+            if escapes_base_dir(pattern) {
                 anyhow::bail!("input pattern escapes the Beamfile directory: {pattern}");
             }
             let full_pattern = base_dir.join(pattern).to_string_lossy().to_string();

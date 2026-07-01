@@ -13,8 +13,9 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
     m
 }
 
-/// A beam that hashes `in.txt` and produces `out.txt` (absolute path, so the
-/// output-existence check does not depend on the process working directory).
+/// A beam that hashes `in.txt` and produces `out.txt`. The output is declared
+/// relative to the Beamfile directory (resolved against `working_dir` by the
+/// cache), so the existence check does not depend on the process cwd.
 fn cached_beam(dir: &std::path::Path) -> Beam {
     let out = dir.join("out.txt");
     Beam {
@@ -22,7 +23,7 @@ fn cached_beam(dir: &std::path::Path) -> Beam {
         description: None,
         depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
-        outputs: vec![out.to_string_lossy().to_string()],
+        outputs: vec!["out.txt".to_string()],
         skip_if: None,
         condition: None,
         run: Some(Run {
@@ -52,7 +53,7 @@ async fn cache_hit_replays_recorded_output() {
         description: None,
         depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
-        outputs: vec![out.to_string_lossy().to_string()],
+        outputs: vec!["out.txt".to_string()],
         skip_if: None,
         condition: None,
         run: Some(Run {

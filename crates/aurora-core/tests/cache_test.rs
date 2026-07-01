@@ -50,16 +50,50 @@ fn test_cache_miss_if_output_missing() {
 #[test]
 fn test_cache_hit_if_output_present() {
     let tmp = tempdir().unwrap();
-    let vendor = tmp.path().join("vendor");
-    fs::create_dir_all(&vendor).unwrap();
+    fs::create_dir_all(tmp.path().join("vendor")).unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
     cache.save("composer", "abc123").unwrap();
-    assert!(cache.is_valid(
-        "composer",
+    // Outputs are declared relative to the Beamfile directory, exactly like
+    // inputs; resolved against base_dir it points at the existing directory.
+    assert!(cache.is_valid("composer", "abc123", &["vendor".to_string()], tmp.path()));
+}
+
+#[test]
+fn test_cache_miss_on_absolute_output_escaping_base_dir() {
+    let tmp = tempdir().unwrap();
+    let base = tmp.path().join("project");
+    fs::create_dir_all(&base).unwrap();
+    let cache = BeamCache::new(base.join(".aurora/cache"));
+    cache.save("b", "abc123").unwrap();
+
+    // A file that exists but lives outside base_dir.
+    let outside = tmp.path().join("outside.txt");
+    fs::write(&outside, "x").unwrap();
+
+    // Even though the absolute output exists on disk, it escapes base_dir, so
+    // the entry must be treated as invalid (a cache miss) instead of becoming
+    // an existence oracle for arbitrary filesystem paths from an untrusted
+    // Beamfile.
+    assert!(!cache.is_valid(
+        "b",
         "abc123",
-        &[vendor.to_string_lossy().to_string()],
-        tmp.path()
+        &[outside.to_string_lossy().to_string()],
+        &base
     ));
+}
+
+#[test]
+fn test_cache_miss_on_parent_dir_output_escaping_base_dir() {
+    let tmp = tempdir().unwrap();
+    let base = tmp.path().join("project");
+    fs::create_dir_all(&base).unwrap();
+    let cache = BeamCache::new(base.join(".aurora/cache"));
+    cache.save("b", "abc123").unwrap();
+
+    // Exists in the parent of base_dir, reachable only via `..`.
+    fs::write(tmp.path().join("outside.txt"), "x").unwrap();
+
+    assert!(!cache.is_valid("b", "abc123", &["../outside.txt".to_string()], &base));
 }
 
 #[test]
