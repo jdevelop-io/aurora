@@ -119,6 +119,17 @@ impl BeamCache {
         let mut files: Vec<PathBuf> = vec![];
 
         for pattern in patterns {
+            // Confine inputs to the Beamfile directory: an absolute pattern or
+            // a `..` traversal (from an untrusted Beamfile) would otherwise
+            // read files outside base_dir via `PathBuf::join`.
+            let candidate = Path::new(pattern);
+            if candidate.is_absolute()
+                || candidate
+                    .components()
+                    .any(|c| matches!(c, std::path::Component::ParentDir))
+            {
+                anyhow::bail!("input pattern escapes the Beamfile directory: {pattern}");
+            }
             let full_pattern = base_dir.join(pattern).to_string_lossy().to_string();
             for entry in glob::glob(&full_pattern)? {
                 let path = entry?;

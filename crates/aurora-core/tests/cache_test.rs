@@ -106,6 +106,21 @@ fn test_hash_files() {
 }
 
 #[test]
+fn test_hash_inputs_rejects_paths_outside_base_dir() {
+    let tmp = tempdir().unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+    // An absolute input pattern would read files outside the Beamfile
+    // directory: it must be rejected.
+    assert!(cache
+        .hash_inputs_at(tmp.path(), &["/etc/hosts".to_string()])
+        .is_err());
+    // A parent-directory traversal likewise escapes base_dir.
+    assert!(cache
+        .hash_inputs_at(tmp.path(), &["../secret".to_string()])
+        .is_err());
+}
+
+#[test]
 fn test_hash_inputs_none_when_no_file_matches() {
     let tmp = tempdir().unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
