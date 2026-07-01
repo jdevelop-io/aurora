@@ -37,7 +37,7 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
             Line::from(""),
             Line::from(" ↑↓ / jk    Navigate"),
             Line::from(" Space      Select/deselect"),
-            Line::from(" Tab        Show dependencies"),
+            Line::from(" d          Show dependencies"),
             Line::from(" Enter      Run the selected beam"),
             Line::from(" Esc / q    Quit"),
             Line::from(""),
