@@ -61,6 +61,27 @@ fn test_transitive_deps_includes_all() {
 }
 
 #[test]
+fn test_transitive_dependents_diamond_dedups() {
+    // Diamond: d -> {b, c} -> a. `a` is reachable from `d` by two paths, so
+    // its dependents must be deduplicated.
+    let deps = vec![
+        ("a", vec![]),
+        ("b", vec!["a"]),
+        ("c", vec!["a"]),
+        ("d", vec!["b", "c"]),
+    ];
+    let graph = BeamGraph::from_deps(deps).unwrap();
+
+    let mut dependents = graph.transitive_dependents("a");
+    dependents.sort();
+    assert_eq!(dependents, vec!["b", "c", "d"]);
+
+    let mut ancestors = graph.transitive_deps("d");
+    ancestors.sort();
+    assert_eq!(ancestors, vec!["a", "b", "c", "d"]);
+}
+
+#[test]
 fn test_direct_dependents() {
     let deps = vec![
         ("qa", vec!["lint"]),
