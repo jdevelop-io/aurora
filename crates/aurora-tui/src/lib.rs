@@ -229,37 +229,13 @@ pub fn run_picker(
 }
 
 /// Inner dimensions (width, height) of the log panel for a given terminal.
-/// Replicates the layout split of `render_execution` (vertical [Min, Length(1)]
-/// then horizontal 30/70, or 25/25/50 when the dependency panel is shown)
-/// in order to precisely convert logical indices into visual offsets and to
-/// bound the scroll.
+/// Derived from the same `execution_layout` split used by `render_execution`,
+/// so logical indices convert to visual offsets and the scroll is bounded
+/// against the exact panel the user sees.
 fn log_panel_dims(width: u16, height: u16, show_deps: bool) -> (u16, u16) {
-    use ratatui::layout::{Constraint, Direction, Layout, Rect};
-    let area = Rect::new(0, 0, width, height);
-    let outer = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(2)])
-        .split(area);
-    let split = if show_deps {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-                Constraint::Percentage(50),
-            ])
-            .split(outer[0])
-    } else {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-            .split(outer[0])
-    };
-    let log_area = split[split.len() - 1];
-    (
-        log_area.width.saturating_sub(2),
-        log_area.height.saturating_sub(2),
-    )
+    let area = ratatui::layout::Rect::new(0, 0, width, height);
+    let logs = split_layout::execution_layout(area, show_deps).logs;
+    (logs.width.saturating_sub(2), logs.height.saturating_sub(2))
 }
 
 /// Effects of the runner's keyboard dispatch that need resources owned by the

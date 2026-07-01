@@ -1,11 +1,61 @@
 use crate::app::{ExecutionState, FocusPanel, LogSearch, LogViewState};
 use crate::execution::{beam_list, deps_panel, log_panel};
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     widgets::Paragraph,
     Frame,
 };
+
+/// Rectangles of the execution view for a given area. Single source of truth
+/// for the layout split, shared by rendering ([`render_execution`]) and by the
+/// scroll/metric computation (`log_panel_dims`), so the two can never drift.
+///
+/// Vertical: `[Min(0), Length(2)]` (content, then a two-line footer).
+/// Horizontal: `30/70` beams/logs, or `25/25/50` when the dependency panel is
+/// shown.
+pub struct ExecutionLayout {
+    pub beams: Rect,
+    /// Present only when the dependency panel is shown (key « d »).
+    pub deps: Option<Rect>,
+    pub logs: Rect,
+    pub footer: Rect,
+}
+
+pub fn execution_layout(area: Rect, show_deps: bool) -> ExecutionLayout {
+    let outer = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(2)])
+        .split(area);
+
+    if show_deps {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(50),
+            ])
+            .split(outer[0]);
+        ExecutionLayout {
+            beams: split[0],
+            deps: Some(split[1]),
+            logs: split[2],
+            footer: outer[1],
+        }
+    } else {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+            .split(outer[0]);
+        ExecutionLayout {
+            beams: split[0],
+            deps: None,
+            logs: split[1],
+            footer: outer[1],
+        }
+    }
+}
 
 pub fn render_execution(
     f: &mut Frame,
@@ -16,44 +66,27 @@ pub fn render_execution(
     show_help: bool,
 ) {
     let area = f.area();
-    // Footer on 2 lines: status + bar, then hints (or search).
-    let outer = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(2)])
-        .split(area);
-
-    // Horizontal split: beams / logs (30/70), with a dependency panel
-    // inserted (25/25/50) when `show_deps` is active (key « d »).
     let beams_focused = exec.focus == FocusPanel::Beams;
     let beam = &exec.beams[log_state.beam_index];
 
-    if exec.show_deps {
-        let split = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-                Constraint::Percentage(50),
-            ])
-            .split(outer[0]);
-
-        beam_list::render_beam_list(f, exec, tick, split[0], beams_focused);
-        deps_panel::render_deps_panel(f, exec, split[1]);
-        log_panel::render_log_panel(f, beam, log_state, Some(search), split[2], !beams_focused);
-    } else {
-        let split = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-            .split(outer[0]);
-
-        beam_list::render_beam_list(f, exec, tick, split[0], beams_focused);
-        log_panel::render_log_panel(f, beam, log_state, Some(search), split[1], !beams_focused);
+    let layout = execution_layout(area, exec.show_deps);
+    beam_list::render_beam_list(f, exec, tick, layout.beams, beams_focused);
+    if let Some(deps) = layout.deps {
+        deps_panel::render_deps_panel(f, exec, deps);
     }
+    log_panel::render_log_panel(
+        f,
+        beam,
+        log_state,
+        Some(search),
+        layout.logs,
+        !beams_focused,
+    );
 
     let footer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(outer[1]);
+        .split(layout.footer);
 
     let total = exec.beams.len();
     // Breakdown by status: success (cache included), warnings (tolerated failures),
