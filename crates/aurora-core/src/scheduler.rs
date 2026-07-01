@@ -470,6 +470,11 @@ async fn run_beam_task(
 
 /// Runs a gating shell command and reports whether it succeeded (exit 0). A
 /// command that fails to launch counts as "not succeeded".
+///
+/// By design this always runs on the local host via `sh -c`, regardless of the
+/// beam's `run.executor`: `skip_if` and `condition` are evaluated locally even
+/// when the beam itself runs in Docker or a WASM plugin. They are meant to
+/// decide *whether* to run the beam, using the host's state.
 async fn run_gate_command(cmd: &str, working_dir: &Path, env: &HashMap<String, String>) -> bool {
     tokio::process::Command::new("sh")
         .arg("-c")

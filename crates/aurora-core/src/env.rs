@@ -61,6 +61,11 @@ pub fn base_env() -> HashMap<String, String> {
 /// Evaluates the variables of the `environment` block sequentially.
 /// shell(`...`) variables are executed, literals are copied as is.
 /// Each variable is available to the following ones (via the `result` map).
+///
+/// `shell(...)` values are always executed on the local host via `sh -c`,
+/// independently of any beam's executor: the environment is resolved once, on
+/// the host, before scheduling, and the result is then passed to every beam
+/// (including Docker beams, via `docker -e`).
 pub fn evaluate(env_block: &Environment, working_dir: &Path) -> Result<HashMap<String, String>> {
     let mut result = base_env();
 
