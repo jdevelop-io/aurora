@@ -1,7 +1,45 @@
 // These tests require Docker. Marked #[ignore] by default.
 use aurora_executor_api::{ExecutionInput, Executor};
-use aurora_executor_docker::DockerExecutor;
+use aurora_executor_docker::{build_run_args, DockerExecutor};
 use std::collections::HashMap;
+
+// Does NOT require Docker: the container must be named so it can be removed by
+// name if `docker run` is killed on cancellation (the container is a child of
+// the daemon and outlives the CLI, and --rm never fires).
+#[test]
+fn run_args_name_the_container_before_the_image() {
+    let args = build_run_args(
+        "aurora-42-0",
+        "alpine:3",
+        &["/w:/app:rw".to_string()],
+        &HashMap::new(),
+        "echo hi",
+    );
+
+    let name_pos = args
+        .iter()
+        .position(|a| a == "--name")
+        .expect("--name must be present");
+    assert_eq!(args[name_pos + 1], "aurora-42-0");
+
+    // The name is a `docker run` option, so it must come before the `--`
+    // separator that terminates option parsing.
+    let sep = args.iter().position(|a| a == "--").expect("-- separator");
+    assert!(name_pos < sep, "--name must precede the -- separator");
+
+    // The image and its command follow the separator, unchanged.
+    assert_eq!(args[sep + 1], "alpine:3");
+    assert!(args.contains(&"--rm".to_string()));
+}
+
+#[test]
+fn run_args_pass_env_and_volumes() {
+    let env = HashMap::from([("MY_VAR".to_string(), "v".to_string())]);
+    let args = build_run_args("n", "img", &["/w:/app:rw".to_string()], &env, "echo hi");
+    let joined = args.join(" ");
+    assert!(joined.contains("-v /w:/app:rw"), "volume missing: {joined}");
+    assert!(joined.contains("-e MY_VAR=v"), "env missing: {joined}");
+}
 
 // Does NOT require Docker: validates that dangerous volumes are rejected
 // before any container launch (defense against sandbox escape).
@@ -103,6 +141,49 @@ async fn test_docker_echo() {
     assert_eq!(output.exit_code, 0);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("hello_from_docker"));
+}
+
+// Cancelling a running beam must remove its container. Start a long-running
+// container, drop the execution future, then assert no container named with
+// this process's prefix survives. The container is a child of the daemon, so
+// only the by-name removal (not kill_on_drop on the client) reaps it.
+#[tokio::test]
+#[ignore = "requires docker"]
+async fn cancellation_removes_the_container() {
+    let exec = DockerExecutor::new();
+    let input = ExecutionInput {
+        commands: vec!["sleep 300".to_string()],
+        env: HashMap::new(),
+        working_dir: std::env::current_dir().unwrap(),
+        config: serde_json::json!({ "image": "alpine:3.19" }),
+        output_tx: None,
+    };
+
+    let fut = exec.execute(input);
+    tokio::select! {
+        _ = fut => panic!("the container should still be running"),
+        _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
+    }
+    // `fut` dropped here: the cleanup guard runs `docker rm -f`.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    let prefix = format!("aurora-{}-", std::process::id());
+    let out = std::process::Command::new("docker")
+        .args([
+            "ps",
+            "-a",
+            "--filter",
+            &format!("name={prefix}"),
+            "--format",
+            "{{.Names}}",
+        ])
+        .output()
+        .unwrap();
+    let leftovers = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        leftovers.trim().is_empty(),
+        "container survived cancellation: {leftovers}"
+    );
 }
 
 #[tokio::test]
