@@ -197,6 +197,10 @@ impl Scheduler {
                         }
                     };
 
+                    // The beam is done: drop its cancellation sender so the map
+                    // does not retain entries for finished beams.
+                    cancels.remove(&name);
+
                     match outcome {
                         BeamOutcome::Ok => {
                             // Success: unblock the direct dependents.
