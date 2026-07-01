@@ -273,8 +273,35 @@ fn unquote(pair: Pair<Rule>) -> String {
     } else {
         pair.as_str()
     };
-    raw.replace("\\\"", "\"")
-        .replace("\\\\", "\\")
-        .replace("\\n", "\n")
-        .replace("\\t", "\t")
+    unescape(raw)
+}
+
+/// Decodes backslash escape sequences in a single left-to-right pass.
+///
+/// A single pass is required for correctness: chained `.replace()` calls
+/// corrupt each other because an earlier replacement can produce a sequence
+/// the next one then re-interprets (for example `\\n` -> `\n` -> newline
+/// instead of a literal backslash followed by `n`). An unknown escape is kept
+/// verbatim (backslash and the following character).
+fn unescape(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('t') => out.push('\t'),
+            Some('"') => out.push('"'),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
 }

@@ -187,6 +187,38 @@ fn test_parse_malformed_beamfile_errors() {
 }
 
 #[test]
+fn test_parse_escape_sequences() {
+    // Escape handling must be single-pass: an escaped backslash followed by
+    // `n` (`\\n` in the source) is a literal backslash then a literal `n`, NOT
+    // a newline. Chained `.replace()` calls used to mistranslate it.
+    let input = r#"
+beam "x" {
+  description = "back\\nslash"
+  run { commands = ["echo"] }
+}
+"#;
+    let bf = parse(input).unwrap();
+    assert_eq!(
+        bf.beams[0].description.as_deref(),
+        Some("back\\nslash"),
+        "\\\\n must stay a literal backslash + n, not become a newline"
+    );
+
+    // A genuine escape sequence is still decoded.
+    let input = r#"
+beam "y" {
+  description = "line\nbreak\ttab\"quote"
+  run { commands = ["echo"] }
+}
+"#;
+    let bf = parse(input).unwrap();
+    assert_eq!(
+        bf.beams[0].description.as_deref(),
+        Some("line\nbreak\ttab\"quote")
+    );
+}
+
+#[test]
 fn test_parse_multiple_commands() {
     let input = r#"
 beam "lint" {
