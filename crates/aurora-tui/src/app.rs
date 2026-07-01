@@ -343,6 +343,9 @@ pub struct PickerState {
     pub beams: Vec<PickerBeam>,
     pub selected: usize,
     pub search: String,
+    /// Mode saisie du filtre actif (`/`). Hors de ce mode les lettres sont des
+    /// commandes ; aligné sur la recherche de logs du runner.
+    pub search_input: bool,
     pub show_deps: bool,
     pub checked: Vec<bool>,
 }
@@ -361,7 +364,8 @@ impl PickerState {
                 .collect(),
             selected: 0,
             search: String::new(),
-            // Panneau des dépendances visible d'emblée ; Tab le replie.
+            search_input: false,
+            // Panneau des dépendances visible d'emblée ; `d` le replie.
             show_deps: true,
             checked: vec![false; len],
         }
@@ -404,76 +408,94 @@ impl PickerState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<PickerAction> {
-        let filtered = self.filtered();
-        let count = filtered.len();
-        // Recherche au fil de la frappe : seuls Esc et Ctrl+C quittent, la
-        // navigation se fait aux flèches. Tout caractère imprimable (y compris
-        // q, j, k) alimente la recherche.
+        // Ctrl+C quitte en toutes circonstances.
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             return Some(PickerAction::Quit);
         }
+
+        let count = self.filtered().len();
+
+        // Mode saisie du filtre (`/`) : la frappe alimente le filtre. Entrée
+        // verrouille et sort, Échap efface et sort. Même modèle que la recherche
+        // de logs du runner.
+        if self.search_input {
+            match key.code {
+                KeyCode::Esc => {
+                    self.search.clear();
+                    self.search_input = false;
+                    self.selected = 0;
+                }
+                KeyCode::Enter => self.search_input = false,
+                KeyCode::Backspace => {
+                    self.search.pop();
+                    self.selected = 0;
+                }
+                KeyCode::Down => self.select_next(count),
+                KeyCode::Up => self.select_prev(count),
+                KeyCode::Home => self.selected = 0,
+                KeyCode::End => self.selected = count.saturating_sub(1),
+                KeyCode::Char(c) => {
+                    self.search.push(c);
+                    self.selected = 0;
+                }
+                _ => {}
+            }
+            return None;
+        }
+
+        // Mode commande : les lettres sont des raccourcis.
         match key.code {
-            KeyCode::Esc => return Some(PickerAction::Quit),
-            KeyCode::Enter => {
-                let checked = self.selected_beam_indices();
-                if checked.is_empty() {
-                    if let Some((_orig_idx, beam, _)) = filtered.get(self.selected) {
-                        return Some(PickerAction::Launch(vec![beam.name.clone()]));
-                    }
-                } else {
-                    let names = checked
-                        .iter()
-                        .map(|&i| self.beams[i].name.clone())
-                        .collect();
-                    return Some(PickerAction::Launch(names));
-                }
-            }
-            KeyCode::Down => {
-                if count > 0 {
-                    self.selected = if self.selected + 1 >= count {
-                        0
-                    } else {
-                        self.selected + 1
-                    };
-                }
-            }
-            KeyCode::Up => {
-                if count > 0 {
-                    self.selected = if self.selected == 0 {
-                        count - 1
-                    } else {
-                        self.selected - 1
-                    };
-                }
-            }
-            KeyCode::Home => {
+            KeyCode::Char('/') => {
+                self.search.clear();
+                self.search_input = true;
                 self.selected = 0;
             }
-            KeyCode::End => {
-                self.selected = count.saturating_sub(1);
+            KeyCode::Esc => {
+                if self.search.is_empty() {
+                    return Some(PickerAction::Quit);
+                }
+                self.search.clear();
+                self.selected = 0;
             }
+            KeyCode::Enter => return self.launch(),
+            KeyCode::Down | KeyCode::Char('j') => self.select_next(count),
+            KeyCode::Up | KeyCode::Char('k') => self.select_prev(count),
+            KeyCode::Home => self.selected = 0,
+            KeyCode::End => self.selected = count.saturating_sub(1),
             KeyCode::Char(' ') => {
-                let orig_idx = filtered.get(self.selected).map(|(i, _, _)| *i);
-                drop(filtered);
-                if let Some(idx) = orig_idx {
+                if let Some(idx) = self.filtered().get(self.selected).map(|(i, _, _)| *i) {
                     self.checked[idx] = !self.checked[idx];
                 }
-                return None;
             }
-            KeyCode::Tab => {
-                self.show_deps = !self.show_deps;
-            }
-            KeyCode::Backspace => {
-                self.search.pop();
-                self.selected = 0;
-            }
-            KeyCode::Char(c) => {
-                self.search.push(c);
-                self.selected = 0;
-            }
+            KeyCode::Char('d') => self.show_deps = !self.show_deps,
             _ => {}
         }
         None
+    }
+
+    fn select_next(&mut self, count: usize) {
+        if count > 0 {
+            self.selected = if self.selected + 1 >= count { 0 } else { self.selected + 1 };
+        }
+    }
+
+    fn select_prev(&mut self, count: usize) {
+        if count > 0 {
+            self.selected = if self.selected == 0 { count - 1 } else { self.selected - 1 };
+        }
+    }
+
+    /// Action de lancement : les beams cochés s'ils existent, sinon le beam
+    /// sélectionné dans la liste filtrée.
+    fn launch(&self) -> Option<PickerAction> {
+        let checked = self.selected_beam_indices();
+        if !checked.is_empty() {
+            let names = checked.iter().map(|&i| self.beams[i].name.clone()).collect();
+            return Some(PickerAction::Launch(names));
+        }
+        self.filtered()
+            .get(self.selected)
+            .map(|(_, b, _)| PickerAction::Launch(vec![b.name.clone()]))
     }
 }
 

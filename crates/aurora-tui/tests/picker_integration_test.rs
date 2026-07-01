@@ -12,13 +12,50 @@ fn picker_fuzzy_filters_results() {
         ("test-unit".to_string(), None, vec![]),
         ("lint".to_string(), None, vec![]),
     ]);
-    // Taper "bld" → seul "build-release" devrait matcher
+    // `/` ouvre la saisie du filtre, puis "bld" → seul "build-release" matche.
+    state.handle_key(key(KeyCode::Char('/')));
     state.handle_key(key(KeyCode::Char('b')));
     state.handle_key(key(KeyCode::Char('l')));
     state.handle_key(key(KeyCode::Char('d')));
     let filtered = state.filtered();
     assert_eq!(filtered.len(), 1);
     assert_eq!(filtered[0].1.name, "build-release");
+}
+
+#[test]
+fn picker_enter_locks_filter_then_commands_resume() {
+    let mut state = PickerState::new(vec![
+        ("build".to_string(), None, vec![]),
+        ("test".to_string(), None, vec![]),
+    ]);
+    state.handle_key(key(KeyCode::Char('/')));
+    state.handle_key(key(KeyCode::Char('b')));
+    assert!(state.search_input);
+    // Entrée verrouille le filtre et sort de la saisie sans lancer.
+    let action = state.handle_key(key(KeyCode::Enter));
+    assert!(action.is_none());
+    assert!(!state.search_input);
+    assert_eq!(state.search, "b");
+    // En mode commande, `d` redevient le toggle deps (pas une frappe).
+    let deps_before = state.show_deps;
+    state.handle_key(key(KeyCode::Char('d')));
+    assert_eq!(state.show_deps, !deps_before);
+}
+
+#[test]
+fn picker_esc_clears_filter_before_quitting() {
+    let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
+    state.handle_key(key(KeyCode::Char('/')));
+    state.handle_key(key(KeyCode::Char('b')));
+    state.handle_key(key(KeyCode::Enter)); // filtre verrouillé
+    // Premier Échap : efface le filtre, ne quitte pas.
+    assert!(state.handle_key(key(KeyCode::Esc)).is_none());
+    assert!(state.search.is_empty());
+    // Second Échap : filtre vide → quitte.
+    assert!(matches!(
+        state.handle_key(key(KeyCode::Esc)),
+        Some(PickerAction::Quit)
+    ));
 }
 
 #[test]
@@ -35,12 +72,13 @@ fn picker_multi_select_accumulates() {
 }
 
 #[test]
-fn picker_letter_q_searches_does_not_quit() {
+fn picker_filter_input_captures_letters() {
     let mut state = PickerState::new(vec![
         ("queue".to_string(), None, vec![]),
         ("build".to_string(), None, vec![]),
     ]);
-    // Taper "q" doit alimenter la recherche, pas quitter le picker.
+    // En mode saisie (`/`), taper "q" filtre au lieu de déclencher une commande.
+    state.handle_key(key(KeyCode::Char('/')));
     let action = state.handle_key(key(KeyCode::Char('q')));
     assert!(action.is_none());
     let filtered = state.filtered();
@@ -65,12 +103,12 @@ fn picker_ctrl_c_quits() {
 }
 
 #[test]
-fn picker_tab_toggles_deps() {
+fn picker_d_toggles_deps() {
     let mut state = PickerState::new(vec![("build".to_string(), None, vec!["lint".to_string()])]);
-    // Visible par défaut, Tab le replie puis le rouvre.
+    // Visible par défaut, `d` le replie puis le rouvre (cohérent avec le runner).
     assert!(state.show_deps);
-    state.handle_key(key(KeyCode::Tab));
+    state.handle_key(key(KeyCode::Char('d')));
     assert!(!state.show_deps);
-    state.handle_key(key(KeyCode::Tab));
+    state.handle_key(key(KeyCode::Char('d')));
     assert!(state.show_deps);
 }

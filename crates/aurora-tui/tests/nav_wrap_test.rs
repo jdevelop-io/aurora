@@ -21,8 +21,9 @@ fn picker_up_at_top_wraps_to_bottom() {
 
 #[test]
 fn picker_wrap_empty_list_stays_zero() {
-    // Aucun résultat (recherche qui ne matche rien) : pas de panic, reste à 0.
+    // Aucun résultat (filtre qui ne matche rien) : pas de panic, reste à 0.
     let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
+    state.handle_key(key(KeyCode::Char('/')));
     state.handle_key(key(KeyCode::Char('z')));
     assert_eq!(state.filtered().len(), 0);
     state.handle_key(key(KeyCode::Up));

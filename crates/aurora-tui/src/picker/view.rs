@@ -38,37 +38,11 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         .title(
             Line::from(Span::styled(" Aurora ", Style::default().fg(Color::Yellow))).left_aligned(),
         );
-    let inner = block.inner(main_area);
+    let list_area = block.inner(main_area);
     f.render_widget(block, main_area);
 
-    // Découpe intérieure : ligne de recherche puis liste.
-    let inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(0)])
-        .split(inner);
-
-    let search_line = if state.search.is_empty() {
-        // Placeholder en accent tant qu'aucun mot-clé n'est saisi.
-        Line::from(vec![
-            Span::styled(" 🔍 ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                "Rechercher",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled(" 🔍 ", Style::default().fg(Color::DarkGray)),
-            Span::styled(state.search.clone(), Style::default().fg(Color::White)),
-        ])
-    };
-    let search = Paragraph::new(search_line);
-    f.render_widget(search, inner_chunks[0]);
-    let list_area = inner_chunks[1];
-
-    // Liste
+    // La recherche n'a plus d'encart en haut de la liste : elle vit dans le
+    // footer (invite `/`), comme la recherche de logs du runner.
     let filtered = state.filtered();
 
     if filtered.is_empty() {
@@ -129,11 +103,12 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
 
     // Barre de raccourcis : même rendu que l'écran d'exécution.
     let deps_hint = if state.show_deps {
-        ("Tab", "fermer deps")
+        ("d", "fermer deps")
     } else {
-        ("Tab", "deps")
+        ("d", "deps")
     };
     let hints = [
+        ("/", "filtrer"),
         ("↑↓", "nav"),
         ("Space", "sélec"),
         deps_hint,
@@ -141,7 +116,8 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         ("Esc", "quitter"),
     ];
 
-    // Footer sur 2 lignes, comme l'écran d'exécution : ligne d'état puis raccourcis.
+    // Footer sur 2 lignes, comme l'écran d'exécution : ligne d'état puis
+    // raccourcis (ou invite de recherche `/` si le filtre est en saisie).
     let footer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1)])
@@ -149,7 +125,18 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
 
     let status = status_line(state, &filtered, selected_count);
     f.render_widget(Paragraph::new(status), footer[0]);
-    crate::widgets::status_bar::render_hints(f, footer[1], &hints);
+    if state.search_input {
+        f.render_widget(search_bar(&state.search), footer[1]);
+    } else {
+        crate::widgets::status_bar::render_hints(f, footer[1], &hints);
+    }
+}
+
+/// Invite de recherche affichée dans le footer pendant la saisie du filtre.
+/// Calquée sur la barre de recherche des logs du runner.
+fn search_bar(query: &str) -> Paragraph<'static> {
+    let text = format!(" /{}   (Entrée valider, Esc effacer) ", query);
+    Paragraph::new(text).style(Style::default().fg(Color::Yellow))
 }
 
 /// Ligne d'état du footer : nombre de résultats, sélection et aperçu de l'action
@@ -163,7 +150,7 @@ fn status_line(
     let count_text = if state.search.is_empty() {
         format!("{} beams", total)
     } else {
-        format!("{} / {} beams", filtered.len(), total)
+        format!("« {} » · {} / {} beams", state.search, filtered.len(), total)
     };
 
     let action_text = if filtered.is_empty() {

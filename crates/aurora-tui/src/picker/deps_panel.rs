@@ -1,7 +1,7 @@
 use crate::app::PickerState;
 use ratatui::{
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
     Frame,
@@ -12,8 +12,8 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
     let content = if let Some((orig_idx, beam, _)) = filtered.get(state.selected) {
         let mut lines = vec![
             Line::from(Span::styled(
-                format!(" Dépendances de {}:", beam.name),
-                Style::default().fg(Color::White),
+                format!(" {}", beam.name),
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
         ];
