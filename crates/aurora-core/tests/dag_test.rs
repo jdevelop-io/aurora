@@ -43,11 +43,7 @@ fn test_cycle_in_unrelated_branch_is_detected() {
     // The cycle is in a branch not reachable from the intended target `root`.
     // Construction still rejects it, matching how an unknown dependency in any
     // branch fails the whole file.
-    let deps = vec![
-        ("root", vec![]),
-        ("x", vec!["y"]),
-        ("y", vec!["x"]),
-    ];
+    let deps = vec![("root", vec![]), ("x", vec!["y"]), ("y", vec!["x"])];
     let result = BeamGraph::from_deps(deps);
     assert!(matches!(result, Err(DagError::Cycle(_))));
 }

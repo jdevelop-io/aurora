@@ -53,7 +53,11 @@ async fn cancel_reaches_a_beam_queued_on_the_semaphore() {
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
 
     let scheduler = Scheduler::new(
-        vec![slow_beam("a"), slow_beam("b"), aggregate("all", &["a", "b"])],
+        vec![
+            slow_beam("a"),
+            slow_beam("b"),
+            aggregate("all", &["a", "b"]),
+        ],
         local_executors(),
         tx,
         Some(1), // single slot: one beam necessarily queues behind the other

@@ -90,7 +90,10 @@ fn warns_when_beamfile_comes_from_parent_directory() {
         .unwrap();
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(output.status.success(), "should still run from a subdirectory");
+    assert!(
+        output.status.success(),
+        "should still run from a subdirectory"
+    );
     assert!(
         stderr.contains("parent directory"),
         "must warn that the Beamfile came from a parent directory:\n{stderr}"
