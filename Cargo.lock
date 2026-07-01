@@ -220,7 +220,6 @@ dependencies = [
  "anyhow",
  "arboard",
  "aurora-core",
- "aurora-executor-api",
  "crossterm",
  "ratatui",
  "tokio",
