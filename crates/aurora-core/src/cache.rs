@@ -55,6 +55,13 @@ impl BeamCache {
             .join(format!("{}.json", safe_file_stem(beam_name)))
     }
 
+    /// Reads and deserializes a beam's cache entry, or `None` when it is absent
+    /// or malformed (a corrupt entry is treated as a miss, never a hard error).
+    fn read_entry(&self, beam_name: &str) -> Option<CacheEntry> {
+        let content = fs::read_to_string(self.entry_path(beam_name)).ok()?;
+        serde_json::from_str::<CacheEntry>(&content).ok()
+    }
+
     pub fn is_valid(
         &self,
         beam_name: &str,
@@ -62,10 +69,7 @@ impl BeamCache {
         outputs: &[String],
         base_dir: &Path,
     ) -> bool {
-        let Ok(content) = fs::read_to_string(self.entry_path(beam_name)) else {
-            return false;
-        };
-        let Ok(entry) = serde_json::from_str::<CacheEntry>(&content) else {
+        let Some(entry) = self.read_entry(beam_name) else {
             return false;
         };
         if entry.inputs_hash != inputs_hash {
@@ -102,13 +106,10 @@ impl BeamCache {
 
     /// Returns (stdout, stderr) from the cache, or ([], []) if absent.
     pub fn load_logs(&self, beam_name: &str) -> (Vec<String>, Vec<String>) {
-        let Ok(content) = fs::read_to_string(self.entry_path(beam_name)) else {
-            return (vec![], vec![]);
-        };
-        let Ok(entry) = serde_json::from_str::<CacheEntry>(&content) else {
-            return (vec![], vec![]);
-        };
-        (entry.stdout, entry.stderr)
+        match self.read_entry(beam_name) {
+            Some(entry) => (entry.stdout, entry.stderr),
+            None => (vec![], vec![]),
+        }
     }
 
     /// Hashes the files matched by `patterns` (resolved against `base_dir`).
