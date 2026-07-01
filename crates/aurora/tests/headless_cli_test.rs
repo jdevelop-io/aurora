@@ -83,6 +83,41 @@ fn unknown_dependency_exits_one() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+const CYCLIC_BEAMFILE: &str = r#"
+aurora {
+  version = "1"
+  default = "a"
+}
+
+beam "a" {
+  depends_on = ["b"]
+  run { commands = ["echo a"] }
+}
+
+beam "b" {
+  depends_on = ["a"]
+  run { commands = ["echo b"] }
+}
+"#;
+
+#[test]
+fn dependency_cycle_exits_one() {
+    let dir = fixture_dir("cycle", CYCLIC_BEAMFILE);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["a", "--no-tui"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "expected exit 1 on a dependency cycle\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn failing_beam_exits_one() {
     let dir = fixture_dir("boom", BEAMFILE);
