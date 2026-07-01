@@ -329,7 +329,7 @@ impl Scheduler {
 
             // Cache: on a valid hit, replay the recorded output and skip.
             let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
-                cache.hash_inputs_at(&working_dir, &beam.inputs).ok()
+                cache.hash_inputs_at(&working_dir, &beam.inputs).ok().flatten()
             } else {
                 None
             };

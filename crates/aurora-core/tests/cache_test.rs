@@ -98,9 +98,21 @@ fn test_hash_files() {
     let hash = cache
         .hash_inputs_at(tmp.path(), &["file.txt".to_string()])
         .unwrap();
-    assert!(!hash.is_empty());
+    assert!(hash.is_some());
     let hash2 = cache
         .hash_inputs_at(tmp.path(), &["file.txt".to_string()])
         .unwrap();
     assert_eq!(hash, hash2);
+}
+
+#[test]
+fn test_hash_inputs_none_when_no_file_matches() {
+    let tmp = tempdir().unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+    // Declared inputs that match no file must be a miss (None), not a hash of
+    // nothing that would keep the beam permanently cached.
+    let hash = cache
+        .hash_inputs_at(tmp.path(), &["does-not-exist-*.txt".to_string()])
+        .unwrap();
+    assert!(hash.is_none());
 }

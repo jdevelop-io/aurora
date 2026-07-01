@@ -108,7 +108,13 @@ impl BeamCache {
         (entry.stdout, entry.stderr)
     }
 
-    pub fn hash_inputs_at(&self, base_dir: &Path, patterns: &[String]) -> Result<String> {
+    /// Hashes the files matched by `patterns` (resolved against `base_dir`).
+    ///
+    /// Returns `None` when no file matches: with declared inputs but nothing on
+    /// disk, hashing yields the empty-hasher constant, which combined with
+    /// present outputs would make the beam permanently cached. `None` means
+    /// "cannot key the cache", i.e. a miss, so the beam runs.
+    pub fn hash_inputs_at(&self, base_dir: &Path, patterns: &[String]) -> Result<Option<String>> {
         let mut hasher = Sha256::new();
         let mut files: Vec<PathBuf> = vec![];
 
@@ -122,6 +128,10 @@ impl BeamCache {
             }
         }
 
+        if files.is_empty() {
+            return Ok(None);
+        }
+
         files.sort();
         for file in files {
             let content = fs::read(&file)?;
@@ -130,6 +140,6 @@ impl BeamCache {
             hasher.update(&content);
         }
 
-        Ok(format!("{:x}", hasher.finalize()))
+        Ok(Some(format!("{:x}", hasher.finalize())))
     }
 }
