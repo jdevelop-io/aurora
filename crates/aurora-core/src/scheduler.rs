@@ -294,12 +294,30 @@ async fn run_beam_task(
 
     let _permit = match sem {
         // The semaphore is owned by the scheduler and never closed while the
-        // run is in flight, so acquisition cannot fail here.
-        Some(s) => Some(
-            s.acquire_owned()
-                .await
-                .expect("run semaphore is never closed during a run"),
-        ),
+        // run is in flight, so acquisition cannot fail here. Racing the wait
+        // against cancellation lets a beam queued for a parallelism slot be
+        // cancelled before it ever starts, instead of only once it runs.
+        Some(s) => {
+            tokio::select! {
+                permit = s.acquire_owned() => {
+                    Some(permit.expect("run semaphore is never closed during a run"))
+                }
+                _ = &mut cancel_rx => {
+                    let _ = tx
+                        .send(SchedulerEvent::BeamCompleted {
+                            name: beam.name.clone(),
+                            status: BeamStatus::Cancelled,
+                        })
+                        .await;
+                    let outcome = if beam.allow_failure {
+                        BeamOutcome::Ok
+                    } else {
+                        BeamOutcome::Cancelled
+                    };
+                    return (beam.name, outcome);
+                }
+            }
+        }
         None => None,
     };
 
