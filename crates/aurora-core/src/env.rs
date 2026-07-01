@@ -1,5 +1,5 @@
 use crate::ast::{EnvValue, Environment};
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -75,6 +75,23 @@ pub fn evaluate(env_block: &Environment, working_dir: &Path) -> Result<HashMap<S
                     .env_clear()
                     .envs(&result)
                     .output()?;
+                // A non-zero exit is a configuration error: failing here beats
+                // silently binding an empty variable that would break the beams
+                // relying on it in ways that are hard to diagnose.
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    bail!(
+                        "environment variable '{}': shell command `{}` failed ({}){}",
+                        var.name,
+                        cmd,
+                        output.status,
+                        if stderr.trim().is_empty() {
+                            String::new()
+                        } else {
+                            format!(": {}", stderr.trim())
+                        }
+                    );
+                }
                 String::from_utf8_lossy(&output.stdout)
                     .trim_end_matches('\n')
                     .to_string()

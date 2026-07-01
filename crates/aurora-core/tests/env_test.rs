@@ -41,6 +41,25 @@ fn evaluate_empty_block_applies_allowlist() {
     std::env::remove_var("AURORA_TEST_SECRET2");
 }
 
+/// A `shell(...)` command that exits non-zero is a configuration error and
+/// must fail loudly, not silently produce an empty variable.
+#[test]
+fn evaluate_fails_when_shell_command_exits_non_zero() {
+    let block = Environment {
+        vars: vec![EnvVar {
+            name: "BROKEN".to_string(),
+            value: EnvValue::Shell("exit 3".to_string()),
+        }],
+    };
+
+    let result = evaluate(&block, Path::new("."));
+
+    assert!(
+        result.is_err(),
+        "a failing environment shell command must return an error"
+    );
+}
+
 /// `shell(...)` variables are evaluated sequentially and each is visible to
 /// the following ones.
 #[test]
