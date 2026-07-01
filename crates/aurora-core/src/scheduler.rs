@@ -150,29 +150,51 @@ impl Scheduler {
         // One cancellation sender per spawned beam: receiving it inside the
         // task makes the `select!` win and triggers the cancellation.
         let mut cancels: HashMap<String, oneshot::Sender<()>> = HashMap::new();
+        // Maps each running task's id to its beam name, so a panicked task
+        // (whose return value is lost) can still be attributed to its beam.
+        let mut task_names: HashMap<tokio::task::Id, String> = HashMap::new();
 
         for n in &nodes {
             if pre.contains(n) {
                 continue;
             }
             if remaining[n] == 0 {
-                let cancel_tx = self.spawn_beam(&mut set, &semaphore, n);
+                let (cancel_tx, id) = self.spawn_beam(&mut set, &semaphore, n);
                 cancels.insert(n.clone(), cancel_tx);
+                task_names.insert(id, n.clone());
                 spawned.insert(n.clone());
             }
         }
 
         loop {
             tokio::select! {
-                joined = set.join_next() => {
+                joined = set.join_next_with_id() => {
                     let Some(result) = joined else { break };
                     let (name, outcome) = match result {
-                        Ok(pair) => pair,
-                        Err(_) => {
-                            // Panicked task: its dependents cannot be unblocked;
-                            // the loop ends once the set is empty.
+                        Ok((id, pair)) => {
+                            task_names.remove(&id);
+                            pair
+                        }
+                        Err(join_err) => {
+                            // Panicked (or aborted) task: it never emitted its
+                            // terminal event. Recover its beam name to report it
+                            // as failed and cancel its dependents, so nothing is
+                            // left stuck Pending.
                             overall_success = false;
-                            continue;
+                            let Some(name) = task_names.remove(&join_err.id()) else {
+                                continue;
+                            };
+                            let _ = self
+                                .tx
+                                .send(SchedulerEvent::BeamCompleted {
+                                    name: name.clone(),
+                                    status: BeamStatus::Failed {
+                                        exit_code: -1,
+                                        duration: Duration::ZERO,
+                                    },
+                                })
+                                .await;
+                            (name, BeamOutcome::Failed)
                         }
                     };
 
@@ -186,9 +208,10 @@ impl Scheduler {
                                 if let Some(r) = remaining.get_mut(&dep) {
                                     *r = r.saturating_sub(1);
                                     if *r == 0 {
-                                        let cancel_tx =
+                                        let (cancel_tx, id) =
                                             self.spawn_beam(&mut set, &semaphore, &dep);
                                         cancels.insert(dep.clone(), cancel_tx);
+                                        task_names.insert(id, dep.clone());
                                         spawned.insert(dep);
                                     }
                                 }
@@ -246,12 +269,14 @@ impl Scheduler {
             .expect("no local executor registered")
     }
 
+    /// Spawns a beam task and returns its cancellation sender together with the
+    /// spawned task's id (used to attribute a panicked task to its beam).
     fn spawn_beam(
         &self,
         set: &mut JoinSet<(String, BeamOutcome)>,
         semaphore: &Option<Arc<Semaphore>>,
         beam_name: &str,
-    ) -> oneshot::Sender<()> {
+    ) -> (oneshot::Sender<()>, tokio::task::Id) {
         let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
 
         let beam = self.beams[beam_name].clone();
@@ -263,7 +288,7 @@ impl Scheduler {
         let cache_enabled = self.cache_enabled;
         let working_dir = self.working_dir.clone();
 
-        set.spawn(async move {
+        let handle = set.spawn(async move {
             let _permit = match sem {
                 Some(s) => Some(s.acquire_owned().await.unwrap()),
                 None => None,
@@ -397,7 +422,7 @@ impl Scheduler {
             (beam.name, outcome)
         });
 
-        cancel_tx
+        (cancel_tx, handle.id())
     }
 }
 
