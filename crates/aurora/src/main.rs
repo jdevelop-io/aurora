@@ -6,11 +6,7 @@ mod plugins;
 
 use anyhow::{bail, Result};
 use aurora::headless;
-use aurora_core::{
-    env::evaluate,
-    parser::parse,
-    scheduler::{Scheduler, SchedulerEvent},
-};
+use aurora_core::{env::evaluate, parser::parse, scheduler::SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
@@ -185,17 +181,15 @@ async fn main() -> Result<()> {
     let no_cache = matches.get_flag("no-cache");
 
     let beams = beam_file.beams.clone();
-    let mut scheduler = Scheduler::new(
+    let scheduler = aurora::build_scheduler(
         beams,
         executors.clone(),
         tx,
         beam_file.config.as_ref().and_then(|c| c.max_parallelism),
         working_dir.clone(),
         env.clone(),
+        !no_cache,
     );
-    if no_cache {
-        scheduler = scheduler.without_cache();
-    }
 
     if interactive {
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
@@ -228,17 +222,15 @@ async fn main() -> Result<()> {
         ) {
             let (tx, rx) = mpsc::channel(128);
             let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
-            let mut scheduler = Scheduler::new(
+            let scheduler = aurora::build_scheduler(
                 rerun_beams.clone(),
                 rerun_executors.clone(),
                 tx,
                 rerun_max_par,
                 rerun_working_dir.clone(),
                 rerun_env.clone(),
+                !no_cache,
             );
-            if no_cache {
-                scheduler = scheduler.without_cache();
-            }
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(e) = scheduler
                     .run_cancellable(&root, &pre_success, cancel_rx)
