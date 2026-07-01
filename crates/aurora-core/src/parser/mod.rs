@@ -12,7 +12,7 @@ struct AuroraParser;
 pub fn parse(input: &str) -> Result<BeamFile> {
     let pairs = AuroraParser::parse(Rule::beamfile, input).context("Failed to parse Beamfile")?;
 
-    let mut bf = BeamFile {
+    let mut beam_file = BeamFile {
         config: None,
         variables: vec![],
         environment: None,
@@ -25,7 +25,7 @@ pub fn parse(input: &str) -> Result<BeamFile> {
                 match block_pair.as_rule() {
                     Rule::block => {
                         let inner = block_pair.into_inner().next().unwrap();
-                        parse_block(inner, &mut bf)?;
+                        parse_block(inner, &mut beam_file)?;
                     }
                     Rule::EOI => {}
                     _ => {}
@@ -34,7 +34,7 @@ pub fn parse(input: &str) -> Result<BeamFile> {
         }
     }
 
-    Ok(bf)
+    Ok(beam_file)
 }
 
 /// Resolves `var.<name>` references in executor configs against the current
@@ -44,13 +44,13 @@ pub fn parse(input: &str) -> Result<BeamFile> {
 /// (applied to `Variable.default` post-parse) are honored. Resolving inside
 /// [`parse`] would freeze the executor config to the original defaults and
 /// make `--var` a no-op for executor fields such as the Docker image.
-pub fn resolve_variables(bf: &mut BeamFile) {
-    let vars: HashMap<String, String> = bf
+pub fn resolve_variables(beam_file: &mut BeamFile) {
+    let vars: HashMap<String, String> = beam_file
         .variables
         .iter()
         .map(|v| (v.name.clone(), v.default.clone()))
         .collect();
-    for beam in &mut bf.beams {
+    for beam in &mut beam_file.beams {
         if let Some(run) = &mut beam.run {
             if let Some(exec_cfg) = &mut run.executor {
                 for val in exec_cfg.config.values_mut() {
