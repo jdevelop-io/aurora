@@ -80,6 +80,27 @@ beam "qa"   { depends_on = ["lint", "test"] }
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn warns_when_beamfile_comes_from_parent_directory() {
+    let parent = fixture_dir("parent", BEAMFILE);
+    let sub = parent.join("subdir");
+    fs::create_dir_all(&sub).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["ok", "--no-tui"])
+        .current_dir(&sub)
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "should still run from a subdirectory");
+    assert!(
+        stderr.contains("parent directory"),
+        "must warn that the Beamfile came from a parent directory:\n{stderr}"
+    );
+    let _ = fs::remove_dir_all(&parent);
+}
+
 const BROKEN_BEAMFILE: &str = r#"
 aurora {
   version = "1"

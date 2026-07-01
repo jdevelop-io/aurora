@@ -296,10 +296,20 @@ async fn main() -> Result<()> {
 }
 
 fn find_beamfile() -> Result<PathBuf> {
-    let mut dir = std::env::current_dir()?;
+    let start = std::env::current_dir()?;
+    let mut dir = start.clone();
     loop {
         let candidate = dir.join("Beamfile");
         if candidate.exists() {
+            // A Beamfile runs arbitrary commands. When it is picked up from an
+            // ancestor directory (not the one Aurora was launched in), warn:
+            // the user may not expect that ancestor's beams to execute.
+            if dir != start {
+                eprintln!(
+                    "aurora: using Beamfile from a parent directory: {}",
+                    candidate.display()
+                );
+            }
             return Ok(candidate);
         }
         match dir.parent() {
