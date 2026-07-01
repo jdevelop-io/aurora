@@ -34,7 +34,7 @@ By default the binary lands in `~/.local/bin`. Override the target directory or 
 specific version with environment variables:
 
 ```bash
-AURORA_INSTALL_DIR=/usr/local/bin AURORA_VERSION=v0.6.0 \
+AURORA_INSTALL_DIR=/usr/local/bin AURORA_VERSION=v0.7.0 \
   curl -fsSL https://raw.githubusercontent.com/jdevelop-io/aurora/main/install.sh | sh
 ```
 
@@ -275,7 +275,7 @@ It adds a skill (Aurora's model, the Beamfile DSL, and the CLI), an `aurora-expe
 
 ## Status
 
-Project at v0.6.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place.
+Project at v0.7.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place.
 
 ## License
 

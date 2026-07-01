@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "aurora"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -161,7 +161,7 @@ dependencies = [
 
 [[package]]
 name = "aurora-core"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "aurora-executor-api"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "aurora-executor-docker"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "aurora-executor-local"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -216,7 +216,7 @@ dependencies = [
 
 [[package]]
 name = "aurora-tui"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "arboard",
