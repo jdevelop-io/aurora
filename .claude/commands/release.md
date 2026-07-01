@@ -39,19 +39,29 @@ If the tree is not clean, if you are not on `main`, if `main` is behind
 
 ## 3. Bump the files
 
-- `Cargo.toml`: replace the `version = "<current>"` line (start of line) with `version = "NEW"`.
-- `Cargo.lock`: resynchronized via cargo (step 4, the build updates the `aurora*` entries).
-- `README.md`:
-  - `## Status` section: the `Project at v…` mention must point to `vNEW`.
-  - Install example: `AURORA_VERSION=v…` must point to `vNEW`.
+You already know `CURRENT` (from step 1) and `NEW`. Make these three literal
+replacements with the **Edit tool** (not `sed`): the current version string is
+known exactly, so a literal old -> new edit is deterministic and portable.
+Avoid `sed -i` here: on macOS/BSD `-i` consumes the next flag as a backup
+suffix (so `sed -i -E` silently disables extended regexps and breaks `+`/`\1`),
+which does not fail loudly and can corrupt the bump.
+
+- `Cargo.toml`: `version = "CURRENT"` -> `version = "NEW"` (the line under
+  `[workspace.package]`).
+- `README.md`, `## Status` section: `Project at vCURRENT` -> `Project at vNEW`.
+- `README.md`, install example: `AURORA_VERSION=vCURRENT` -> `AURORA_VERSION=vNEW`.
+- `Cargo.lock`: not edited here; cargo resynchronizes the `aurora*` entries in
+  step 4.
+
+If a portable one-liner is ever needed instead of the Edit tool, use the
+suffix-attached form that works on both GNU and BSD sed, then delete the
+backup (again with literal `CURRENT`/`NEW`, no capture groups):
 
 ```bash
-sed -i -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "NEW"/' Cargo.toml
-sed -i -E 's/(Project at v)[0-9]+\.[0-9]+(\.[0-9]+)?/\1NEW/' README.md
-sed -i -E 's/(AURORA_VERSION=v)[0-9]+\.[0-9]+\.[0-9]+/\1NEW/' README.md
+sed -i.bak 's/version = "CURRENT"/version = "NEW"/' Cargo.toml && rm -f Cargo.toml.bak
+sed -i.bak 's/Project at vCURRENT/Project at vNEW/' README.md && rm -f README.md.bak
+sed -i.bak 's/AURORA_VERSION=vCURRENT/AURORA_VERSION=vNEW/' README.md && rm -f README.md.bak
 ```
-
-(Replace `NEW` with the actual number in the commands.)
 
 ## 4. Validate (cargo)
 
