@@ -10,6 +10,19 @@ fn test_cache_miss_on_first_run() {
 }
 
 #[test]
+fn test_new_does_not_create_dir_until_save() {
+    let tmp = tempdir().unwrap();
+    let cache_dir = tmp.path().join("not-yet");
+    let cache = BeamCache::new(cache_dir.clone());
+    assert!(
+        !cache_dir.exists(),
+        "the cache directory must not be created eagerly (e.g. under --no-cache)"
+    );
+    cache.save("b", "h").unwrap();
+    assert!(cache_dir.exists(), "first save creates the cache directory");
+}
+
+#[test]
 fn test_cache_hit_after_save() {
     let tmp = tempdir().unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());

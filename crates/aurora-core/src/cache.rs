@@ -43,8 +43,10 @@ fn safe_file_stem(beam_name: &str) -> String {
 }
 
 impl BeamCache {
+    /// Creates a cache handle. The directory is created lazily on the first
+    /// write, so a run that never persists anything (for example `--no-cache`)
+    /// leaves no `.aurora/cache` directory behind.
     pub fn new(cache_dir: PathBuf) -> Self {
-        fs::create_dir_all(&cache_dir).ok();
         Self { cache_dir }
     }
 
@@ -93,6 +95,7 @@ impl BeamCache {
             stderr: stderr.to_vec(),
         };
         let content = serde_json::to_string_pretty(&entry)?;
+        fs::create_dir_all(&self.cache_dir)?;
         fs::write(self.entry_path(beam_name), content)?;
         Ok(())
     }
