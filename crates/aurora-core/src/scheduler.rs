@@ -1,4 +1,4 @@
-use crate::ast::Beam;
+use crate::ast::{Beam, ConditionClause, ConditionOp};
 use crate::cache::BeamCache;
 use crate::dag::BeamGraph;
 use anyhow::Result;
@@ -23,8 +23,12 @@ pub enum BeamStatus {
 
 #[derive(Debug, Clone)]
 pub enum SkipReason {
+    /// Inputs unchanged and outputs present: cached result replayed.
     Cached,
-    ConditionFalse,
+    /// The beam's `skip_if` command succeeded.
+    SkipIf,
+    /// The beam's `condition { }` block evaluated to false.
+    ConditionNotMet,
 }
 
 #[derive(Debug)]
@@ -275,6 +279,7 @@ impl Scheduler {
                 let skip = tokio::process::Command::new("sh")
                     .arg("-c")
                     .arg(cond)
+                    .current_dir(&working_dir)
                     .env_clear()
                     .envs(&env)
                     .status()
@@ -286,7 +291,41 @@ impl Scheduler {
                         .send(SchedulerEvent::BeamCompleted {
                             name: beam.name.clone(),
                             status: BeamStatus::Skipped {
-                                reason: SkipReason::ConditionFalse,
+                                reason: SkipReason::SkipIf,
+                            },
+                        })
+                        .await;
+                    return (beam.name, BeamOutcome::Ok);
+                }
+            }
+
+            // A `condition { }` block gates execution: the beam runs only when
+            // the condition holds (all/any of the shell clauses succeed).
+            if let Some(condition) = &beam.condition {
+                let mut clause_results = Vec::with_capacity(condition.clauses.len());
+                for ConditionClause::Shell(cmd) in &condition.clauses {
+                    let ok = tokio::process::Command::new("sh")
+                        .arg("-c")
+                        .arg(cmd)
+                        .current_dir(&working_dir)
+                        .env_clear()
+                        .envs(&env)
+                        .status()
+                        .await
+                        .map(|s| s.success())
+                        .unwrap_or(false);
+                    clause_results.push(ok);
+                }
+                let met = match condition.op {
+                    ConditionOp::All => clause_results.iter().all(|&ok| ok),
+                    ConditionOp::Any => clause_results.iter().any(|&ok| ok),
+                };
+                if !met {
+                    let _ = tx
+                        .send(SchedulerEvent::BeamCompleted {
+                            name: beam.name.clone(),
+                            status: BeamStatus::Skipped {
+                                reason: SkipReason::ConditionNotMet,
                             },
                         })
                         .await;

@@ -33,7 +33,8 @@ fn recap_line(name: &str, status: &BeamStatus, width: usize, use_color: bool) ->
         BeamStatus::Skipped { reason } => {
             let r = match reason {
                 SkipReason::Cached => "cached",
-                SkipReason::ConditionFalse => "condition false",
+                SkipReason::SkipIf => "skip_if",
+                SkipReason::ConditionNotMet => "condition not met",
             };
             ("SKIP", "33", r.to_string())
         }
