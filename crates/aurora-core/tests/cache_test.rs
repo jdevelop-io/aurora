@@ -104,6 +104,27 @@ fn test_malicious_beam_name_stays_in_cache_dir() {
 }
 
 #[test]
+fn test_save_and_load_logs_round_trip() {
+    let tmp = tempdir().unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+    let stdout = vec!["out line 1".to_string(), "out line 2".to_string()];
+    let stderr = vec!["err line".to_string()];
+
+    cache.save_with_logs("b", "h", &stdout, &stderr).unwrap();
+    let (loaded_out, loaded_err) = cache.load_logs("b");
+
+    assert_eq!(loaded_out, stdout);
+    assert_eq!(loaded_err, stderr);
+}
+
+#[test]
+fn test_load_logs_absent_entry_is_empty() {
+    let tmp = tempdir().unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+    assert_eq!(cache.load_logs("missing"), (vec![], vec![]));
+}
+
+#[test]
 fn test_hash_files() {
     let tmp = tempdir().unwrap();
     fs::write(tmp.path().join("file.txt"), b"content").unwrap();
