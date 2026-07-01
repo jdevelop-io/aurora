@@ -121,11 +121,10 @@ impl Scheduler {
             .collect();
         let graph = BeamGraph::from_deps(deps)?;
 
-        let nodes: HashSet<String> = graph
-            .execution_levels(root)?
-            .into_iter()
-            .flatten()
-            .collect();
+        // The scheduler is event-driven (in-degree based), so it only needs the
+        // set of beams in the target's closure, not any level grouping. Cycles
+        // are already rejected by `from_deps`.
+        let nodes: HashSet<String> = graph.transitive_deps(root).into_iter().collect();
 
         let semaphore = self
             .max_parallelism
