@@ -66,6 +66,7 @@ pub struct Scheduler {
     tx: mpsc::Sender<SchedulerEvent>,
     max_parallelism: Option<usize>,
     cache: Arc<BeamCache>,
+    cache_enabled: bool,
     working_dir: PathBuf,
     env: HashMap<String, String>,
 }
@@ -86,9 +87,17 @@ impl Scheduler {
             tx,
             max_parallelism,
             cache,
+            cache_enabled: true,
             working_dir,
             env,
         }
+    }
+
+    /// Disables the cache for this run: no cache hit is honored and no result
+    /// is persisted. Backs the `--no-cache` CLI flag.
+    pub fn without_cache(mut self) -> Self {
+        self.cache_enabled = false;
+        self
     }
 
     /// Non-cancellable variant, the historical signature: delegates with a
@@ -247,6 +256,7 @@ impl Scheduler {
         let tx = self.tx.clone();
         let sem = semaphore.clone();
         let cache = self.cache.clone();
+        let cache_enabled = self.cache_enabled;
         let working_dir = self.working_dir.clone();
 
         set.spawn(async move {
@@ -333,7 +343,7 @@ impl Scheduler {
                 }
             }
 
-            let inputs_hash = if !beam.inputs.is_empty() {
+            let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
                 cache.hash_inputs_at(&working_dir, &beam.inputs).ok()
             } else {
                 None

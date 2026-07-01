@@ -167,8 +167,10 @@ async fn main() -> Result<()> {
         .map(|b| (b.name.clone(), b.depends_on.clone()))
         .collect();
 
+    let no_cache = matches.get_flag("no-cache");
+
     let beams = beam_file.beams.clone();
-    let scheduler = Scheduler::new(
+    let mut scheduler = Scheduler::new(
         beams,
         executors.clone(),
         tx,
@@ -176,6 +178,9 @@ async fn main() -> Result<()> {
         working_dir.clone(),
         env.clone(),
     );
+    if no_cache {
+        scheduler = scheduler.without_cache();
+    }
 
     if interactive {
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
@@ -208,7 +213,7 @@ async fn main() -> Result<()> {
         ) {
             let (tx, rx) = mpsc::channel(128);
             let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
-            let scheduler = Scheduler::new(
+            let mut scheduler = Scheduler::new(
                 rerun_beams.clone(),
                 rerun_executors.clone(),
                 tx,
@@ -216,6 +221,9 @@ async fn main() -> Result<()> {
                 rerun_working_dir.clone(),
                 rerun_env.clone(),
             );
+            if no_cache {
+                scheduler = scheduler.without_cache();
+            }
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(e) = scheduler
                     .run_cancellable(&root, &pre_success, cancel_rx)
