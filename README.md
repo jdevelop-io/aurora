@@ -252,8 +252,6 @@ The project is a Cargo workspace split into crates:
 | `aurora-executor-local`  | Local shell executor                                        |
 | `aurora-executor-docker` | Docker executor                                             |
 
-Design documents and implementation plans live in `docs/plans/`.
-
 ## Development
 
 Aurora builds with Aurora (dogfooding). With Cargo directly:
@@ -277,7 +275,7 @@ It adds a skill (Aurora's model, the Beamfile DSL, and the CLI), an `aurora-expe
 
 ## Status
 
-Project at v0.6.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place. See `docs/plans/` for the roadmap.
+Project at v0.6.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place.
 
 ## License
 

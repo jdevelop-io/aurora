@@ -111,11 +111,8 @@ Every executor implements the async `Executor` trait from `aurora-executor-api`.
 
 ## Conventions
 
-- **Language**: code comments and git commit messages in this repository are written in **French**; user-facing
-  surfaces (`README.md`, CLI `--help` text, `docs/`) are in English. Match the existing French style when editing inline
-  comments so the codebase stays consistent.
+- **Language**: code comments and git commit messages in this repository are written in **English**; user-facing
+  surfaces (`README.md`, CLI `--help` text, `docs/`) are also in English.
 - **Commits**: gitmoji + Conventional Commits (e.g. `:sparkles: feat(tui): ...`). Never add Claude/Anthropic attribution
   to commits, tags, or PRs.
-- **Design docs**: feature designs and implementation plans live in `docs/plans/` (and `docs/specs/`), named by date.
-  Consult them for the rationale behind larger features.
 - This is an MIT-licensed public open-source project under the `jdevelop-io` org.
