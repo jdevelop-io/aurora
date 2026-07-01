@@ -108,14 +108,6 @@ impl BeamCache {
         (entry.stdout, entry.stderr)
     }
 
-    pub fn invalidate(&self, beam_name: &str) -> Result<()> {
-        let path = self.entry_path(beam_name);
-        if path.exists() {
-            fs::remove_file(path)?;
-        }
-        Ok(())
-    }
-
     pub fn hash_inputs_at(&self, base_dir: &Path, patterns: &[String]) -> Result<String> {
         let mut hasher = Sha256::new();
         let mut files: Vec<PathBuf> = vec![];
