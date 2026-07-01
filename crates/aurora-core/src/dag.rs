@@ -43,6 +43,13 @@ impl BeamGraph {
             }
         }
 
+        // Reject cycles at construction, on the whole graph. This is consistent
+        // with the unknown-dependency check above (also global): a cycle in any
+        // branch fails the file, not only one reachable from a given target.
+        if let Err(cycle) = toposort(&graph, None) {
+            return Err(DagError::Cycle(graph[cycle.node_id()].clone()));
+        }
+
         Ok(BeamGraph { graph, index })
     }
 
