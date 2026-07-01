@@ -11,12 +11,12 @@ fn left_right_switch_focus() {
     assert_eq!(exec.focus, FocusPanel::Beams);
 
     exec.handle_key(key(KeyCode::Right));
-    assert_eq!(exec.focus, FocusPanel::Logs, "Droite -> logs");
+    assert_eq!(exec.focus, FocusPanel::Logs, "Right -> logs");
 
     exec.handle_key(key(KeyCode::Left));
-    assert_eq!(exec.focus, FocusPanel::Beams, "Gauche -> beams");
+    assert_eq!(exec.focus, FocusPanel::Beams, "Left -> beams");
 
-    // Idempotent : rester sur le même panneau ne casse rien.
+    // Idempotent: staying on the same panel does not break anything.
     exec.handle_key(key(KeyCode::Left));
     assert_eq!(exec.focus, FocusPanel::Beams);
     exec.handle_key(key(KeyCode::Right));
@@ -30,14 +30,14 @@ fn d_toggles_deps_panel() {
         ("build".to_string(), vec!["lint".to_string()]),
         ("lint".to_string(), vec![]),
     ]);
-    // Masqué par défaut pour préserver le layout beams/logs habituel.
+    // Hidden by default to preserve the usual beams/logs layout.
     assert!(!exec.show_deps);
 
     exec.handle_key(key(KeyCode::Char('d')));
-    assert!(exec.show_deps, "d -> affiche les dépendances");
+    assert!(exec.show_deps, "d -> shows the dependencies");
 
     exec.handle_key(key(KeyCode::Char('d')));
-    assert!(!exec.show_deps, "d -> masque les dépendances");
+    assert!(!exec.show_deps, "d -> hides the dependencies");
 }
 
 #[test]
@@ -48,6 +48,6 @@ fn d_does_not_change_focus() {
     assert_eq!(
         exec.focus,
         FocusPanel::Beams,
-        "le toggle deps ne touche pas au focus"
+        "toggling deps does not touch the focus"
     );
 }

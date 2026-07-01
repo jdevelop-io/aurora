@@ -35,58 +35,58 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(" ↑↓ / jk    Naviguer"),
-            Line::from(" Space      Sélectionner/désélectionner"),
-            Line::from(" Tab        Afficher les dépendances"),
-            Line::from(" Enter      Lancer le beam sélectionné"),
-            Line::from(" Esc / q    Quitter"),
+            Line::from(" ↑↓ / jk    Navigate"),
+            Line::from(" Space      Select/deselect"),
+            Line::from(" Tab        Show dependencies"),
+            Line::from(" Enter      Run the selected beam"),
+            Line::from(" Esc / q    Quit"),
             Line::from(""),
             Line::from(Span::styled(
-                " Recherche",
+                " Search",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(" (typer)    Filtrer par nom/description"),
-            Line::from(" Backspace  Effacer un caractère"),
+            Line::from(" (type)     Filter by name/description"),
+            Line::from(" Backspace  Delete a character"),
         ],
         HelpContext::Execution => vec![
             Line::from(Span::styled(
-                " Exécution",
+                " Execution",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(" ↑↓ / jk    Naviguer beams (ou scroller logs si focus logs)"),
-            Line::from(" ←→ / Tab   Basculer focus beams / logs"),
-            Line::from(" PgUp/Dn    Scroller les logs par page"),
-            Line::from(" Ctrl+U/D   Demi-page haut / bas"),
-            Line::from(" g / G      Haut / bas des logs"),
-            Line::from(" /          Filtrer les beams (focus beams) / chercher (focus logs)"),
-            Line::from(" n / N      Correspondance suivante / précédente"),
-            Line::from(" y          Copier les logs dans le clipboard"),
-            Line::from(" d          Afficher / masquer les dépendances"),
-            Line::from(" r          Re-lancer le beam (si Failed/Cancelled)"),
-            Line::from(" q          Annuler le beam sélectionné (si en cours)"),
-            Line::from(" ?          Fermer cette aide"),
-            Line::from(" Esc        Quitter"),
+            Line::from(" ↑↓ / jk    Navigate beams (or scroll logs if logs focused)"),
+            Line::from(" ←→ / Tab   Toggle focus beams / logs"),
+            Line::from(" PgUp/Dn    Scroll the logs by page"),
+            Line::from(" Ctrl+U/D   Half-page up / down"),
+            Line::from(" g / G      Top / bottom of logs"),
+            Line::from(" /          Filter the beams (beams focused) / search (logs focused)"),
+            Line::from(" n / N      Next / previous match"),
+            Line::from(" y          Copy the logs to the clipboard"),
+            Line::from(" d          Show / hide the dependencies"),
+            Line::from(" r          Rerun the beam (if Failed/Cancelled)"),
+            Line::from(" q          Cancel the selected beam (if running)"),
+            Line::from(" ?          Close this help"),
+            Line::from(" Esc        Quit"),
         ],
         HelpContext::LogView => vec![
             Line::from(Span::styled(
-                " Vue logs",
+                " Log view",
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(" ↑↓ / jk    Scroller ligne par ligne"),
-            Line::from(" PgUp/Dn    Scroller par page"),
-            Line::from(" G          Aller au bas (reprend l'auto-scroll)"),
-            Line::from(" y          Copier les logs"),
-            Line::from(" Esc        Retour à la vue split"),
-            Line::from(" q          Quitter"),
+            Line::from(" ↑↓ / jk    Scroll line by line"),
+            Line::from(" PgUp/Dn    Scroll by page"),
+            Line::from(" G          Go to the bottom (resumes auto-scroll)"),
+            Line::from(" y          Copy the logs"),
+            Line::from(" Esc        Back to the split view"),
+            Line::from(" q          Quit"),
         ],
     };
 
@@ -94,7 +94,7 @@ pub fn render_help_popup(f: &mut Frame, area: Rect, ctx: HelpContext) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Aide — ? pour fermer "),
+                .title(" Help: ? to close "),
         )
         .alignment(Alignment::Left);
     f.render_widget(popup, popup_area);

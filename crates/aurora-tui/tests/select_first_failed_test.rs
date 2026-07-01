@@ -49,7 +49,7 @@ fn selects_first_failed_beam() {
     let found = state.select_first_failed();
 
     assert!(found);
-    assert_eq!(state.selected, 1); // build, le premier Failed
+    assert_eq!(state.selected, 1); // build, the first Failed
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn ignores_cancelled_and_success() {
     let found = state.select_first_failed();
 
     assert!(found);
-    assert_eq!(state.selected, 2); // deploy, premier Failed (build est Cancelled)
+    assert_eq!(state.selected, 2); // deploy, the first Failed (build is Cancelled)
 }
 
 #[test]
@@ -98,5 +98,5 @@ fn does_not_move_when_no_failed() {
     let found = state.select_first_failed();
 
     assert!(!found);
-    assert_eq!(state.selected, 1); // inchangé
+    assert_eq!(state.selected, 1); // unchanged
 }

@@ -30,8 +30,8 @@ fn progress_fill_sums_to_bar_width() {
 
 #[test]
 fn hint_text_joins_keys_labels_with_separator() {
-    let hints = [("Tab", "focus"), ("/", "cherche"), ("q", "quitter")];
-    assert_eq!(hint_text(&hints), "Tab focus · / cherche · q quitter");
+    let hints = [("Tab", "focus"), ("/", "search"), ("q", "quit")];
+    assert_eq!(hint_text(&hints), "Tab focus · / search · q quit");
 }
 
 #[test]
@@ -49,21 +49,21 @@ fn progress_fill_width_none_when_no_total_or_no_width() {
 
 #[test]
 fn fit_hints_uses_full_set_when_it_fits() {
-    let full = [("↑↓", "beam"), ("/", "cherche"), ("q", "quitter")];
-    let essential = [("/", "cherche"), ("q", "quitter")];
+    let full = [("↑↓", "beam"), ("/", "search"), ("q", "quit")];
+    let essential = [("/", "search"), ("q", "quit")];
     assert_eq!(fit_hints(&full, &essential, 200), &full[..]);
 }
 
 #[test]
 fn fit_hints_falls_back_to_essential_when_too_narrow() {
-    let full = [("↑↓", "beam"), ("/", "cherche"), ("q", "quitter")];
-    let essential = [("/", "cherche"), ("q", "quitter")];
+    let full = [("↑↓", "beam"), ("/", "search"), ("q", "quit")];
+    let essential = [("/", "search"), ("q", "quit")];
     assert_eq!(fit_hints(&full, &essential, 8), &essential[..]);
 }
 
 #[test]
 fn justify_gaps_distributes_space_evenly() {
-    // 3 éléments, 2 intervalles ; contenu 20, cible 40 -> 20 d'espace réparti
+    // 3 items, 2 gaps; content 20, target 40 -> 20 of space distributed
     assert_eq!(justify_gaps(20, 3, 40), Some(vec![10, 10]));
 }
 
@@ -74,7 +74,7 @@ fn justify_gaps_puts_remainder_on_first_gaps() {
 
 #[test]
 fn justify_gaps_none_when_too_narrow() {
-    // minimum = contenu + 3 par intervalle = 20 + 6 = 26
+    // minimum = content + 3 per gap = 20 + 6 = 26
     assert_eq!(justify_gaps(20, 3, 25), None);
 }
 

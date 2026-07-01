@@ -17,11 +17,11 @@ pub fn render_beam_list(
     area: Rect,
     focused: bool,
 ) {
-    // Titre : « Aurora », complété par le filtre actif le cas échéant.
+    // Title: "Aurora", appended with the active filter if any.
     let title = if state.beam_filter.is_empty() {
         " Aurora ".to_string()
     } else {
-        format!(" Aurora — /{} ", state.beam_filter)
+        format!(" Aurora: /{} ", state.beam_filter)
     };
 
     let items: Vec<ListItem> = state
@@ -38,8 +38,8 @@ pub fn render_beam_list(
             let color = status_color(&beam.status);
             let duration_str = duration_label(&beam.status, beam);
 
-            // Largeur intérieure du panneau : on réserve la durée à droite et on
-            // ajuste le nom pour que la ligne ne déborde jamais de la bordure.
+            // Inner width of the panel: we reserve the duration on the right and
+            // adjust the name so the line never overflows the border.
             let inner = area.width.saturating_sub(2) as usize;
             let prefix = format!("  {}  ", symbol);
             let prefix_w = prefix.chars().count();
@@ -97,8 +97,8 @@ fn duration_label(status: &BeamStatus, beam: &BeamView) -> String {
     }
 }
 
-/// Format compact et borné d'une durée : sous la minute « 12.34s » (ou « 12s »
-/// sans décimales), puis « 1m02s », puis « 1h05m ». Largeur bornée à ~7 colonnes.
+/// Compact and bounded format for a duration: under a minute « 12.34s » (or « 12s »
+/// without decimals), then « 1m02s », then « 1h05m ». Width bounded to ~7 columns.
 fn compact_duration(secs: f64, decimals: bool) -> String {
     if secs < 60.0 {
         if decimals {
@@ -117,8 +117,8 @@ fn compact_duration(secs: f64, decimals: bool) -> String {
     }
 }
 
-/// Ajuste un nom de beam à `budget` colonnes : complète par des espaces s'il est
-/// plus court, le tronque avec « … » s'il est plus long.
+/// Fits a beam name to `budget` columns: pads with spaces if it is
+/// shorter, truncates with « … » if it is longer.
 fn fit_name(name: &str, budget: usize) -> String {
     let count = name.chars().count();
     if budget == 0 {
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn truncates_long_name_with_ellipsis() {
-        // budget 6 : 5 chars + …
+        // budget 6: 5 chars + …
         assert_eq!(fit_name("node_modules", 6), "node_…");
         assert_eq!(fit_name("node_modules", 6).chars().count(), 6);
     }

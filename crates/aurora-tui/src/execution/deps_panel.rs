@@ -7,9 +7,9 @@ use ratatui::{
     Frame,
 };
 
-/// Panneau des dépendances du beam sélectionné dans le runner. Réplique le rendu
-/// du picker (`picker::deps_panel`) : dépendances directes en arborescence, puis
-/// les beams qui dépendent du beam courant ("Requis par").
+/// Dependency panel for the beam selected in the runner. Replicates the
+/// rendering of the picker (`picker::deps_panel`): direct dependencies as a
+/// tree, then the beams that depend on the current beam ("Required by").
 pub fn render_deps_panel(f: &mut Frame, state: &ExecutionState, area: Rect) {
     let content = if let Some(beam) = state.beams.get(state.selected) {
         let mut lines = vec![
@@ -24,7 +24,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &ExecutionState, area: Rect) {
 
         if beam.depends_on.is_empty() {
             lines.push(Line::from(Span::styled(
-                "  (aucune)",
+                "  (none)",
                 Style::default().fg(Color::DarkGray),
             )));
         } else {
@@ -42,7 +42,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &ExecutionState, area: Rect) {
             }
         }
 
-        // Beams qui dépendent de ce beam.
+        // Beams that depend on this beam.
         let dependents: Vec<&str> = state
             .beams
             .iter()
@@ -53,7 +53,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &ExecutionState, area: Rect) {
         if !dependents.is_empty() {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                " Requis par:",
+                " Required by:",
                 Style::default().fg(Color::White),
             )));
             for dep in dependents {
@@ -72,7 +72,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &ExecutionState, area: Rect) {
     let panel = Paragraph::new(content).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Dépendances "),
+            .title(" Dependencies "),
     );
     f.render_widget(panel, area);
 }

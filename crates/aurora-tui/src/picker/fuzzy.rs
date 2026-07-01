@@ -1,29 +1,29 @@
-/// Score de 0 (pas de match) à 1200+ (match exact).
-/// query: ce que l'utilisateur tape
-/// name: nom du beam
-/// description: description optionnelle
+/// Score from 0 (no match) to 1200+ (exact match).
+/// query: what the user is typing
+/// name: beam name
+/// description: optional description
 pub fn fuzzy_score(query: &str, name: &str, description: Option<&str>) -> u32 {
     if query.is_empty() {
-        return 500; // tout est "matched" quand pas de query
+        return 500; // everything is "matched" when there is no query
     }
     let q = query.to_lowercase();
     let n = name.to_lowercase();
 
-    // Match exact
+    // Exact match
     if n == q {
         return 1200;
     }
-    // Sous-chaîne dans le nom
+    // Substring in the name
     if n.contains(&q) {
         return 800;
     }
-    // Fuzzy : tous les chars de q apparaissent dans l'ordre dans n
+    // Fuzzy: all chars of q appear in order in n
     if chars_match_in_order(&q, &n) {
-        // Score basé sur la densité (chars matchés / longueur du nom)
+        // Score based on density (matched chars / name length)
         let ratio = (q.len() as f32 / n.len() as f32 * 400.0) as u32;
         return 100 + ratio;
     }
-    // Sous-chaîne dans la description
+    // Substring in the description
     if let Some(desc) = description {
         if desc.to_lowercase().contains(&q) {
             return 50;
@@ -45,7 +45,7 @@ fn chars_match_in_order(query: &str, target: &str) -> bool {
     true
 }
 
-/// Retourne les indices des chars matchés dans `name` pour le highlighting.
+/// Returns the indices of the chars matched in `name`, for highlighting.
 pub fn match_indices(query: &str, name: &str) -> Vec<usize> {
     let q = query.to_lowercase();
     let n = name.to_lowercase();

@@ -8,7 +8,7 @@ fn key(code: KeyCode) -> KeyEvent {
 #[test]
 fn auto_scroll_follows_new_lines_when_not_locked() {
     let mut state = LogViewState::new(0);
-    state.auto_scroll(100, 20); // bas = total - hauteur
+    state.auto_scroll(100, 20); // bottom = total - height
     assert_eq!(state.scroll, 80);
     assert!(!state.scroll_locked);
 }
@@ -21,7 +21,7 @@ fn manual_scroll_up_locks_auto_scroll() {
     assert!(state.scroll_locked);
     let before = state.scroll;
     state.auto_scroll(100, 20);
-    assert_eq!(state.scroll, before); // verrouillé : pas de saut au bas
+    assert_eq!(state.scroll, before); // locked: no jump to the bottom
 }
 
 #[test]

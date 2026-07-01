@@ -15,14 +15,14 @@ fn recompute_finds_matching_lines_case_insensitive() {
 
     search.recompute(&beam);
 
-    // lignes 0 et 2 contiennent "error" (insensible à la casse)
+    // lines 0 and 2 contain "error" (case-insensitive)
     assert_eq!(search.matches, vec![0, 2]);
     assert_eq!(search.match_count(), 2);
 }
 
 #[test]
 fn recompute_matches_stderr_lines_with_offset() {
-    // stdout: ["ok"] (idx 0), séparateur (idx 1), stderr: ["boom"] (idx 2)
+    // stdout: ["ok"] (idx 0), separator (idx 1), stderr: ["boom"] (idx 2)
     let beam = beam_with_logs(&["ok"], &["boom"]);
     let mut search = LogSearch::new();
     search.query = "boom".to_string();
@@ -40,7 +40,7 @@ fn recompute_ignores_separator_line() {
 
     search.recompute(&beam);
 
-    // le séparateur "── stderr ──" ne doit pas matcher
+    // the "── stderr ──" separator must not match
     assert!(search.matches.is_empty());
 }
 

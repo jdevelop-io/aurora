@@ -22,7 +22,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
 
         if beam.depends_on.is_empty() {
             lines.push(Line::from(Span::styled(
-                "  (aucune)",
+                "  (none)",
                 Style::default().fg(Color::DarkGray),
             )));
         } else {
@@ -40,7 +40,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
             }
         }
 
-        // Beams qui dépendent de ce beam
+        // Beams that depend on this beam
         let dependents: Vec<&str> = state
             .beams
             .iter()
@@ -51,7 +51,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
         if !dependents.is_empty() {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                " Requis par:",
+                " Required by:",
                 Style::default().fg(Color::White),
             )));
             for dep in dependents {
@@ -62,7 +62,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
             }
         }
 
-        // Annoter orig_idx pour éviter le warning unused
+        // Annotate orig_idx to avoid the unused warning
         let _ = orig_idx;
         lines
     } else {
@@ -72,7 +72,7 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
     let panel = Paragraph::new(content).block(
         Block::default()
             .borders(Borders::ALL)
-            .title(" Dépendances "),
+            .title(" Dependencies "),
     );
     f.render_widget(panel, area);
 }

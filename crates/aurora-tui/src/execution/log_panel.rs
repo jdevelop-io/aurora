@@ -20,8 +20,8 @@ pub fn render_log_panel(
         .map(|s| s.query.to_lowercase());
     let current_line = search.and_then(|s| s.current_line());
 
-    // Wrap manuel (par caractères) : on construit les lignes visuelles nous-mêmes
-    // pour que l'offset de scroll corresponde exactement aux index logiques.
+    // Manual wrap (by character): we build the visual lines ourselves
+    // so the scroll offset corresponds exactly to the logical indices.
     let width = area.width.saturating_sub(2);
     let mut lines: Vec<Line> = Vec::new();
     for (idx, (text, kind)) in beam.iter_log_lines().enumerate() {
@@ -58,13 +58,13 @@ pub fn render_log_panel(
     let inner_height = area.height.saturating_sub(2);
 
     let auto_indicator = if log_state.scroll_locked {
-        " [scroll manuel]"
+        " [manual scroll]"
     } else {
         " [auto]"
     };
-    // Indicateur de position en lignes logiques : on affiche la dernière ligne
-    // visible (bas du panneau), bornée au contenu. Ainsi, collé au bas (auto),
-    // l'indicateur atteint N/N.
+    // Position indicator in logical lines: shows the last visible
+    // line (bottom of the panel), bounded by the content. Thus, stuck to the
+    // bottom (auto), the indicator reaches N/N.
     let position = if beam.stdout.is_empty() && beam.stderr.is_empty() {
         String::new()
     } else {
@@ -76,11 +76,11 @@ pub fn render_log_panel(
         let bottom = beam.logical_line_at_visual(bottom_visual, width) + 1;
         format!("  {}/{}", bottom, beam.log_line_count())
     };
-    // Signale que les logs sont rejoués depuis le cache (dernière exécution),
-    // sinon rien ne les distinguait d'une exécution fraîche.
+    // Flags that the logs are replayed from the cache (last run),
+    // otherwise nothing would distinguish them from a fresh run.
     let cache_marker = if beam.is_cached() { " (cache)" } else { "" };
     let title = format!(
-        " {} — Logs{}{}{} ",
+        " {}: Logs{}{}{} ",
         beam.name, cache_marker, auto_indicator, position
     );
 
@@ -99,7 +99,7 @@ pub fn render_log_panel(
         .scroll((log_state.scroll, 0));
     f.render_widget(paragraph, area);
 
-    // Scrollbar verticale, seulement si le contenu déborde du panneau.
+    // Vertical scrollbar, only if the content overflows the panel.
     if total_visual > inner_height {
         let mut sb_state = ScrollbarState::new(total_visual as usize)
             .viewport_content_length(inner_height as usize)
@@ -111,9 +111,9 @@ pub fn render_log_panel(
     }
 }
 
-/// Plages d'octets des occurrences de `needle_lower` (déjà en minuscules) dans
-/// `haystack`, casse insensible. Si la mise en minuscules change la longueur en
-/// octets (cas Unicode rares), surligne la ligne entière par sécurité.
+/// Byte ranges of the occurrences of `needle_lower` (already lowercase) in
+/// `haystack`, case-insensitive. If lowercasing changes the byte length
+/// (rare Unicode cases), highlights the whole line as a safety fallback.
 fn match_ranges(haystack: &str, needle_lower: &str) -> Vec<(usize, usize)> {
     let hay_lower = haystack.to_lowercase();
     if hay_lower.len() != haystack.len() {

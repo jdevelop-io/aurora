@@ -56,7 +56,7 @@ fn empty_yields_single_placeholder() {
 #[test]
 fn sanitize_strips_ansi_color_codes() {
     use aurora_tui::app::sanitize_log_line;
-    // SGR couleur verte + reset autour du texte.
+    // SGR green color + reset around the text.
     let raw = "\x1b[32mViolations\x1b[0m 0";
     assert_eq!(sanitize_log_line(raw), "Violations 0");
 }
@@ -64,7 +64,7 @@ fn sanitize_strips_ansi_color_codes() {
 #[test]
 fn sanitize_strips_cursor_moves_and_carriage_return() {
     use aurora_tui::app::sanitize_log_line;
-    // Déplacement de curseur (ESC[2K efface la ligne) + retour chariot.
+    // Cursor movement (ESC[2K clears the line) + carriage return.
     let raw = "ab\x1b[2K\rcd";
     assert_eq!(sanitize_log_line(raw), "abcd");
 }
@@ -78,7 +78,7 @@ fn sanitize_keeps_plain_text_and_tabs() {
 #[test]
 fn sanitize_strips_osc_hyperlink() {
     use aurora_tui::app::sanitize_log_line;
-    // OSC 8 (lien hypertexte) terminé par BEL.
+    // OSC 8 (hyperlink) terminated by BEL.
     let raw = "\x1b]8;;https://x\x07link\x1b]8;;\x07";
     assert_eq!(sanitize_log_line(raw), "link");
 }

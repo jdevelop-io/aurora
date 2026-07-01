@@ -13,14 +13,14 @@ fn preserves_current_line_when_new_matches_arrive() {
     search.query = "x".to_string();
     search.recompute(&b);
     assert_eq!(search.matches, vec![0, 2]);
-    search.next(); // current pointe sur la ligne 2
+    search.next(); // current points to line 2
     assert_eq!(search.current_line(), Some(2));
 
-    // Nouvelle sortie contenant une correspondance
+    // New output containing a match
     b.stdout.push("x".to_string());
     search.recompute_preserving(&b);
 
-    // la liste s'agrandit mais on reste sur la même ligne logique
+    // the list grows but we stay on the same logical line
     assert_eq!(search.matches, vec![0, 2, 3]);
     assert_eq!(search.current_line(), Some(2));
 }
@@ -34,7 +34,7 @@ fn first_match_appears_after_search() {
     assert!(search.matches.is_empty());
     assert_eq!(search.current_line(), None);
 
-    // La sortie recherchée arrive plus tard
+    // The searched-for output arrives later
     b.stdout.push("z".to_string());
     search.recompute_preserving(&b);
 
@@ -49,10 +49,10 @@ fn does_not_jump_index_back_to_zero_on_recompute() {
     search.query = "m".to_string();
     search.recompute(&b);
     search.next();
-    search.next(); // current sur la ligne 2 (index 2 dans matches)
+    search.next(); // current on line 2 (index 2 in matches)
     assert_eq!(search.current_line(), Some(2));
 
-    search.recompute_preserving(&b); // rien de neuf
+    search.recompute_preserving(&b); // nothing new
 
     assert_eq!(search.current_line(), Some(2));
 }

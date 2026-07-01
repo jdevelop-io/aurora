@@ -16,14 +16,14 @@ pub fn render_execution(
     show_help: bool,
 ) {
     let area = f.area();
-    // Footer sur 2 lignes : état + barre, puis raccourcis (ou recherche).
+    // Footer on 2 lines: status + bar, then hints (or search).
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(0), Constraint::Length(2)])
         .split(area);
 
-    // Split horizontal : beams / logs (30/70), avec un panneau de dépendances
-    // intercalé (25/25/50) quand `show_deps` est actif (touche « d »).
+    // Horizontal split: beams / logs (30/70), with a dependency panel
+    // inserted (25/25/50) when `show_deps` is active (key « d »).
     let beams_focused = exec.focus == FocusPanel::Beams;
     let beam = &exec.beams[log_state.beam_index];
 
@@ -56,20 +56,20 @@ pub fn render_execution(
         .split(outer[1]);
 
     let total = exec.beams.len();
-    // Décompte par statut : succès (cache inclus), avertissements (échecs tolérés),
-    // échecs, annulés (catégorie neutre, distincte des échecs), skipped.
+    // Breakdown by status: success (cache included), warnings (tolerated failures),
+    // failures, cancelled (neutral category, distinct from failures), skipped.
     let breakdown = crate::widgets::status_bar::StatusBreakdown::from_statuses(
         exec.beams.iter().map(|b| &b.status),
     );
     let done_count = breakdown.done_count();
 
-    // Ligne 1 : toujours l'état + la barre (reste visible même en recherche).
+    // Line 1: always the status + the bar (stays visible even while searching).
     crate::widgets::status_bar::render_progress_line(
         f, footer[0], exec.done, done_count, total, &breakdown,
     );
 
-    // Ligne 2 : invite du filtre de beams, ou invite de recherche logs, ou
-    // raccourcis. Le filtre prime quand sa saisie est active.
+    // Line 2: beam filter prompt, or log search prompt, or hints.
+    // The filter takes priority while its input is active.
     if exec.filter_input {
         f.render_widget(filter_bar(&exec.beam_filter), footer[1]);
     } else if search.is_active() {
@@ -87,25 +87,25 @@ pub fn render_execution(
     }
 }
 
-/// Invite affichée pendant la saisie du filtre de la liste de beams.
+/// Prompt shown while typing the beam list filter.
 fn filter_bar(filter: &str) -> Paragraph<'static> {
-    let text = format!(" /{}   (Entrée valider, Esc effacer) ", filter);
+    let text = format!(" /{}   (Enter confirm, Esc clear) ", filter);
     Paragraph::new(text).style(Style::default().fg(Color::Yellow))
 }
 
-/// Barre de statut affichée pendant une recherche dans les logs.
+/// Status bar shown while searching in the logs.
 fn search_bar(search: &LogSearch) -> Paragraph<'static> {
     let count = if search.query.is_empty() {
         String::new()
     } else if search.match_count() == 0 {
-        "  [aucun résultat]".to_string()
+        "  [no results]".to_string()
     } else {
         format!("  [{}/{}]", search.current + 1, search.match_count())
     };
     let hint = if search.input_active {
-        "   (Entrée valider, Esc annuler)"
+        "   (Enter confirm, Esc cancel)"
     } else {
-        "   [n/N] suivant/précédent  [Esc] effacer"
+        "   [n/N] next/previous  [Esc] clear"
     };
     let text = format!(" /{}{}{} ", search.query, count, hint);
     Paragraph::new(text).style(Style::default().fg(Color::Yellow))

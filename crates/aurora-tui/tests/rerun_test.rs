@@ -58,12 +58,12 @@ fn compute_rerun_returns_failed_and_cancelled_deps() {
     let (root, to_rerun, pre_success) = state.compute_rerun(2);
 
     assert_eq!(root, "deploy");
-    // build (Failed) et deploy (Cancelled) doivent être dans to_rerun
+    // build (Failed) and deploy (Cancelled) must be in to_rerun
     assert!(to_rerun.contains(&"build".to_string()));
     assert!(to_rerun.contains(&"deploy".to_string()));
-    // test (Success) doit être dans pre_success
+    // test (Success) must be in pre_success
     assert!(pre_success.contains(&"test".to_string()));
-    // test ne doit PAS être dans to_rerun
+    // test must NOT be in to_rerun
     assert!(!to_rerun.contains(&"test".to_string()));
 }
 
@@ -72,19 +72,19 @@ fn reset_for_rerun_clears_beam_state() {
     let mut state = make_state();
     set_done(&mut state);
 
-    // Ajouter quelques logs à build
+    // Add a few logs to build
     state.beams[1].stdout.push("some output".to_string());
 
     state.reset_for_rerun(&["build".to_string(), "deploy".to_string()]);
 
-    // build et deploy doivent être Pending
+    // build and deploy must be Pending
     assert!(matches!(state.beams[1].status, BeamStatus::Pending));
     assert!(matches!(state.beams[2].status, BeamStatus::Pending));
-    // stdout effacé
+    // stdout cleared
     assert!(state.beams[1].stdout.is_empty());
     // done reset
     assert!(state.done.is_none());
-    // test inchangé (Success)
+    // test unchanged (Success)
     assert!(matches!(state.beams[0].status, BeamStatus::Success { .. }));
 }
 
@@ -106,7 +106,7 @@ fn r_key_returns_rerun_action_when_done_and_failed() {
 #[test]
 fn r_key_ignored_when_exec_still_running() {
     let mut state = make_state();
-    // done = None → en cours
+    // done = None → still running
     state.selected = 1; // build
 
     let action = state.handle_key(key(KeyCode::Char('r')));
@@ -123,7 +123,7 @@ fn r_key_works_on_success_beam() {
     assert!(matches!(action, Some(ExecutionAction::Rerun { .. })));
     if let Some(ExecutionAction::Rerun { root, pre_success }) = action {
         assert_eq!(root, "test");
-        // test est le root → dans to_rerun, pas dans pre_success
+        // test is the root → in to_rerun, not in pre_success
         assert!(!pre_success.contains(&"test".to_string()));
     }
 }

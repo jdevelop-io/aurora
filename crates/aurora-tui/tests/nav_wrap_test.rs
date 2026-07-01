@@ -14,14 +14,14 @@ fn picker_up_at_top_wraps_to_bottom() {
     ]);
     assert_eq!(state.selected, 0);
     state.handle_key(key(KeyCode::Up));
-    assert_eq!(state.selected, 2, "haut depuis le sommet -> dernier");
+    assert_eq!(state.selected, 2, "up from the top -> last");
     state.handle_key(key(KeyCode::Down));
-    assert_eq!(state.selected, 0, "bas depuis le dernier -> sommet");
+    assert_eq!(state.selected, 0, "down from the last -> top");
 }
 
 #[test]
 fn picker_wrap_empty_list_stays_zero() {
-    // Aucun résultat (filtre qui ne matche rien) : pas de panic, reste à 0.
+    // No results (a search that matches nothing): no panic, stays at 0.
     let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
     state.handle_key(key(KeyCode::Char('/')));
     state.handle_key(key(KeyCode::Char('z')));
@@ -39,9 +39,9 @@ fn picker_home_end_jump_to_bounds() {
         ("c".to_string(), None, vec![]),
     ]);
     state.handle_key(key(KeyCode::End));
-    assert_eq!(state.selected, 2, "Fin -> dernier");
+    assert_eq!(state.selected, 2, "End -> last");
     state.handle_key(key(KeyCode::Home));
-    assert_eq!(state.selected, 0, "Début -> premier");
+    assert_eq!(state.selected, 0, "Home -> first");
 }
 
 #[test]
@@ -68,14 +68,17 @@ fn runner_filter_limits_visible_and_navigation() {
     assert_eq!(
         exec.visible_indices(),
         vec![0, 2],
-        "seuls les beams « build* » sont visibles, ordre d'exécution préservé"
+        "only the « build* » beams are visible, execution order preserved"
     );
 
     exec.selected = 0;
     exec.select_next();
-    assert_eq!(exec.selected, 2, "next saute le beam filtré (« test »)");
+    assert_eq!(
+        exec.selected, 2,
+        "next skips the filtered-out beam (« test »)"
+    );
     exec.select_next();
-    assert_eq!(exec.selected, 0, "wrap sur le seul sous-ensemble visible");
+    assert_eq!(exec.selected, 0, "wrap over the sole visible subset");
 }
 
 #[test]
@@ -89,7 +92,7 @@ fn runner_clamp_selection_when_filtered_out() {
     exec.clamp_selection_to_visible();
     assert_eq!(
         exec.selected, 0,
-        "sélection masquée par le filtre -> premier visible"
+        "selection hidden by the filter -> first visible"
     );
 }
 
@@ -102,7 +105,7 @@ fn runner_select_wraps_both_directions() {
     ]);
     assert_eq!(exec.selected, 0);
     exec.select_prev();
-    assert_eq!(exec.selected, 2, "prev depuis le sommet -> dernier");
+    assert_eq!(exec.selected, 2, "prev from the top -> last");
     exec.select_next();
-    assert_eq!(exec.selected, 0, "next depuis le dernier -> sommet");
+    assert_eq!(exec.selected, 0, "next from the last -> top");
 }

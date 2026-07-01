@@ -47,14 +47,14 @@ pub async fn run_execution_tui(
 
         let result = (|| -> Result<()> {
             loop {
-                // Drainer les events scheduler
+                // Drain scheduler events
                 while let Ok(evt) = rx.try_recv() {
                     let done_failed = matches!(evt, SchedulerEvent::AllDone { success: false });
                     let is_done = matches!(evt, SchedulerEvent::AllDone { .. });
                     exec.apply_event(evt);
                     if is_done {
-                        // En cas d'échec, sauter sur le premier beam Failed
-                        // pour montrer ses logs sans navigation manuelle.
+                        // On failure, jump to the first Failed beam
+                        // to show its logs without manual navigation.
                         if done_failed && exec.select_first_failed() {
                             log_state.beam_index = exec.selected;
                             log_state.scroll_locked = false;
@@ -63,21 +63,21 @@ pub async fn run_execution_tui(
                     }
                 }
 
-                // Dimensions du panneau logs et hauteur visuelle totale du beam
-                // sélectionné, pour piloter scroll et auto-scroll en lignes
-                // visuelles.
+                // Dimensions of the log panel and total visual height of the
+                // selected beam, used to drive scroll and auto-scroll in
+                // visual lines.
                 let size = terminal.size()?;
                 let (log_w, log_h) = log_panel_dims(size.width, size.height, exec.show_deps);
                 let total_visual = exec.beams[log_state.beam_index].total_visual_rows(log_w);
 
-                // Recherche active : recalculer les correspondances au fil des
-                // nouvelles sorties, sans déplacer la vue (non intrusif). La
-                // position courante de n/N est préservée.
+                // Active search: recompute matches as new output arrives,
+                // without moving the view (non-intrusive). The current
+                // n/N position is preserved.
                 if search.is_active() {
                     search.recompute_preserving(&exec.beams[log_state.beam_index]);
                 }
 
-                // Auto-scroll si pas verrouillé
+                // Auto-scroll if not locked
                 log_state.auto_scroll(total_visual, log_h);
 
                 terminal.draw(|f| {
@@ -87,7 +87,7 @@ pub async fn run_execution_tui(
 
                 if event::poll(Duration::from_millis(50))? {
                     if let Event::Key(key) = event::read()? {
-                        // Help popup capture tout
+                        // Help popup captures everything
                         if show_help {
                             match key.code {
                                 KeyCode::Char('?') | KeyCode::Esc => show_help = false,
@@ -96,10 +96,10 @@ pub async fn run_execution_tui(
                             continue;
                         }
 
-                        // Mode saisie du filtre de beams (`/` sur le panneau
-                        // beams) : la frappe filtre la liste. Entrée verrouille,
-                        // Échap efface. La sélection suit le filtre et les logs
-                        // affichés suivent la sélection.
+                        // Beam filter input mode (`/` on the beams panel):
+                        // keystrokes filter the list. Enter locks it in,
+                        // Esc clears it. The selection follows the filter and the
+                        // displayed logs follow the selection.
                         if exec.filter_input {
                             let mut filter_changed = true;
                             match key.code {
@@ -129,7 +129,7 @@ pub async fn run_execution_tui(
                             continue;
                         }
 
-                        // Mode saisie de recherche : capture tout
+                        // Search input mode: captures everything
                         if search.input_active {
                             match key.code {
                                 KeyCode::Esc => search.clear(),
@@ -228,11 +228,11 @@ pub fn run_picker(
     })
 }
 
-/// Dimensions intérieures (largeur, hauteur) du panneau logs pour un terminal
-/// donné. Réplique le découpage de `render_execution` (vertical [Min, Length(1)]
-/// puis horizontal 30/70, ou 25/25/50 quand le panneau de dépendances est
-/// affiché) afin de convertir précisément les index logiques en offset visuel et
-/// de borner le scroll.
+/// Inner dimensions (width, height) of the log panel for a given terminal.
+/// Replicates the layout split of `render_execution` (vertical [Min, Length(1)]
+/// then horizontal 30/70, or 25/25/50 when the dependency panel is shown)
+/// in order to precisely convert logical indices into visual offsets and to
+/// bound the scroll.
 fn log_panel_dims(width: u16, height: u16, show_deps: bool) -> (u16, u16) {
     use ratatui::layout::{Constraint, Direction, Layout, Rect};
     let area = Rect::new(0, 0, width, height);
@@ -262,12 +262,10 @@ fn log_panel_dims(width: u16, height: u16, show_deps: bool) -> (u16, u16) {
     )
 }
 
-/// Recalcule les correspondances pour le beam sélectionné et saute au match
-/// courant. Utilisé quand la requête ou le beam change.
-/// Effets du dispatch clavier runner qui nécessitent des ressources de la boucle
-/// (canal d'annulation, relance, sortie), que `handle_execution_key` ne peut pas
-/// réaliser lui-même. Tout le reste (sélection, scroll, recherche, aide, panneau
-/// deps) est muté directement sur l'état passé en argument.
+/// Effects of the runner's keyboard dispatch that need resources owned by the
+/// loop (cancellation channel, rerun, exit) that `handle_execution_key` cannot
+/// produce itself. Everything else (selection, scroll, search, help, deps
+/// panel) is mutated directly on the state passed as argument.
 #[derive(Debug, PartialEq, Eq)]
 enum ExecKeyOutcome {
     Continue,
@@ -279,8 +277,8 @@ enum ExecKeyOutcome {
     },
 }
 
-/// Métriques du panneau logs nécessaires au pilotage du scroll : hauteur
-/// visuelle totale du beam courant et dimensions intérieures du panneau.
+/// Log panel metrics needed to drive scrolling: total visual height of the
+/// current beam and inner dimensions of the panel.
 #[derive(Clone, Copy)]
 struct LogMetrics {
     total_visual: u16,
@@ -288,9 +286,10 @@ struct LogMetrics {
     height: u16,
 }
 
-/// Dispatch clavier de la vue runner (hors popup d'aide et saisie de recherche,
-/// gérés en amont). Mute l'état local et renvoie l'effet à réaliser par la
-/// boucle. Extrait de `run_execution_tui` pour être testable sans terminal.
+/// Keyboard dispatch for the runner view (excluding the help popup and search
+/// input, handled upstream). Mutates local state and returns the effect for
+/// the loop to perform. Extracted from `run_execution_tui` to be testable
+/// without a terminal.
 fn handle_execution_key(
     key: crossterm::event::KeyEvent,
     exec: &mut ExecutionState,
@@ -382,8 +381,8 @@ fn handle_execution_key(
             let _ = exec.handle_key(key);
         }
         KeyCode::Char('/') => match exec.focus {
-            // `/` contextuel : filtre la liste de beams si le focus est sur les
-            // beams, cherche dans les logs si le focus est sur les logs.
+            // Contextual `/`: filters the beam list if focus is on the
+            // beams, searches the logs if focus is on the logs.
             FocusPanel::Beams => {
                 exec.beam_filter.clear();
                 exec.filter_input = true;
@@ -452,9 +451,9 @@ fn refresh_search(
     apply_search_jump(search, beam, width, height, log_state);
 }
 
-/// Positionne le scroll sur la ligne visuelle du match courant, s'il y en a un.
-/// Convertit l'index de ligne logique en offset visuel (les lignes longues
-/// occupent plusieurs lignes à l'écran), borné au dernier écran complet.
+/// Positions the scroll on the visual line of the current match, if there is one.
+/// Converts the logical line index into a visual offset (long lines
+/// occupy several lines on screen), bounded to the last full screen.
 fn apply_search_jump(
     search: &LogSearch,
     beam: &app::BeamView,
@@ -476,7 +475,7 @@ fn copy_logs_to_clipboard(beam: &app::BeamView) {
             let _ = cb.set_text(content);
         }
         Err(_) => {
-            // Clipboard non disponible (SSH sans X11) — silencieux
+            // Clipboard unavailable (SSH without X11): silent
         }
     }
 }
@@ -494,7 +493,7 @@ mod tests {
         KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
     }
 
-    /// État runner minimal pour exercer le dispatch clavier sans terminal.
+    /// Minimal runner state to exercise the keyboard dispatch without a terminal.
     fn fixture() -> (ExecutionState, LogViewState, LogSearch, bool) {
         let exec = ExecutionState::new(vec![
             ("build".to_string(), vec!["lint".to_string()]),
@@ -519,9 +518,9 @@ mod tests {
         handle_execution_key(key(code), exec, log_state, search, show_help, METRICS)
     }
 
-    // Régression : un « d » simple dans la boucle runner doit basculer le panneau
-    // de dépendances. Le bug initial venait du dispatch de `run_execution_tui`
-    // qui ne routait pas la touche vers `ExecutionState::handle_key`.
+    // Regression: a plain « d » in the runner loop must toggle the dependency
+    // panel. The original bug was that `run_execution_tui`'s dispatch did not
+    // route the key to `ExecutionState::handle_key`.
     #[test]
     fn d_toggles_deps_panel_through_dispatch() {
         let (mut exec, mut ls, mut s, mut help) = fixture();
@@ -529,19 +528,19 @@ mod tests {
 
         let out = press(KeyCode::Char('d'), &mut exec, &mut ls, &mut s, &mut help);
         assert_eq!(out, ExecKeyOutcome::Continue);
-        assert!(exec.show_deps, "d affiche les dépendances");
+        assert!(exec.show_deps, "d shows the dependencies");
 
         press(KeyCode::Char('d'), &mut exec, &mut ls, &mut s, &mut help);
-        assert!(!exec.show_deps, "d masque les dépendances");
+        assert!(!exec.show_deps, "d hides the dependencies");
     }
 
-    // Ctrl+d reste le demi-page-bas et ne doit jamais toucher au panneau deps.
+    // Ctrl+d stays half-page-down and must never touch the deps panel.
     #[test]
     fn ctrl_d_scrolls_and_keeps_deps_hidden() {
         let (mut exec, mut ls, mut s, mut help) = fixture();
         let out = handle_execution_key(ctrl('d'), &mut exec, &mut ls, &mut s, &mut help, METRICS);
         assert_eq!(out, ExecKeyOutcome::Continue);
-        assert!(!exec.show_deps, "Ctrl+d ne bascule pas les dépendances");
+        assert!(!exec.show_deps, "Ctrl+d does not toggle the dependencies");
     }
 
     #[test]
@@ -557,11 +556,8 @@ mod tests {
         assert_eq!(exec.focus, FocusPanel::Beams);
         let out = press(KeyCode::Char('/'), &mut exec, &mut ls, &mut s, &mut help);
         assert_eq!(out, ExecKeyOutcome::Continue);
-        assert!(
-            exec.filter_input,
-            "/ sur les beams ouvre le filtre de beams"
-        );
-        assert!(!s.input_active, "et n'ouvre pas la recherche de logs");
+        assert!(exec.filter_input, "/ on the beams opens the beam filter");
+        assert!(!s.input_active, "and does not open the log search");
     }
 
     #[test]
@@ -570,8 +566,8 @@ mod tests {
         exec.focus = FocusPanel::Logs;
         let out = press(KeyCode::Char('/'), &mut exec, &mut ls, &mut s, &mut help);
         assert_eq!(out, ExecKeyOutcome::Continue);
-        assert!(s.input_active, "/ sur les logs ouvre la recherche de logs");
-        assert!(!exec.filter_input, "et n'ouvre pas le filtre de beams");
+        assert!(s.input_active, "/ on the logs opens the log search");
+        assert!(!exec.filter_input, "and does not open the beam filter");
     }
 
     #[test]
@@ -580,7 +576,7 @@ mod tests {
         assert_eq!(exec.focus, FocusPanel::Beams);
         let out = press(KeyCode::Tab, &mut exec, &mut ls, &mut s, &mut help);
         assert_eq!(out, ExecKeyOutcome::Continue);
-        assert_eq!(exec.focus, FocusPanel::Logs, "Tab bascule le focus");
-        assert!(!exec.show_deps, "Tab ne touche pas les dépendances");
+        assert_eq!(exec.focus, FocusPanel::Logs, "Tab switches focus");
+        assert!(!exec.show_deps, "Tab does not touch the dependencies");
     }
 }

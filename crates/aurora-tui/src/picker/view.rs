@@ -15,7 +15,7 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         .constraints([Constraint::Min(0), Constraint::Length(2)])
         .split(area);
 
-    // Zone centrale : panneau des beams (+ panel deps si show_deps).
+    // Central area: beams panel (+ deps panel if show_deps).
     let (main_area, deps_area) = if state.show_deps {
         let sub = Layout::default()
             .direction(Direction::Horizontal)
@@ -26,12 +26,12 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         (chunks[0], None)
     };
 
-    // Panneau des beams : titre « Aurora » identique au runner. La recherche est
-    // une ligne fine à l'intérieur, plus d'encart bordé dédié. Le récap de
-    // sélection vit dans le footer (ligne d'état), pas dans le titre.
+    // Beams panel: title "Aurora" identical to the runner. The search is
+    // a thin line inside it, no more dedicated bordered box. The selection
+    // recap lives in the footer (status line), not in the title.
     let selected_count = state.checked.iter().filter(|&&c| c).count();
-    // Panneau actif : même style que le panneau des beams « focus » du runner
-    // (bordure et titre en jaune), pour une couleur de titre identique.
+    // Active panel: same style as the runner's "focused" beams panel
+    // (border and title in yellow), for an identical title color.
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow))
@@ -41,15 +41,15 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
     let list_area = block.inner(main_area);
     f.render_widget(block, main_area);
 
-    // La recherche n'a plus d'encart en haut de la liste : elle vit dans le
-    // footer (invite `/`), comme la recherche de logs du runner.
+    // The search no longer has a box above the list: it lives in the
+    // footer (`/` prompt), like the runner's log search.
     let filtered = state.filtered();
 
     if filtered.is_empty() {
         let message = if state.search.is_empty() {
-            "Aucun beam disponible".to_string()
+            "No beam available".to_string()
         } else {
-            format!("Aucun beam ne correspond à « {} »", state.search)
+            format!("No beam matches « {} »", state.search)
         };
         let empty = Paragraph::new(message)
             .style(Style::default().fg(Color::DarkGray))
@@ -101,23 +101,23 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
         crate::picker::deps_panel::render_deps_panel(f, state, area);
     }
 
-    // Barre de raccourcis : même rendu que l'écran d'exécution.
+    // Hints bar: same rendering as the execution screen.
     let deps_hint = if state.show_deps {
-        ("d", "fermer deps")
+        ("d", "close deps")
     } else {
         ("d", "deps")
     };
     let hints = [
-        ("/", "filtrer"),
+        ("/", "filter"),
         ("↑↓", "nav"),
-        ("Space", "sélec"),
+        ("Space", "sel"),
         deps_hint,
-        ("Enter", "lancer"),
-        ("Esc", "quitter"),
+        ("Enter", "run"),
+        ("Esc", "quit"),
     ];
 
-    // Footer sur 2 lignes, comme l'écran d'exécution : ligne d'état puis
-    // raccourcis (ou invite de recherche `/` si le filtre est en saisie).
+    // Footer on 2 lines, like the execution screen: status line then
+    // hints (or the `/` search prompt if the filter is being typed).
     let footer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1)])
@@ -132,15 +132,15 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
     }
 }
 
-/// Invite de recherche affichée dans le footer pendant la saisie du filtre.
-/// Calquée sur la barre de recherche des logs du runner.
+/// Search prompt shown in the footer while typing the filter.
+/// Modeled on the runner's log search bar.
 fn search_bar(query: &str) -> Paragraph<'static> {
-    let text = format!(" /{}   (Entrée valider, Esc effacer) ", query);
+    let text = format!(" /{}   (Enter confirm, Esc clear) ", query);
     Paragraph::new(text).style(Style::default().fg(Color::Yellow))
 }
 
-/// Ligne d'état du footer : nombre de résultats, sélection et aperçu de l'action
-/// Entrée. Fait écho à la ligne d'état du runner.
+/// Footer status line: number of results, selection and a preview of the
+/// Enter action. Echoes the runner's status line.
 fn status_line(
     state: &PickerState,
     filtered: &[(usize, &crate::app::PickerBeam, u32)],
@@ -159,11 +159,11 @@ fn status_line(
     };
 
     let action_text = if filtered.is_empty() {
-        "aucun résultat".to_string()
+        "no results".to_string()
     } else if selected_count > 0 {
         let s = if selected_count > 1 { "s" } else { "" };
         format!(
-            "{} sélectionné{s} · Entrée lance {} beam{s}",
+            "{} selected{s} · Enter runs {} beam{s}",
             selected_count, selected_count
         )
     } else {
@@ -171,7 +171,7 @@ fn status_line(
             .get(state.selected)
             .map(|(_, b, _)| b.name.clone())
             .unwrap_or_default();
-        format!("Entrée lance « {} »", name)
+        format!("Enter runs « {} »", name)
     };
 
     Line::from(vec![

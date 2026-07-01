@@ -3,8 +3,8 @@ use aurora_tui::app::{BeamView, LogViewState};
 use aurora_tui::execution::log_panel::render_log_panel;
 use ratatui::{backend::TestBackend, Terminal};
 
-/// Concatène tout le contenu textuel du buffer rendu, pour asserter sur ce qui
-/// est réellement affiché (titre du panneau inclus).
+/// Concatenates all the text content of the rendered buffer, to assert on what
+/// is actually displayed (panel title included).
 fn rendered_text(beam: &BeamView) -> String {
     let backend = TestBackend::new(80, 24);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -34,7 +34,7 @@ fn cached_beam_log_title_mentions_cache() {
     let text = rendered_text(&beam);
     assert!(
         text.contains("(cache)"),
-        "le titre du panneau de logs devrait signaler les logs en cache, rendu :\n{text}"
+        "the log panel title should flag cached logs, rendered:\n{text}"
     );
 }
 
@@ -47,6 +47,6 @@ fn running_beam_log_title_has_no_cache_marker() {
     let text = rendered_text(&beam);
     assert!(
         !text.contains("(cache)"),
-        "un beam en cours ne devrait pas être marqué comme en cache, rendu :\n{text}"
+        "a running beam should not be marked as cached, rendered:\n{text}"
     );
 }

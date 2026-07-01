@@ -48,8 +48,8 @@ impl BeamView {
         all
     }
 
-    /// Le beam affiche-t-il des logs rejoués depuis le cache plutôt que d'une
-    /// exécution fraîche ? Sert à signaler que les logs datent du dernier run.
+    /// Is the beam displaying logs replayed from the cache rather than a
+    /// fresh run? Used to flag that the logs are from the last run.
     pub fn is_cached(&self) -> bool {
         matches!(
             self.status,
@@ -59,19 +59,19 @@ impl BeamView {
         )
     }
 
-    /// Texte du placeholder affiché quand le beam n'a aucune sortie,
-    /// adapté à son statut.
+    /// Placeholder text shown when the beam has no output,
+    /// adapted to its status.
     pub fn empty_placeholder(&self) -> &'static str {
         match self.status {
-            BeamStatus::Pending => "(en attente de démarrage)",
-            BeamStatus::Running => "(pas encore de sortie)",
-            _ => "(aucune sortie)",
+            BeamStatus::Pending => "(waiting to start)",
+            BeamStatus::Running => "(no output yet)",
+            _ => "(no output)",
         }
     }
 
-    /// Itère les lignes de logs telles qu'elles sont affichées : stdout, puis
-    /// séparateur et stderr si présent. Si aucune sortie, une unique ligne
-    /// placeholder. Source unique partagée par le rendu et la recherche.
+    /// Iterates over log lines as they are displayed: stdout, then
+    /// separator and stderr if present. If there is no output, a single
+    /// placeholder line. Single source shared by rendering and search.
     pub fn iter_log_lines(&self) -> impl Iterator<Item = (&str, LogKind)> {
         let has_stderr = !self.stderr.is_empty();
         let is_empty = self.stdout.is_empty() && !has_stderr;
@@ -90,9 +90,9 @@ impl BeamView {
         self.iter_log_lines().count()
     }
 
-    /// Index de la première ligne visuelle (après wrap) correspondant à la
-    /// ligne logique `logical_line`, à la largeur `width`. Permet de convertir
-    /// un index de ligne logique en offset de scroll visuel.
+    /// Index of the first visual line (after wrap) corresponding to the
+    /// logical line `logical_line`, at width `width`. Used to convert
+    /// a logical line index into a visual scroll offset.
     pub fn visual_offset(&self, logical_line: usize, width: u16) -> u16 {
         self.iter_log_lines()
             .take(logical_line)
@@ -100,15 +100,15 @@ impl BeamView {
             .sum()
     }
 
-    /// Nombre total de lignes visuelles (après wrap) à la largeur `width`.
+    /// Total number of visual lines (after wrap) at width `width`.
     pub fn total_visual_rows(&self, width: u16) -> u16 {
         self.iter_log_lines()
             .map(|(t, _)| visual_rows(t, width))
             .sum()
     }
 
-    /// Index de la ligne logique affichée à l'offset visuel `offset`
-    /// (la ligne logique en haut de l'écran). Inverse de `visual_offset`.
+    /// Index of the logical line displayed at visual offset `offset`
+    /// (the logical line at the top of the screen). Inverse of `visual_offset`.
     pub fn logical_line_at_visual(&self, offset: u16, width: u16) -> usize {
         let mut acc = 0u16;
         for (i, (t, _)) in self.iter_log_lines().enumerate() {
@@ -121,19 +121,19 @@ impl BeamView {
     }
 }
 
-/// Retire les séquences d'échappement ANSI et les caractères de contrôle d'une
-/// ligne de log capturée. Les outils (deptrac, phpcs, ...) émettent des codes
-/// couleur et de positionnement bruts : laissés tels quels, ratatui les écrirait
-/// dans le terminal qui les réinterpréterait, corrompant l'affichage (texte
-/// décalé, restes de l'écran précédent). Le retour chariot est retiré car il
-/// réécrirait la ligne ; la tabulation est conservée.
+/// Strips ANSI escape sequences and control characters from a captured
+/// log line. Tools (deptrac, phpcs, ...) emit raw color and cursor-positioning
+/// codes: left as-is, ratatui would write them to the terminal which would
+/// reinterpret them, corrupting the display (shifted text, leftovers from the
+/// previous screen). The carriage return is stripped because it would
+/// rewrite the line; the tab is kept.
 pub fn sanitize_log_line(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
     let mut chars = input.chars().peekable();
     while let Some(c) = chars.next() {
         match c {
             '\x1b' => match chars.peek() {
-                // CSI : ESC [ ... octet final dans 0x40..=0x7E (ex. couleurs SGR).
+                // CSI: ESC [ ... final byte in 0x40..=0x7E (e.g. SGR colors).
                 Some('[') => {
                     chars.next();
                     for n in chars.by_ref() {
@@ -142,7 +142,7 @@ pub fn sanitize_log_line(input: &str) -> String {
                         }
                     }
                 }
-                // OSC : ESC ] ... terminé par BEL (0x07) ou ST (ESC \).
+                // OSC: ESC ] ... terminated by BEL (0x07) or ST (ESC \).
                 Some(']') => {
                     chars.next();
                     while let Some(n) = chars.next() {
@@ -157,7 +157,7 @@ pub fn sanitize_log_line(input: &str) -> String {
                         }
                     }
                 }
-                // Autre séquence d'échappement courte : on saute l'octet suivant.
+                // Other short escape sequence: skip the next byte.
                 _ => {
                     chars.next();
                 }
@@ -170,9 +170,9 @@ pub fn sanitize_log_line(input: &str) -> String {
     out
 }
 
-/// Découpe une ligne logique en segments visuels d'au plus `width` caractères.
-/// Découpe par caractères (déterministe), pour que l'index logique se convertisse
-/// exactement en offset visuel. Une ligne vide produit un segment vide (1 ligne).
+/// Splits a logical line into visual segments of at most `width` characters.
+/// Splits by character (deterministic), so the logical index converts
+/// exactly into a visual offset. An empty line produces a single empty segment (1 line).
 pub fn wrap_log_line(text: &str, width: u16) -> Vec<&str> {
     if width == 0 {
         return vec![text];
@@ -197,7 +197,7 @@ pub fn wrap_log_line(text: &str, width: u16) -> Vec<&str> {
     segments
 }
 
-/// Nombre de lignes visuelles qu'occupe une ligne logique à la largeur `width`.
+/// Number of visual lines a logical line occupies at width `width`.
 pub fn visual_rows(text: &str, width: u16) -> u16 {
     wrap_log_line(text, width).len() as u16
 }
@@ -214,7 +214,7 @@ pub enum LogKind {
 
 // ── LogSearch ────────────────────────────────────────────────────
 
-/// Recherche incrémentale dans les logs du beam sélectionné.
+/// Incremental search in the logs of the selected beam.
 #[derive(Debug, Default)]
 pub struct LogSearch {
     pub input_active: bool,
@@ -228,7 +228,7 @@ impl LogSearch {
         LogSearch::default()
     }
 
-    /// Y a-t-il une requête active (saisie en cours ou validée non vide) ?
+    /// Is there an active query (input in progress or a non-empty confirmed query)?
     pub fn is_active(&self) -> bool {
         self.input_active || !self.query.is_empty()
     }
@@ -237,13 +237,13 @@ impl LogSearch {
         self.matches.len()
     }
 
-    /// Index de la ligne logique du match courant, ou None si aucun match.
+    /// Index of the logical line of the current match, or None if there is no match.
     pub fn current_line(&self) -> Option<usize> {
         self.matches.get(self.current).copied()
     }
 
-    /// Recalcule les lignes correspondant à la requête (insensible à la casse).
-    /// Ne retient que les lignes Stdout/Stderr ; requête vide => aucun match.
+    /// Recomputes the lines matching the query (case-insensitive).
+    /// Only keeps Stdout/Stderr lines; empty query => no match.
     pub fn recompute(&mut self, beam: &BeamView) {
         self.matches.clear();
         self.current = 0;
@@ -260,9 +260,9 @@ impl LogSearch {
         }
     }
 
-    /// Recalcule les correspondances en conservant la ligne logique courante.
-    /// Utilisé pendant l'exécution : les nouvelles sorties peuvent faire
-    /// apparaître des correspondances sans réinitialiser la navigation `n`/`N`.
+    /// Recomputes matches while keeping the current logical line.
+    /// Used during execution: new output can produce matches
+    /// without resetting the `n`/`N` navigation.
     pub fn recompute_preserving(&mut self, beam: &BeamView) {
         let prev_line = self.current_line();
         self.recompute(beam);
@@ -287,7 +287,7 @@ impl LogSearch {
         self.current = (self.current + self.matches.len() - 1) % self.matches.len();
     }
 
-    /// Réinitialise complètement la recherche.
+    /// Fully resets the search.
     pub fn clear(&mut self) {
         self.input_active = false;
         self.query.clear();
@@ -304,7 +304,7 @@ pub enum FocusPanel {
     Logs,
 }
 
-// ── Actions retournées par handle_key ────────────────────────────
+// ── Actions returned by handle_key ────────────────────────────
 
 #[derive(Debug, PartialEq)]
 pub enum PickerAction {
@@ -343,8 +343,8 @@ pub struct PickerState {
     pub beams: Vec<PickerBeam>,
     pub selected: usize,
     pub search: String,
-    /// Mode saisie du filtre actif (`/`). Hors de ce mode les lettres sont des
-    /// commandes ; aligné sur la recherche de logs du runner.
+    /// Filter input mode active (`/`). Outside this mode letters are
+    /// commands; aligned with the runner's log search.
     pub search_input: bool,
     pub show_deps: bool,
     pub checked: Vec<bool>,
@@ -365,7 +365,7 @@ impl PickerState {
             selected: 0,
             search: String::new(),
             search_input: false,
-            // Panneau des dépendances visible d'emblée ; `d` le replie.
+            // Dependency panel visible from the start; `d` collapses it.
             show_deps: true,
             checked: vec![false; len],
         }
@@ -408,16 +408,16 @@ impl PickerState {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<PickerAction> {
-        // Ctrl+C quitte en toutes circonstances.
+        // Ctrl+C always quits.
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             return Some(PickerAction::Quit);
         }
 
         let count = self.filtered().len();
 
-        // Mode saisie du filtre (`/`) : la frappe alimente le filtre. Entrée
-        // verrouille et sort, Échap efface et sort. Même modèle que la recherche
-        // de logs du runner.
+        // Filter input mode (`/`): keystrokes feed the filter. Enter
+        // locks it in and exits, Esc clears it and exits. Same model as the
+        // runner's log search.
         if self.search_input {
             match key.code {
                 KeyCode::Esc => {
@@ -443,7 +443,7 @@ impl PickerState {
             return None;
         }
 
-        // Mode commande : les lettres sont des raccourcis.
+        // Command mode: letters are shortcuts.
         match key.code {
             KeyCode::Char('/') => {
                 self.search.clear();
@@ -493,8 +493,8 @@ impl PickerState {
         }
     }
 
-    /// Action de lancement : les beams cochés s'ils existent, sinon le beam
-    /// sélectionné dans la liste filtrée.
+    /// Launch action: the checked beams if any exist, otherwise the beam
+    /// selected in the filtered list.
     fn launch(&self) -> Option<PickerAction> {
         let checked = self.selected_beam_indices();
         if !checked.is_empty() {
@@ -518,10 +518,10 @@ pub struct ExecutionState {
     pub done: Option<bool>,
     pub focus: FocusPanel,
     pub show_deps: bool,
-    /// Filtre de la liste de beams (saisi via `/` quand le focus est sur les
-    /// beams). Vide = tous les beams visibles.
+    /// Filter for the beam list (typed via `/` when focus is on the
+    /// beams). Empty = all beams visible.
     pub beam_filter: String,
-    /// Mode saisie du filtre de beams actif.
+    /// Beam filter input mode active.
     pub filter_input: bool,
 }
 
@@ -541,9 +541,9 @@ impl ExecutionState {
         }
     }
 
-    /// Indices des beams correspondant au filtre courant, dans l'ordre
-    /// d'exécution (pas de réordonnancement : la liste reste stable). Tous les
-    /// beams si le filtre est vide.
+    /// Indices of the beams matching the current filter, in execution
+    /// order (no reordering: the list stays stable). All beams if the
+    /// filter is empty.
     pub fn visible_indices(&self) -> Vec<usize> {
         if self.beam_filter.is_empty() {
             return (0..self.beams.len()).collect();
@@ -557,9 +557,8 @@ impl ExecutionState {
             .collect()
     }
 
-    /// Recentre la sélection sur le premier beam visible si la sélection
-    /// courante est masquée par le filtre. À appeler après chaque édition du
-    /// filtre.
+    /// Recenters the selection on the first visible beam if the current
+    /// selection is hidden by the filter. Call after every filter edit.
     pub fn clamp_selection_to_visible(&mut self) {
         let visible = self.visible_indices();
         if !visible.contains(&self.selected) {
@@ -600,8 +599,8 @@ impl ExecutionState {
         }
     }
 
-    /// Calcule les beams à relancer depuis le beam sélectionné.
-    /// Retourne (root_name, to_rerun, pre_success).
+    /// Computes the beams to rerun starting from the selected beam.
+    /// Returns (root_name, to_rerun, pre_success).
     pub fn compute_rerun(&self, selected: usize) -> (String, Vec<String>, Vec<String>) {
         let root_name = self.beams[selected].name.clone();
         let mut to_rerun = vec![];
@@ -617,7 +616,7 @@ impl ExecutionState {
             visited.push(idx);
             let beam = &self.beams[idx];
             if idx == selected {
-                // Le beam racine est toujours relancé, quel que soit son statut
+                // The root beam is always rerun, regardless of its status
                 to_rerun.push(beam.name.clone());
             } else {
                 match &beam.status {
@@ -644,7 +643,7 @@ impl ExecutionState {
         (root_name, to_rerun, pre_success)
     }
 
-    /// Remet les beams listés à Pending et vide leurs logs. Reset aussi exec.done.
+    /// Resets the listed beams to Pending and clears their logs. Also resets exec.done.
     pub fn reset_for_rerun(&mut self, names: &[String]) {
         for beam in self.beams.iter_mut() {
             if names.contains(&beam.name) {
@@ -704,8 +703,8 @@ impl ExecutionState {
         }
     }
 
-    /// Sélectionne le premier beam au statut `Failed`. Renvoie `true` si trouvé,
-    /// ne modifie rien sinon (ex. échec dû uniquement à des `Cancelled`).
+    /// Selects the first beam with `Failed` status. Returns `true` if found,
+    /// does nothing otherwise (e.g. failure caused only by `Cancelled` beams).
     pub fn select_first_failed(&mut self) -> bool {
         if let Some(idx) = self
             .beams
@@ -763,7 +762,7 @@ impl ExecutionState {
 pub struct LogViewState {
     pub beam_index: usize,
     pub scroll: u16,
-    pub scroll_locked: bool, // true = l'utilisateur a scrollé manuellement
+    pub scroll_locked: bool, // true = the user has scrolled manually
 }
 
 impl LogViewState {
@@ -775,14 +774,14 @@ impl LogViewState {
         }
     }
 
-    /// Offset maximal de scroll (en lignes visuelles) : on ne scrolle pas
-    /// au-delà du dernier écran complet.
+    /// Maximum scroll offset (in visual lines): we do not scroll
+    /// past the last full screen.
     fn max_scroll(total_visual: u16, height: u16) -> u16 {
         total_visual.saturating_sub(height)
     }
 
-    /// Déplace le scroll de `delta` lignes visuelles, borné à [0, max_scroll].
-    /// Une montée verrouille l'auto-scroll ; atteindre le bas le réactive.
+    /// Moves the scroll by `delta` visual lines, clamped to [0, max_scroll].
+    /// Scrolling up locks auto-scroll; reaching the bottom re-enables it.
     pub fn scroll_lines(&mut self, delta: i32, total_visual: u16, height: u16) {
         let max = Self::max_scroll(total_visual, height) as i32;
         let next = (self.scroll as i32 + delta).clamp(0, max);
@@ -794,13 +793,13 @@ impl LogViewState {
         }
     }
 
-    /// Va en haut des logs et verrouille l'auto-scroll.
+    /// Goes to the top of the logs and locks auto-scroll.
     pub fn scroll_to_top(&mut self) {
         self.scroll = 0;
         self.scroll_locked = true;
     }
 
-    /// Va en bas des logs et réactive l'auto-scroll.
+    /// Goes to the bottom of the logs and re-enables auto-scroll.
     pub fn scroll_to_bottom(&mut self, total_visual: u16, height: u16) {
         self.scroll = Self::max_scroll(total_visual, height);
         self.scroll_locked = false;
@@ -827,7 +826,7 @@ impl LogViewState {
         None
     }
 
-    /// Appelé à chaque tick : si auto-scroll actif, coller au bas.
+    /// Called on every tick: if auto-scroll is active, stick to the bottom.
     pub fn auto_scroll(&mut self, total_visual: u16, height: u16) {
         if !self.scroll_locked {
             self.scroll = Self::max_scroll(total_visual, height);
@@ -835,7 +834,7 @@ impl LogViewState {
     }
 }
 
-// ── Ancienne App (rétro-compatibilité — supprimée en Task 11) ────
+// ── Former App (kept for backward compatibility; removed in Task 11) ────
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {

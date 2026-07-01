@@ -9,56 +9,56 @@ use ratatui::{
 
 const BAR_WIDTH: usize = 16;
 
-// Palette : touche en accent, libellé lisible, séparateur discret.
+// Palette: key in accent color, readable label, discreet separator.
 const KEY: Color = Color::Cyan;
 const LABEL: Color = Color::Gray;
 const SEP: Color = Color::DarkGray;
 
-// Jeux de raccourcis : complet si la largeur le permet, sinon essentiel.
+// Hint sets: full if the width allows it, otherwise essential.
 const RUNNING_FULL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
     ("←→", "focus"),
     ("PgUp/Dn", "scroll"),
-    ("g/G", "haut/bas"),
-    ("/", "cherche"),
-    ("y", "copier"),
+    ("g/G", "top/bottom"),
+    ("/", "search"),
+    ("y", "copy"),
     ("d", "deps"),
-    ("?", "aide"),
-    ("q", "annuler"),
+    ("?", "help"),
+    ("q", "cancel"),
 ];
 const RUNNING_ESSENTIAL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
     ("←→", "focus"),
-    ("/", "cherche"),
-    ("?", "aide"),
-    ("q", "annuler"),
+    ("/", "search"),
+    ("?", "help"),
+    ("q", "cancel"),
 ];
 const DONE_FULL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
     ("←→", "focus"),
     ("PgUp/Dn", "scroll"),
-    ("g/G", "haut/bas"),
-    ("/", "cherche"),
-    ("y", "copier"),
-    ("r", "relancer"),
+    ("g/G", "top/bottom"),
+    ("/", "search"),
+    ("y", "copy"),
+    ("r", "rerun"),
     ("d", "deps"),
-    ("?", "aide"),
-    ("q", "quitter"),
+    ("?", "help"),
+    ("q", "quit"),
 ];
 const DONE_ESSENTIAL: &[(&str, &str)] = &[
     ("↑↓", "beam"),
-    ("/", "cherche"),
-    ("r", "relancer"),
-    ("?", "aide"),
-    ("q", "quitter"),
+    ("/", "search"),
+    ("r", "rerun"),
+    ("?", "help"),
+    ("q", "quit"),
 ];
 
-/// Ratio (plein, vide) de la barre, largeur fixe par défaut.
+/// Ratio (filled, empty) of the bar, default fixed width.
 pub fn progress_fill(done: usize, total: usize) -> Option<(usize, usize)> {
     progress_fill_width(done, total, BAR_WIDTH)
 }
 
-/// Ratio (plein, vide) sur une largeur donnée, ou `None` si total ou largeur nuls.
+/// Ratio (filled, empty) over a given width, or `None` if total or width is zero.
 pub fn progress_fill_width(done: usize, total: usize, width: usize) -> Option<(usize, usize)> {
     if total == 0 || width == 0 {
         return None;
@@ -67,7 +67,7 @@ pub fn progress_fill_width(done: usize, total: usize, width: usize) -> Option<(u
     Some((filled, width - filled))
 }
 
-/// Texte concaténé des raccourcis : « Tab focus · / cherche · q quitter ».
+/// Concatenated hint text: « Tab focus · / search · q quit ».
 pub fn hint_text(hints: &[(&str, &str)]) -> String {
     hints
         .iter()
@@ -76,7 +76,7 @@ pub fn hint_text(hints: &[(&str, &str)]) -> String {
         .join(" · ")
 }
 
-/// Renvoie le jeu complet s'il tient dans `width` colonnes, sinon l'essentiel.
+/// Returns the full set if it fits within `width` columns, otherwise the essential one.
 pub fn fit_hints<'a>(
     full: &'a [(&str, &str)],
     essential: &'a [(&str, &str)],
@@ -89,9 +89,9 @@ pub fn fit_hints<'a>(
     }
 }
 
-/// Largeurs des séparateurs pour justifier `n` éléments de largeur cumulée
-/// `content` sur `target` colonnes (séparateur minimal 3 : « · » entouré
-/// d'espaces). `None` si un seul élément ou si ça ne tient pas.
+/// Separator widths to justify `n` items with cumulative width
+/// `content` over `target` columns (minimum separator 3: « · » surrounded
+/// by spaces). `None` if there is a single item or if it does not fit.
 pub fn justify_gaps(content: usize, n: usize, target: usize) -> Option<Vec<usize>> {
     if n <= 1 {
         return None;
@@ -106,14 +106,14 @@ pub fn justify_gaps(content: usize, n: usize, target: usize) -> Option<Vec<usize
     Some((0..gaps).map(|i| base + usize::from(i < rem)).collect())
 }
 
-/// Séparateur de largeur `width` (>= 3) avec le point centré.
+/// Separator of width `width` (>= 3) with a centered dot.
 fn separator(width: usize) -> String {
     let left = width / 2;
     let right = width - 1 - left;
     format!("{}·{}", " ".repeat(left), " ".repeat(right))
 }
 
-/// Largeur d'affichage d'un couple (touche, libellé) : « touche libellé ».
+/// Display width of a (key, label) pair: « key label ».
 fn pair_width(key: &str, label: &str) -> usize {
     key.chars().count() + 1 + label.chars().count()
 }
@@ -125,7 +125,7 @@ fn key_label_spans(key: &str, label: &str) -> [Span<'static>; 2] {
     ]
 }
 
-/// Raccourcis alignés à gauche, séparateur minimal.
+/// Hints aligned to the left, minimal separator.
 fn hint_spans(hints: &[(&str, &str)]) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for (i, (key, label)) in hints.iter().enumerate() {
@@ -137,10 +137,10 @@ fn hint_spans(hints: &[(&str, &str)]) -> Vec<Span<'static>> {
     spans
 }
 
-/// Raccourcis justifiés sur `width` colonnes si possible, sinon alignés à gauche.
+/// Hints justified over `width` columns if possible, otherwise aligned to the left.
 fn hint_spans_justified(hints: &[(&str, &str)], width: usize) -> Vec<Span<'static>> {
     let content: usize = hints.iter().map(|(k, l)| pair_width(k, l)).sum();
-    // 1 colonne de marge à gauche et à droite.
+    // 1 column of margin on the left and right.
     match justify_gaps(content, hints.len(), width.saturating_sub(2)) {
         Some(gaps) => {
             let mut spans = Vec::new();
@@ -167,10 +167,10 @@ fn semantic(done: Option<bool>) -> (&'static str, &'static str, Color) {
     }
 }
 
-/// Décompte des beams terminés par statut, pour le détail de la ligne de
-/// progression. `success` inclut les succès en cache, `warning` compte les échecs
-/// tolérés (allow_failure), `cancelled` compte les beams annulés (catégorie neutre,
-/// distincte des échecs).
+/// Count of finished beams by status, for the breakdown in the progress
+/// line. `success` includes cached successes, `warning` counts tolerated
+/// failures (allow_failure), `cancelled` counts cancelled beams (neutral category,
+/// distinct from failures).
 pub struct StatusBreakdown {
     pub success: usize,
     pub warning: usize,
@@ -180,8 +180,8 @@ pub struct StatusBreakdown {
 }
 
 impl StatusBreakdown {
-    /// Compte les beams terminés par statut. Les statuts non terminés (Pending,
-    /// Running) sont ignorés. `Cancelled` est compté à part, jamais comme un échec.
+    /// Counts finished beams by status. Unfinished statuses (Pending,
+    /// Running) are ignored. `Cancelled` is counted separately, never as a failure.
     pub fn from_statuses<'a>(statuses: impl Iterator<Item = &'a BeamStatus>) -> Self {
         let mut b = StatusBreakdown {
             success: 0,
@@ -203,14 +203,14 @@ impl StatusBreakdown {
         b
     }
 
-    /// Nombre total de beams terminés (toutes catégories comptées ici).
+    /// Total number of finished beams (all categories counted here).
     pub fn done_count(&self) -> usize {
         self.success + self.warning + self.failed + self.skipped + self.cancelled
     }
 }
 
-/// Spans du détail « (✔ n ✕ n ◌ n) », uniquement les catégories non nulles, avec
-/// leur largeur d'affichage cumulée. Vide si aucun beam terminé.
+/// Spans of the breakdown « (✔ n ✕ n ◌ n) », only the non-zero categories, with
+/// their cumulative display width. Empty if no beam has finished.
 fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
     let parts = [
         (b.success, "✔", Color::Green),
@@ -240,8 +240,8 @@ fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
     (spans, width)
 }
 
-/// Ligne 1 du footer : état + compteur global + détail par statut + barre de
-/// progression proportionnelle.
+/// Footer line 1: status + global count + breakdown by status + proportional
+/// progress bar.
 pub fn render_progress_line(
     f: &mut Frame,
     area: Rect,
@@ -257,8 +257,8 @@ pub fn render_progress_line(
     if total > 0 {
         let count = format!("{}/{} ", done_count, total);
         let (detail, detail_w) = breakdown_spans(breakdown);
-        // Largeur restante pour la barre : largeur totale - gauche - compteur -
-        // détail - crochets - marge droite.
+        // Remaining width for the bar: total width - left - count -
+        // breakdown - brackets - right margin.
         let used = left.chars().count() + count.chars().count() + detail_w + 3;
         let bar_w = (area.width as usize).saturating_sub(used);
         spans.push(Span::styled(count, Style::default().fg(LABEL)));
@@ -274,7 +274,7 @@ pub fn render_progress_line(
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-/// Ligne 2 du footer : raccourcis (complets si ça tient, sinon essentiels).
+/// Footer line 2: hints (full if it fits, otherwise essential).
 pub fn render_hints_line(f: &mut Frame, area: Rect, done: Option<bool>) {
     let (full, essential) = match done {
         None => (RUNNING_FULL, RUNNING_ESSENTIAL),
@@ -284,9 +284,9 @@ pub fn render_hints_line(f: &mut Frame, area: Rect, done: Option<bool>) {
     render_hints(f, area, hints);
 }
 
-/// Rend une ligne de raccourcis avec la palette commune (touche en accent,
-/// libellé lisible, séparateur discret), justifiée sur la largeur disponible.
-/// Point d'entrée partagé entre l'écran d'exécution et le picker.
+/// Renders a hints line with the common palette (key in accent color,
+/// readable label, discreet separator), justified over the available width.
+/// Shared entry point between the execution screen and the picker.
 pub fn render_hints(f: &mut Frame, area: Rect, hints: &[(&str, &str)]) {
     let mut spans = vec![Span::raw(" ")];
     spans.extend(hint_spans_justified(hints, area.width as usize));
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn breakdown_only_non_zero_categories() {
-        // success + skipped actifs, failed omis : "(", "✔ 6", " ", "◌ 1", ") ".
+        // success + skipped active, failed omitted: "(", "✔ 6", " ", "◌ 1", ") ".
         let (spans, _w) = breakdown_spans(&StatusBreakdown {
             success: 6,
             warning: 0,
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn breakdown_includes_warning_category() {
-        // success + warning + failed + skipped tous actifs :
+        // success + warning + failed + skipped all active:
         // "(", "✔ 6", " ", "⚠ 2", " ", "✕ 1", " ", "◌ 1", ") " => 9 spans.
         let (spans, _w) = breakdown_spans(&StatusBreakdown {
             success: 6,
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn breakdown_includes_cancelled_category() {
-        // success + cancelled actifs : "(", "✔ 6", " ", "⊘ 2", ") " => 5 spans.
+        // success + cancelled active: "(", "✔ 6", " ", "⊘ 2", ") " => 5 spans.
         let (spans, _w) = breakdown_spans(&StatusBreakdown {
             success: 6,
             warning: 0,
@@ -384,10 +384,10 @@ mod tests {
         assert_eq!(b.success, 1);
         assert_eq!(
             b.failed, 1,
-            "un Cancelled ne doit pas être compté comme un échec"
+            "a Cancelled beam must not be counted as a failure"
         );
         assert_eq!(b.cancelled, 2);
-        // Running et Pending ne sont pas terminés : 1 + 1 + 2 = 4.
+        // Running and Pending are not finished: 1 + 1 + 2 = 4.
         assert_eq!(b.done_count(), 4);
     }
 }
