@@ -1,10 +1,10 @@
-use crate::ast::{Beam, ConditionClause, ConditionOp};
+use crate::ast::{Beam, Condition, ConditionClause, ConditionOp, Run};
 use crate::cache::BeamCache;
 use crate::dag::BeamGraph;
 use anyhow::Result;
-use aurora_executor_api::{ExecutionInput, Executor};
+use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot, Semaphore};
@@ -265,10 +265,9 @@ impl Scheduler {
         let working_dir = self.working_dir.clone();
 
         set.spawn(async move {
-            let _permit = if let Some(s) = sem {
-                Some(s.acquire_owned().await.unwrap())
-            } else {
-                None
+            let _permit = match sem {
+                Some(s) => Some(s.acquire_owned().await.unwrap()),
+                None => None,
             };
 
             let _ = tx
@@ -277,6 +276,8 @@ impl Scheduler {
                 })
                 .await;
 
+            // A beam without a `run` block is a pure aggregation node: it
+            // succeeds immediately once its dependencies are done.
             if beam.run.is_none() {
                 let _ = tx
                     .send(SchedulerEvent::BeamCompleted {
@@ -290,91 +291,27 @@ impl Scheduler {
                 return (beam.name, BeamOutcome::Ok);
             }
 
-            if let Some(cond) = &beam.skip_if {
-                let skip = tokio::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(cond)
-                    .current_dir(&working_dir)
-                    .env_clear()
-                    .envs(&env)
-                    .status()
-                    .await
-                    .map(|s| s.success())
-                    .unwrap_or(false);
-                if skip {
-                    let _ = tx
-                        .send(SchedulerEvent::BeamCompleted {
-                            name: beam.name.clone(),
-                            status: BeamStatus::Skipped {
-                                reason: SkipReason::SkipIf,
-                            },
-                        })
-                        .await;
-                    return (beam.name, BeamOutcome::Ok);
-                }
+            // Gating: skip when `skip_if` succeeds, then when `condition` is
+            // not met. Either way the beam counts as a success for scheduling.
+            if let Some(reason) = gate_skip_reason(&beam, &working_dir, &env).await {
+                let _ = tx
+                    .send(SchedulerEvent::BeamCompleted {
+                        name: beam.name.clone(),
+                        status: BeamStatus::Skipped { reason },
+                    })
+                    .await;
+                return (beam.name, BeamOutcome::Ok);
             }
 
-            // A `condition { }` block gates execution: the beam runs only when
-            // the condition holds (all/any of the shell clauses succeed).
-            if let Some(condition) = &beam.condition {
-                let mut clause_results = Vec::with_capacity(condition.clauses.len());
-                for ConditionClause::Shell(cmd) in &condition.clauses {
-                    let ok = tokio::process::Command::new("sh")
-                        .arg("-c")
-                        .arg(cmd)
-                        .current_dir(&working_dir)
-                        .env_clear()
-                        .envs(&env)
-                        .status()
-                        .await
-                        .map(|s| s.success())
-                        .unwrap_or(false);
-                    clause_results.push(ok);
-                }
-                let met = match condition.op {
-                    ConditionOp::All => clause_results.iter().all(|&ok| ok),
-                    ConditionOp::Any => clause_results.iter().any(|&ok| ok),
-                };
-                if !met {
-                    let _ = tx
-                        .send(SchedulerEvent::BeamCompleted {
-                            name: beam.name.clone(),
-                            status: BeamStatus::Skipped {
-                                reason: SkipReason::ConditionNotMet,
-                            },
-                        })
-                        .await;
-                    return (beam.name, BeamOutcome::Ok);
-                }
-            }
-
+            // Cache: on a valid hit, replay the recorded output and skip.
             let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
                 cache.hash_inputs_at(&working_dir, &beam.inputs).ok()
             } else {
                 None
             };
-
             if let Some(ref hash) = inputs_hash {
                 if cache.is_valid(&beam.name, hash, &beam.outputs, &working_dir) {
-                    let (stdout, stderr) = cache.load_logs(&beam.name);
-                    for line in stdout {
-                        let _ = tx
-                            .send(SchedulerEvent::BeamOutput {
-                                name: beam.name.clone(),
-                                line,
-                                is_stderr: false,
-                            })
-                            .await;
-                    }
-                    for line in stderr {
-                        let _ = tx
-                            .send(SchedulerEvent::BeamOutput {
-                                name: beam.name.clone(),
-                                line,
-                                is_stderr: true,
-                            })
-                            .await;
-                    }
+                    replay_cached_output(&cache, &beam.name, &tx).await;
                     let _ = tx
                         .send(SchedulerEvent::BeamCompleted {
                             name: beam.name.clone(),
@@ -387,49 +324,14 @@ impl Scheduler {
                 }
             }
 
+            // Execute, streaming output live and racing against cancellation.
             let run = beam.run.as_ref().unwrap();
-
-            let executor_config = run
-                .executor
-                .as_ref()
-                .map(|e| {
-                    let map: serde_json::Map<String, serde_json::Value> = e
-                        .config
-                        .iter()
-                        .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                        .collect();
-                    serde_json::Value::Object(map)
-                })
-                .unwrap_or(serde_json::json!({}));
-
-            let (out_tx, mut out_rx) = mpsc::channel::<(String, bool)>(256);
-            let tx_fwd = tx.clone();
-            let beam_name_fwd = beam.name.clone();
-            let fwd_handle = tokio::spawn(async move {
-                let mut stdout_lines: Vec<String> = vec![];
-                let mut stderr_lines: Vec<String> = vec![];
-                while let Some((line, is_stderr)) = out_rx.recv().await {
-                    let _ = tx_fwd
-                        .send(SchedulerEvent::BeamOutput {
-                            name: beam_name_fwd.clone(),
-                            line: line.clone(),
-                            is_stderr,
-                        })
-                        .await;
-                    if is_stderr {
-                        stderr_lines.push(line);
-                    } else {
-                        stdout_lines.push(line);
-                    }
-                }
-                (stdout_lines, stderr_lines)
-            });
-
+            let (out_tx, fwd_handle) = spawn_output_forwarder(tx.clone(), beam.name.clone());
             let input = ExecutionInput {
                 commands: run.commands.clone(),
                 env,
                 working_dir: working_dir.clone(),
-                config: executor_config,
+                config: build_executor_config(run),
                 output_tx: Some(out_tx),
             };
 
@@ -460,55 +362,18 @@ impl Scheduler {
                 }
             };
             let (stdout_lines, stderr_lines) = fwd_handle.await.unwrap_or_default();
+            let duration = start.elapsed();
 
-            match result {
-                Ok(output) => {
-                    let duration = start.elapsed();
-                    let success = output.success();
-                    if success {
-                        if let Some(ref hash) = inputs_hash {
-                            let _ = cache.save_with_logs(
-                                &beam.name,
-                                hash,
-                                &stdout_lines,
-                                &stderr_lines,
-                            );
-                        }
+            // Side effects tied to the outcome: persist the cache on success,
+            // surface the error message on failure to spawn.
+            match &result {
+                Ok(output) if output.success() => {
+                    if let Some(ref hash) = inputs_hash {
+                        let _ =
+                            cache.save_with_logs(&beam.name, hash, &stdout_lines, &stderr_lines);
                     }
-                    let status = if success {
-                        BeamStatus::Success {
-                            duration,
-                            cached: false,
-                        }
-                    } else if beam.allow_failure {
-                        BeamStatus::FailedAllowed {
-                            exit_code: output.exit_code,
-                            duration,
-                        }
-                    } else {
-                        BeamStatus::Failed {
-                            exit_code: output.exit_code,
-                            duration,
-                        }
-                    };
-                    let _ = tx
-                        .send(SchedulerEvent::BeamCompleted {
-                            name: beam.name.clone(),
-                            status,
-                        })
-                        .await;
-                    let counts = success || beam.allow_failure;
-                    (
-                        beam.name,
-                        if counts {
-                            BeamOutcome::Ok
-                        } else {
-                            BeamOutcome::Failed
-                        },
-                    )
                 }
                 Err(e) => {
-                    let duration = start.elapsed();
                     // Surface the executor error instead of dropping it: an
                     // unreachable Docker daemon, a missing image or a rejected
                     // volume would otherwise fail with an opaque exit code -1.
@@ -519,35 +384,183 @@ impl Scheduler {
                             is_stderr: true,
                         })
                         .await;
-                    let status = if beam.allow_failure {
-                        BeamStatus::FailedAllowed {
-                            exit_code: -1,
-                            duration,
-                        }
-                    } else {
-                        BeamStatus::Failed {
-                            exit_code: -1,
-                            duration,
-                        }
-                    };
-                    let _ = tx
-                        .send(SchedulerEvent::BeamCompleted {
-                            name: beam.name.clone(),
-                            status,
-                        })
-                        .await;
-                    (
-                        beam.name,
-                        if beam.allow_failure {
-                            BeamOutcome::Ok
-                        } else {
-                            BeamOutcome::Failed
-                        },
-                    )
                 }
+                _ => {}
             }
+
+            let (status, outcome) = classify_execution(&result, beam.allow_failure, duration);
+            let _ = tx
+                .send(SchedulerEvent::BeamCompleted {
+                    name: beam.name.clone(),
+                    status,
+                })
+                .await;
+            (beam.name, outcome)
         });
 
         cancel_tx
+    }
+}
+
+/// Runs a gating shell command and reports whether it succeeded (exit 0). A
+/// command that fails to launch counts as "not succeeded".
+async fn run_gate_command(cmd: &str, working_dir: &Path, env: &HashMap<String, String>) -> bool {
+    tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(working_dir)
+        .env_clear()
+        .envs(env)
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Evaluates a `condition { }` block: true when the beam should run (all/any
+/// of the shell clauses succeed).
+async fn condition_met(
+    condition: &Condition,
+    working_dir: &Path,
+    env: &HashMap<String, String>,
+) -> bool {
+    let mut clause_results = Vec::with_capacity(condition.clauses.len());
+    for ConditionClause::Shell(cmd) in &condition.clauses {
+        clause_results.push(run_gate_command(cmd, working_dir, env).await);
+    }
+    match condition.op {
+        ConditionOp::All => clause_results.iter().all(|&ok| ok),
+        ConditionOp::Any => clause_results.iter().any(|&ok| ok),
+    }
+}
+
+/// Evaluates the beam's gates (`skip_if`, then `condition`) and returns the
+/// reason to skip, or `None` when the beam should run.
+async fn gate_skip_reason(
+    beam: &Beam,
+    working_dir: &Path,
+    env: &HashMap<String, String>,
+) -> Option<SkipReason> {
+    if let Some(cond) = &beam.skip_if {
+        if run_gate_command(cond, working_dir, env).await {
+            return Some(SkipReason::SkipIf);
+        }
+    }
+    if let Some(condition) = &beam.condition {
+        if !condition_met(condition, working_dir, env).await {
+            return Some(SkipReason::ConditionNotMet);
+        }
+    }
+    None
+}
+
+/// Replays the stdout then stderr recorded in a cache entry as live output.
+async fn replay_cached_output(
+    cache: &BeamCache,
+    beam_name: &str,
+    tx: &mpsc::Sender<SchedulerEvent>,
+) {
+    let (stdout, stderr) = cache.load_logs(beam_name);
+    for (lines, is_stderr) in [(stdout, false), (stderr, true)] {
+        for line in lines {
+            let _ = tx
+                .send(SchedulerEvent::BeamOutput {
+                    name: beam_name.to_string(),
+                    line,
+                    is_stderr,
+                })
+                .await;
+        }
+    }
+}
+
+/// The sender handed to an executor for its live output, paired with the task
+/// that forwards those lines and collects `(stdout_lines, stderr_lines)`.
+type OutputForwarder = (
+    mpsc::Sender<(String, bool)>,
+    tokio::task::JoinHandle<(Vec<String>, Vec<String>)>,
+);
+
+/// Spawns the task that forwards executor output lines to the scheduler
+/// channel while accumulating them (to persist in the cache). Returns the
+/// sender to hand to the executor and the join handle yielding
+/// `(stdout_lines, stderr_lines)`.
+fn spawn_output_forwarder(tx: mpsc::Sender<SchedulerEvent>, beam_name: String) -> OutputForwarder {
+    let (out_tx, mut out_rx) = mpsc::channel::<(String, bool)>(256);
+    let handle = tokio::spawn(async move {
+        let mut stdout_lines: Vec<String> = vec![];
+        let mut stderr_lines: Vec<String> = vec![];
+        while let Some((line, is_stderr)) = out_rx.recv().await {
+            let _ = tx
+                .send(SchedulerEvent::BeamOutput {
+                    name: beam_name.clone(),
+                    line: line.clone(),
+                    is_stderr,
+                })
+                .await;
+            if is_stderr {
+                stderr_lines.push(line);
+            } else {
+                stdout_lines.push(line);
+            }
+        }
+        (stdout_lines, stderr_lines)
+    });
+    (out_tx, handle)
+}
+
+/// Turns a beam's executor config (string map) into the JSON value passed to
+/// the executor.
+fn build_executor_config(run: &Run) -> serde_json::Value {
+    run.executor
+        .as_ref()
+        .map(|e| {
+            let map: serde_json::Map<String, serde_json::Value> = e
+                .config
+                .iter()
+                .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
+                .collect();
+            serde_json::Value::Object(map)
+        })
+        .unwrap_or(serde_json::json!({}))
+}
+
+/// Maps an executor result to the beam's final display status and its
+/// scheduling outcome (whether dependents are unblocked). `allow_failure`
+/// downgrades a failure to a tolerated one that still counts as success.
+fn classify_execution(
+    result: &Result<ExecutionOutput>,
+    allow_failure: bool,
+    duration: Duration,
+) -> (BeamStatus, BeamOutcome) {
+    let exit_code = match result {
+        Ok(output) if output.success() => {
+            return (
+                BeamStatus::Success {
+                    duration,
+                    cached: false,
+                },
+                BeamOutcome::Ok,
+            );
+        }
+        Ok(output) => output.exit_code,
+        Err(_) => -1,
+    };
+    if allow_failure {
+        (
+            BeamStatus::FailedAllowed {
+                exit_code,
+                duration,
+            },
+            BeamOutcome::Ok,
+        )
+    } else {
+        (
+            BeamStatus::Failed {
+                exit_code,
+                duration,
+            },
+            BeamOutcome::Failed,
+        )
     }
 }
