@@ -1,13 +1,12 @@
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
+use tempfile::TempDir;
 
-/// Creates a temporary working directory with a Beamfile and returns it.
-fn fixture_dir(tag: &str, beamfile: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("aurora-headless-{}-{}", tag, std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("Beamfile"), beamfile).unwrap();
+/// Creates a temporary working directory holding a Beamfile. The returned
+/// [`TempDir`] removes the directory when dropped, including on a test panic.
+fn fixture_dir(beamfile: &str) -> TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("Beamfile"), beamfile).unwrap();
     dir
 }
 
@@ -30,10 +29,10 @@ beam "boom" {
 
 #[test]
 fn passing_beam_streams_prefixed_output_and_exits_zero() {
-    let dir = fixture_dir("ok", BEAMFILE);
+    let dir = fixture_dir(BEAMFILE);
     let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
         .args(["ok", "--no-tui"])
-        .current_dir(&dir)
+        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -49,7 +48,6 @@ fn passing_beam_streams_prefixed_output_and_exits_zero() {
     );
     assert!(stdout.contains("[ok"), "per-beam prefix present:\n{stdout}");
     assert!(stdout.contains("[PASS]"), "recap pass marker:\n{stdout}");
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -60,10 +58,10 @@ beam "lint" { depends_on = ["composer"] run { commands = ["echo l"] } }
 beam "test" { depends_on = ["composer"] run { commands = ["echo t"] } }
 beam "qa"   { depends_on = ["lint", "test"] }
 "#;
-    let dir = fixture_dir("dryrun", beamfile);
+    let dir = fixture_dir(beamfile);
     let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
         .args(["qa", "--dry-run"])
-        .current_dir(&dir)
+        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -77,13 +75,12 @@ beam "qa"   { depends_on = ["lint", "test"] }
         stdout.contains("qa"),
         "plan must include the target:\n{stdout}"
     );
-    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn warns_when_beamfile_comes_from_parent_directory() {
-    let parent = fixture_dir("parent", BEAMFILE);
-    let sub = parent.join("subdir");
+    let parent = fixture_dir(BEAMFILE);
+    let sub = parent.path().join("subdir");
     fs::create_dir_all(&sub).unwrap();
 
     let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
@@ -98,7 +95,6 @@ fn warns_when_beamfile_comes_from_parent_directory() {
         stderr.contains("parent directory"),
         "must warn that the Beamfile came from a parent directory:\n{stderr}"
     );
-    let _ = fs::remove_dir_all(&parent);
 }
 
 const BROKEN_BEAMFILE: &str = r#"
@@ -116,10 +112,10 @@ beam "broken" {
 
 #[test]
 fn unknown_dependency_exits_one() {
-    let dir = fixture_dir("broken", BROKEN_BEAMFILE);
+    let dir = fixture_dir(BROKEN_BEAMFILE);
     let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
         .args(["broken", "--no-tui"])
-        .current_dir(&dir)
+        .current_dir(dir.path())
         .output()
         .unwrap();
     assert_eq!(
@@ -129,7 +125,6 @@ fn unknown_dependency_exits_one() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 const CYCLIC_BEAMFILE: &str = r#"
@@ -151,10 +146,10 @@ beam "b" {
 
 #[test]
 fn dependency_cycle_exits_one() {
-    let dir = fixture_dir("cycle", CYCLIC_BEAMFILE);
+    let dir = fixture_dir(CYCLIC_BEAMFILE);
     let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
         .args(["a", "--no-tui"])
-        .current_dir(&dir)
+        .current_dir(dir.path())
         .output()
         .unwrap();
     assert_eq!(
@@ -164,15 +159,14 @@ fn dependency_cycle_exits_one() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn failing_beam_exits_one() {
-    let dir = fixture_dir("boom", BEAMFILE);
+    let dir = fixture_dir(BEAMFILE);
     let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
         .args(["boom", "--no-tui"])
-        .current_dir(&dir)
+        .current_dir(dir.path())
         .output()
         .unwrap();
 
@@ -183,5 +177,4 @@ fn failing_beam_exits_one() {
         "expected exit 1\nstdout:\n{stdout}"
     );
     assert!(stdout.contains("[FAIL]"), "recap fail marker:\n{stdout}");
-    let _ = fs::remove_dir_all(&dir);
 }
