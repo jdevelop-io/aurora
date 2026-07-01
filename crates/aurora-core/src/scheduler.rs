@@ -328,7 +328,13 @@ async fn run_beam_task(
     } = task_env;
 
     let _permit = match sem {
-        Some(s) => Some(s.acquire_owned().await.unwrap()),
+        // The semaphore is owned by the scheduler and never closed while the
+        // run is in flight, so acquisition cannot fail here.
+        Some(s) => Some(
+            s.acquire_owned()
+                .await
+                .expect("run semaphore is never closed during a run"),
+        ),
         None => None,
     };
 

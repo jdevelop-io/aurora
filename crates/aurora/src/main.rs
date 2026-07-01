@@ -158,7 +158,12 @@ async fn main() -> Result<()> {
         executors.insert(executor.name().to_string(), executor);
     }
 
-    let working_dir = beamfile_path.parent().unwrap().to_path_buf();
+    // `beamfile_path` always ends with the `Beamfile` component, so it has a
+    // parent; fall back to the current directory rather than panic if not.
+    let working_dir = beamfile_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf();
 
     // Evaluate environment variables (shell(...)) sequentially. When no
     // `environment { }` block is declared, fall back to the allowlisted base
