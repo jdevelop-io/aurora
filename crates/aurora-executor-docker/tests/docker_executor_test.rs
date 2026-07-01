@@ -26,6 +26,47 @@ async fn test_dangerous_volume_is_rejected() {
     }
 }
 
+// Does NOT require Docker: a symlink pointing at a forbidden path must not
+// slip past the textual blocklist. Docker resolves the symlink host-side at
+// mount time, so a purely textual check would let it through.
+#[cfg(unix)]
+#[tokio::test]
+async fn test_symlink_to_forbidden_path_is_rejected() {
+    let tmp = tempfile::tempdir().unwrap();
+    let link = tmp.path().join("sneaky");
+    std::os::unix::fs::symlink("/etc", &link).unwrap();
+    let spec = format!("{}:/host:rw", link.display());
+
+    let executor = DockerExecutor::new();
+    let input = ExecutionInput {
+        commands: vec!["echo nope".to_string()],
+        env: HashMap::new(),
+        working_dir: std::env::current_dir().unwrap(),
+        config: serde_json::json!({ "image": "alpine:3.19", "volumes": [spec] }),
+        output_tx: None,
+    };
+    let result = executor.execute(input).await;
+    assert!(result.is_err(), "symlink to /etc accepted");
+}
+
+// Does NOT require Docker: an image field starting with '-' would be parsed
+// as a `docker run` flag (e.g. --privileged), bypassing volume validation.
+#[tokio::test]
+async fn test_image_starting_with_dash_is_rejected() {
+    let executor = DockerExecutor::new();
+    for image in ["--privileged", "-v/:/host", ""] {
+        let input = ExecutionInput {
+            commands: vec!["echo nope".to_string()],
+            env: HashMap::new(),
+            working_dir: std::env::current_dir().unwrap(),
+            config: serde_json::json!({ "image": image }),
+            output_tx: None,
+        };
+        let result = executor.execute(input).await;
+        assert!(result.is_err(), "dangerous image accepted: {image:?}");
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires docker"]
 async fn test_docker_echo() {

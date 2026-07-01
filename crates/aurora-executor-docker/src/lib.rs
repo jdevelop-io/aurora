@@ -31,9 +31,35 @@ fn validate_volume(spec: &str) -> Result<()> {
         "/run",
         "/var/lib/docker",
     ];
+
+    // Docker resolves symlinks and `..` host-side at mount time, so a symlink
+    // such as `/tmp/x -> /var/run/docker.sock` (or a `..` escape) would bypass
+    // a purely textual blocklist and hand the daemon socket to the container.
+    // We therefore compare the resolved (canonical) host path against the
+    // resolved forbidden paths, and also keep the raw textual comparison for
+    // paths that do not exist yet (a non-existent path cannot be a symlink).
+    let canonicalize = |p: &str| {
+        std::fs::canonicalize(p)
+            .ok()
+            .map(|c| c.to_string_lossy().trim_end_matches('/').to_string())
+    };
+
+    let candidates: Vec<String> = std::iter::once(normalized.to_string())
+        .chain(canonicalize(host_path))
+        .collect();
+
     for p in FORBIDDEN {
-        if normalized == *p || normalized.starts_with(&format!("{p}/")) {
-            anyhow::bail!("forbidden volume (system path {p}): {spec}");
+        // Compare against the raw forbidden path and its canonical form, so
+        // platform aliases (macOS `/etc` -> `/private/etc`) still match.
+        let targets: Vec<String> = std::iter::once(p.to_string())
+            .chain(canonicalize(p))
+            .collect();
+        for candidate in &candidates {
+            for target in &targets {
+                if candidate == target || candidate.starts_with(&format!("{target}/")) {
+                    anyhow::bail!("forbidden volume (system path {p}): {spec}");
+                }
+            }
         }
     }
     Ok(())
@@ -64,6 +90,13 @@ impl Executor for DockerExecutor {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Docker executor requires 'image' config"))?
             .to_string();
+
+        // An image starting with '-' would be parsed by `docker run` as an
+        // option (e.g. --privileged, --network=host), bypassing the volume
+        // validation entirely. Reject it before any container launch.
+        if image.is_empty() || image.starts_with('-') {
+            anyhow::bail!("invalid Docker image name: {image:?}");
+        }
 
         let working_dir_str = input.working_dir.to_string_lossy().to_string();
         let volumes = match input.config["volumes"].as_array() {
@@ -99,7 +132,10 @@ impl Executor for DockerExecutor {
             cmd.arg("-e").arg(format!("{}={}", k, v));
         }
 
-        cmd.arg(&image)
+        // `--` terminates `docker run` options: everything after it is the
+        // image and its command, so a crafted image can never inject a flag.
+        cmd.arg("--")
+            .arg(&image)
             .arg("sh")
             .arg("-c")
             .arg(&script)
