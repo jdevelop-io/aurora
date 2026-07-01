@@ -1,5 +1,6 @@
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent, SkipReason};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::collections::HashSet;
 use std::time::Instant;
 
 // ── BeamView ─────────────────────────────────────────────────────
@@ -607,13 +608,12 @@ impl ExecutionState {
         let mut pre_success = vec![];
 
         let mut stack = vec![selected];
-        let mut visited: Vec<usize> = vec![];
+        let mut visited: HashSet<usize> = HashSet::new();
 
         while let Some(idx) = stack.pop() {
-            if visited.contains(&idx) {
+            if !visited.insert(idx) {
                 continue;
             }
-            visited.push(idx);
             let beam = &self.beams[idx];
             if idx == selected {
                 // The root beam is always rerun, regardless of its status
