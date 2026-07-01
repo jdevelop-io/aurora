@@ -41,6 +41,88 @@ fn status_of<'a>(events: &'a [SchedulerEvent], name: &str) -> Option<&'a BeamSta
 }
 
 #[tokio::test]
+async fn cache_hit_replays_recorded_output() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("in.txt"), "content-v1").unwrap();
+    let working_dir = PathBuf::from(dir.path());
+    let out = dir.path().join("out.txt");
+
+    let beam = Beam {
+        name: "build".to_string(),
+        description: None,
+        depends_on: vec![],
+        inputs: vec!["in.txt".to_string()],
+        outputs: vec![out.to_string_lossy().to_string()],
+        skip_if: None,
+        condition: None,
+        run: Some(Run {
+            commands: vec![
+                "echo hello-cache".to_string(),
+                format!("echo done > {}", out.display()),
+            ],
+            executor: None,
+        }),
+        allow_failure: false,
+    };
+
+    // First run: executes and records stdout in the cache.
+    let (tx, mut rx) = mpsc::channel(64);
+    Scheduler::new(
+        vec![beam.clone()],
+        local_executors(),
+        tx,
+        None,
+        working_dir.clone(),
+        HashMap::new(),
+    )
+    .run("build", &[])
+    .await
+    .unwrap();
+    while rx.try_recv().is_ok() {}
+
+    // Second run: the cache hit must replay the recorded stdout, not just
+    // report the Cached status.
+    let (tx, mut rx) = mpsc::channel(64);
+    Scheduler::new(
+        vec![beam],
+        local_executors(),
+        tx,
+        None,
+        working_dir,
+        HashMap::new(),
+    )
+    .run("build", &[])
+    .await
+    .unwrap();
+
+    let mut replayed = vec![];
+    let mut cached = false;
+    while let Ok(e) = rx.try_recv() {
+        match e {
+            SchedulerEvent::BeamOutput {
+                line,
+                is_stderr: false,
+                ..
+            } => replayed.push(line),
+            SchedulerEvent::BeamCompleted {
+                status:
+                    BeamStatus::Skipped {
+                        reason: SkipReason::Cached,
+                    },
+                ..
+            } => cached = true,
+            _ => {}
+        }
+    }
+
+    assert!(cached, "second run should be a cache hit");
+    assert!(
+        replayed.iter().any(|l| l == "hello-cache"),
+        "cached stdout should be replayed, got {replayed:?}"
+    );
+}
+
+#[tokio::test]
 async fn cache_hit_on_second_run_and_bypassed_with_no_cache() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("in.txt"), "content-v1").unwrap();
