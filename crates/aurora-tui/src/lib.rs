@@ -7,7 +7,7 @@ use anyhow::Result;
 use app::{
     ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction, PickerState,
 };
-use aurora_core::scheduler::{BeamStatus, SchedulerEvent};
+use aurora_core::events::{BeamStatus, SchedulerEvent};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,

@@ -10,45 +10,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinSet;
 
-#[derive(Debug, Clone)]
-pub enum BeamStatus {
-    Pending,
-    Running,
-    Success { duration: Duration, cached: bool },
-    Skipped { reason: SkipReason },
-    Failed { exit_code: i32, duration: Duration },
-    FailedAllowed { exit_code: i32, duration: Duration },
-    Cancelled,
-}
-
-#[derive(Debug, Clone)]
-pub enum SkipReason {
-    /// Inputs unchanged and outputs present: cached result replayed.
-    Cached,
-    /// The beam's `skip_if` command succeeded.
-    SkipIf,
-    /// The beam's `condition { }` block evaluated to false.
-    ConditionNotMet,
-}
-
-#[derive(Debug)]
-pub enum SchedulerEvent {
-    BeamStarted {
-        name: String,
-    },
-    BeamCompleted {
-        name: String,
-        status: BeamStatus,
-    },
-    BeamOutput {
-        name: String,
-        line: String,
-        is_stderr: bool,
-    },
-    AllDone {
-        success: bool,
-    },
-}
+// The event/status contract lives in `crate::events`. Re-exported here so the
+// scheduler's long-standing `scheduler::{SchedulerEvent, BeamStatus, ...}` path
+// keeps working.
+pub use crate::events::{BeamStatus, SchedulerEvent, SkipReason};
 
 /// Outcome of a beam task, used to drive downstream scheduling.
 enum BeamOutcome {

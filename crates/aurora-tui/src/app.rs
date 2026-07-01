@@ -1,4 +1,4 @@
-use aurora_core::scheduler::{BeamStatus, SchedulerEvent, SkipReason};
+use aurora_core::events::{BeamStatus, SchedulerEvent, SkipReason};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::collections::HashSet;
 use std::time::Instant;

@@ -4,7 +4,8 @@
 pub mod headless;
 
 use aurora_core::ast::Beam;
-use aurora_core::scheduler::{Scheduler, SchedulerEvent};
+use aurora_core::events::SchedulerEvent;
+use aurora_core::scheduler::Scheduler;
 use aurora_executor_api::Executor;
 use std::collections::HashMap;
 use std::path::PathBuf;

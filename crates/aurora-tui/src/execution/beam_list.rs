@@ -1,5 +1,5 @@
 use crate::app::{BeamView, ExecutionState};
-use aurora_core::scheduler::BeamStatus;
+use aurora_core::events::BeamStatus;
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},

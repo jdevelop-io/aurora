@@ -1,4 +1,4 @@
-use aurora_core::scheduler::BeamStatus;
+use aurora_core::events::BeamStatus;
 use ratatui::{
     layout::Rect,
     style::{Color, Style},

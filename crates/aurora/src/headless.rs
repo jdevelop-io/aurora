@@ -4,7 +4,7 @@
 
 use std::io::Write;
 
-use aurora_core::scheduler::{BeamStatus, SchedulerEvent, SkipReason};
+use aurora_core::events::{BeamStatus, SchedulerEvent, SkipReason};
 use tokio::sync::mpsc;
 
 /// Wraps `text` in an ANSI color code when `use_color` is true.

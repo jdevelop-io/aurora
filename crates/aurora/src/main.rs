@@ -6,7 +6,7 @@ mod plugins;
 
 use anyhow::{bail, Result};
 use aurora::headless;
-use aurora_core::{env::evaluate, parser::parse, scheduler::SchedulerEvent};
+use aurora_core::{env::evaluate, events::SchedulerEvent, parser::parse};
 use aurora_executor_api::Executor;
 use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
