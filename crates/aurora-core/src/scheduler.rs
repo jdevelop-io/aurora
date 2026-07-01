@@ -394,29 +394,36 @@ async fn run_beam_task(
         return (beam.name, BeamOutcome::Ok);
     }
 
-    // Cache: on a valid hit, replay the recorded output and skip.
+    // Cache: on a valid hit, replay the recorded output and skip. The lookup
+    // hashes the inputs (reading whole files) and stats the outputs, so it runs
+    // on a blocking thread rather than stalling the async runtime.
     let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
-        cache
-            .hash_inputs_at(&working_dir, &beam.inputs)
-            .ok()
-            .flatten()
+        match cache_lookup_blocking(
+            &cache,
+            &beam.name,
+            &beam.inputs,
+            &beam.outputs,
+            &working_dir,
+        )
+        .await
+        {
+            CacheLookup::Hit { stdout, stderr } => {
+                replay_cached_lines(&tx, &beam.name, stdout, stderr).await;
+                let _ = tx
+                    .send(SchedulerEvent::BeamCompleted {
+                        name: beam.name.clone(),
+                        status: BeamStatus::Skipped {
+                            reason: SkipReason::Cached,
+                        },
+                    })
+                    .await;
+                return (beam.name, BeamOutcome::Ok);
+            }
+            CacheLookup::Miss { hash } => hash,
+        }
     } else {
         None
     };
-    if let Some(ref hash) = inputs_hash {
-        if cache.is_valid(&beam.name, hash, &beam.outputs, &working_dir) {
-            replay_cached_output(&cache, &beam.name, &tx).await;
-            let _ = tx
-                .send(SchedulerEvent::BeamCompleted {
-                    name: beam.name.clone(),
-                    status: BeamStatus::Skipped {
-                        reason: SkipReason::Cached,
-                    },
-                })
-                .await;
-            return (beam.name, BeamOutcome::Ok);
-        }
-    }
 
     // Execute, streaming output live and racing against cancellation.
     let run = beam.run.as_ref().unwrap();
@@ -462,8 +469,10 @@ async fn run_beam_task(
     // surface the error message on failure to spawn.
     match &result {
         Ok(output) if output.success() => {
-            if let Some(ref hash) = inputs_hash {
-                let _ = cache.save_with_logs(&beam.name, hash, &stdout_lines, &stderr_lines);
+            if let Some(hash) = inputs_hash {
+                // Persist off the async runtime: writing the entry serializes
+                // and writes the whole captured output to disk.
+                save_cache_blocking(&cache, &beam.name, hash, stdout_lines, stderr_lines).await;
             }
         }
         Err(e) => {
@@ -549,12 +558,72 @@ async fn gate_skip_reason(
 }
 
 /// Replays the stdout then stderr recorded in a cache entry as live output.
-async fn replay_cached_output(
-    cache: &BeamCache,
+/// Outcome of a cache probe: a hit carries the recorded output to replay; a
+/// miss carries the inputs hash (if any) to persist once the beam has run.
+enum CacheLookup {
+    Hit {
+        stdout: Vec<String>,
+        stderr: Vec<String>,
+    },
+    Miss {
+        hash: Option<String>,
+    },
+}
+
+/// Probes the cache on a blocking thread: hashes the inputs (reading whole
+/// files), and on a hash and output match loads the recorded logs. The cache
+/// is filesystem-backed and synchronous by design, so it must not run on the
+/// async runtime where it would stall other beams and delay cancellation.
+async fn cache_lookup_blocking(
+    cache: &Arc<BeamCache>,
     beam_name: &str,
-    tx: &mpsc::Sender<SchedulerEvent>,
+    inputs: &[String],
+    outputs: &[String],
+    working_dir: &Path,
+) -> CacheLookup {
+    let cache = cache.clone();
+    let beam_name = beam_name.to_string();
+    let inputs = inputs.to_vec();
+    let outputs = outputs.to_vec();
+    let working_dir = working_dir.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let hash = cache.hash_inputs_at(&working_dir, &inputs).ok().flatten();
+        if let Some(ref hash) = hash {
+            if cache.is_valid(&beam_name, hash, &outputs, &working_dir) {
+                let (stdout, stderr) = cache.load_logs(&beam_name);
+                return CacheLookup::Hit { stdout, stderr };
+            }
+        }
+        CacheLookup::Miss { hash }
+    })
+    .await
+    .unwrap_or(CacheLookup::Miss { hash: None })
+}
+
+/// Persists a beam's cache entry on a blocking thread. Failures are ignored:
+/// a cache that cannot be written must never fail the run.
+async fn save_cache_blocking(
+    cache: &Arc<BeamCache>,
+    beam_name: &str,
+    hash: String,
+    stdout: Vec<String>,
+    stderr: Vec<String>,
 ) {
-    let (stdout, stderr) = cache.load_logs(beam_name);
+    let cache = cache.clone();
+    let beam_name = beam_name.to_string();
+    let _ = tokio::task::spawn_blocking(move || {
+        cache.save_with_logs(&beam_name, &hash, &stdout, &stderr)
+    })
+    .await;
+}
+
+/// Replays cached output lines as `BeamOutput` events, stdout then stderr.
+async fn replay_cached_lines(
+    tx: &mpsc::Sender<SchedulerEvent>,
+    beam_name: &str,
+    stdout: Vec<String>,
+    stderr: Vec<String>,
+) {
     for (lines, is_stderr) in [(stdout, false), (stderr, true)] {
         for line in lines {
             let _ = tx
