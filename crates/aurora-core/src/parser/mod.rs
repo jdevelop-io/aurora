@@ -34,7 +34,17 @@ pub fn parse(input: &str) -> Result<BeamFile> {
         }
     }
 
-    // Resolve var_ref in executor configs
+    Ok(bf)
+}
+
+/// Resolves `var.<name>` references in executor configs against the current
+/// variable defaults.
+///
+/// This runs as a separate step, after parsing, so that `--var` overrides
+/// (applied to `Variable.default` post-parse) are honored. Resolving inside
+/// [`parse`] would freeze the executor config to the original defaults and
+/// make `--var` a no-op for executor fields such as the Docker image.
+pub fn resolve_variables(bf: &mut BeamFile) {
     let vars: HashMap<String, String> = bf
         .variables
         .iter()
@@ -53,8 +63,6 @@ pub fn parse(input: &str) -> Result<BeamFile> {
             }
         }
     }
-
-    Ok(bf)
 }
 
 fn parse_block(pair: Pair<Rule>, bf: &mut BeamFile) -> Result<()> {

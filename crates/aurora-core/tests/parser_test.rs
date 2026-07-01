@@ -1,4 +1,4 @@
-use aurora_core::parser::parse;
+use aurora_core::parser::{parse, resolve_variables};
 
 #[test]
 fn test_parse_minimal_beam() {
@@ -97,6 +97,49 @@ beam "phpstan" {
     let exec = beam.run.as_ref().unwrap().executor.as_ref().unwrap();
     assert_eq!(exec.name, "docker");
     assert_eq!(exec.config.get("image").unwrap(), "omega-tools:v1");
+}
+
+#[test]
+fn test_resolve_variables_uses_defaults() {
+    let input = r#"
+variable "image" { default = "old:1" }
+beam "b" {
+  run {
+    commands = ["echo"]
+    executor "docker" { image = var.image }
+  }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    // Before resolution the reference is left verbatim in the config.
+    let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
+    assert_eq!(exec.config.get("image").unwrap(), "var.image");
+
+    resolve_variables(&mut bf);
+    let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
+    assert_eq!(exec.config.get("image").unwrap(), "old:1");
+}
+
+#[test]
+fn test_resolve_variables_honors_overridden_default() {
+    // Reproduces the --var bug: an override applied to the variable default
+    // after parsing must reach the executor config, which only happens if
+    // resolution runs after the override rather than during parse().
+    let input = r#"
+variable "image" { default = "old:1" }
+beam "b" {
+  run {
+    commands = ["echo"]
+    executor "docker" { image = var.image }
+  }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    bf.variables[0].default = "new:2".to_string(); // simulates --var image=new:2
+    resolve_variables(&mut bf);
+
+    let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
+    assert_eq!(exec.config.get("image").unwrap(), "new:2");
 }
 
 #[test]
