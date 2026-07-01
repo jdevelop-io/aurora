@@ -174,10 +174,10 @@ fn test_parse_empty_beamfile_is_valid() {
 fn test_parse_malformed_beamfile_errors() {
     // Syntactically invalid inputs must return Err, not panic.
     for input in [
-        "beam \"x\" {",              // unclosed block
-        "beam {\n  run {}\n}",       // missing beam name
+        "beam \"x\" {",                // unclosed block
+        "beam {\n  run {}\n}",         // missing beam name
         "beam \"x\" { run = \"no\" }", // run is a block, not a string
-        "{{{",                        // garbage
+        "{{{",                         // garbage
     ] {
         assert!(
             parse(input).is_err(),
