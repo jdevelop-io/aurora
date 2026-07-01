@@ -350,7 +350,7 @@ impl Scheduler {
             };
 
             if let Some(ref hash) = inputs_hash {
-                if cache.is_valid(&beam.name, hash, &beam.outputs) {
+                if cache.is_valid(&beam.name, hash, &beam.outputs, &working_dir) {
                     let (stdout, stderr) = cache.load_logs(&beam.name);
                     for line in stdout {
                         let _ = tx

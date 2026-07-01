@@ -53,7 +53,13 @@ impl BeamCache {
             .join(format!("{}.json", safe_file_stem(beam_name)))
     }
 
-    pub fn is_valid(&self, beam_name: &str, inputs_hash: &str, outputs: &[String]) -> bool {
+    pub fn is_valid(
+        &self,
+        beam_name: &str,
+        inputs_hash: &str,
+        outputs: &[String],
+        base_dir: &Path,
+    ) -> bool {
         let Ok(content) = fs::read_to_string(self.entry_path(beam_name)) else {
             return false;
         };
@@ -63,7 +69,11 @@ impl BeamCache {
         if entry.inputs_hash != inputs_hash {
             return false;
         }
-        outputs.iter().all(|out| Path::new(out).exists())
+        // Resolve outputs against `base_dir` (the Beamfile directory), exactly
+        // like inputs in `hash_inputs_at`. A relative output would otherwise be
+        // checked against the process working directory, so a valid cache entry
+        // could be wrongly rejected when Aurora is invoked from a subdirectory.
+        outputs.iter().all(|out| base_dir.join(out).exists())
     }
 
     pub fn save(&self, beam_name: &str, inputs_hash: &str) -> Result<()> {

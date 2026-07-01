@@ -6,7 +6,7 @@ use tempfile::tempdir;
 fn test_cache_miss_on_first_run() {
     let tmp = tempdir().unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
-    assert!(!cache.is_valid("phpstan", "abc123", &[]));
+    assert!(!cache.is_valid("phpstan", "abc123", &[], tmp.path()));
 }
 
 #[test]
@@ -14,7 +14,7 @@ fn test_cache_hit_after_save() {
     let tmp = tempdir().unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
     cache.save("phpstan", "abc123").unwrap();
-    assert!(cache.is_valid("phpstan", "abc123", &[]));
+    assert!(cache.is_valid("phpstan", "abc123", &[], tmp.path()));
 }
 
 #[test]
@@ -22,7 +22,7 @@ fn test_cache_miss_on_hash_change() {
     let tmp = tempdir().unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
     cache.save("phpstan", "abc123").unwrap();
-    assert!(!cache.is_valid("phpstan", "def456", &[]));
+    assert!(!cache.is_valid("phpstan", "def456", &[], tmp.path()));
 }
 
 #[test]
@@ -31,7 +31,7 @@ fn test_cache_miss_if_output_missing() {
     let cache = BeamCache::new(tmp.path().to_path_buf());
     cache.save("composer", "abc123").unwrap();
     let vendor = tmp.path().join("vendor").to_string_lossy().to_string();
-    assert!(!cache.is_valid("composer", "abc123", &[vendor]));
+    assert!(!cache.is_valid("composer", "abc123", &[vendor], tmp.path()));
 }
 
 #[test]
@@ -44,8 +44,21 @@ fn test_cache_hit_if_output_present() {
     assert!(cache.is_valid(
         "composer",
         "abc123",
-        &[vendor.to_string_lossy().to_string()]
+        &[vendor.to_string_lossy().to_string()],
+        tmp.path()
     ));
+}
+
+#[test]
+fn test_relative_output_resolves_against_base_dir() {
+    let tmp = tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("dist")).unwrap();
+    let cache = BeamCache::new(tmp.path().join(".aurora/cache"));
+    cache.save("build", "abc123").unwrap();
+    // A relative output must be resolved against base_dir, not the process
+    // working directory.
+    assert!(cache.is_valid("build", "abc123", &["dist".to_string()], tmp.path()));
+    assert!(!cache.is_valid("build", "abc123", &["missing".to_string()], tmp.path()));
 }
 
 #[test]
