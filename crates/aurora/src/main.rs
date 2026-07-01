@@ -151,10 +151,16 @@ async fn main() -> Result<()> {
         )?
     };
 
+    // Register each executor under the name it reports, so the registry key and
+    // Executor::name() cannot drift apart.
     let mut executors: std::collections::HashMap<String, Arc<dyn Executor>> =
         std::collections::HashMap::new();
-    executors.insert("local".into(), Arc::new(LocalExecutor::new()));
-    executors.insert("docker".into(), Arc::new(DockerExecutor::new()));
+    for executor in [
+        Arc::new(LocalExecutor::new()) as Arc<dyn Executor>,
+        Arc::new(DockerExecutor::new()) as Arc<dyn Executor>,
+    ] {
+        executors.insert(executor.name().to_string(), executor);
+    }
 
     let working_dir = beamfile_path.parent().unwrap().to_path_buf();
 
