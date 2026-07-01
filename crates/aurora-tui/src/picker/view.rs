@@ -150,7 +150,12 @@ fn status_line(
     let count_text = if state.search.is_empty() {
         format!("{} beams", total)
     } else {
-        format!("« {} » · {} / {} beams", state.search, filtered.len(), total)
+        format!(
+            "« {} » · {} / {} beams",
+            state.search,
+            filtered.len(),
+            total
+        )
     };
 
     let action_text = if filtered.is_empty() {

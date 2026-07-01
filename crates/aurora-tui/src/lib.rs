@@ -165,7 +165,11 @@ pub async fn run_execution_tui(
                             &mut log_state,
                             &mut search,
                             &mut show_help,
-                            LogMetrics { total_visual, width: log_w, height: log_h },
+                            LogMetrics {
+                                total_visual,
+                                width: log_w,
+                                height: log_h,
+                            },
                         ) {
                             ExecKeyOutcome::Continue => {}
                             ExecKeyOutcome::Quit => return Ok(()),
@@ -252,7 +256,10 @@ fn log_panel_dims(width: u16, height: u16, show_deps: bool) -> (u16, u16) {
             .split(outer[0])
     };
     let log_area = split[split.len() - 1];
-    (log_area.width.saturating_sub(2), log_area.height.saturating_sub(2))
+    (
+        log_area.width.saturating_sub(2),
+        log_area.height.saturating_sub(2),
+    )
 }
 
 /// Recalcule les correspondances pour le beam sélectionné et saute au match
@@ -266,7 +273,10 @@ enum ExecKeyOutcome {
     Continue,
     Quit,
     CancelSelected(String),
-    Rerun { root: String, pre_success: Vec<String> },
+    Rerun {
+        root: String,
+        pre_success: Vec<String>,
+    },
 }
 
 /// Métriques du panneau logs nécessaires au pilotage du scroll : hauteur
@@ -289,7 +299,11 @@ fn handle_execution_key(
     show_help: &mut bool,
     metrics: LogMetrics,
 ) -> ExecKeyOutcome {
-    let LogMetrics { total_visual, width: log_w, height: log_h } = metrics;
+    let LogMetrics {
+        total_visual,
+        width: log_w,
+        height: log_h,
+    } = metrics;
     match key.code {
         KeyCode::Char('q') => {
             let beam = &exec.beams[exec.selected];
@@ -382,11 +396,23 @@ fn handle_execution_key(
         },
         KeyCode::Char('n') if search.is_active() => {
             search.next();
-            apply_search_jump(search, &exec.beams[log_state.beam_index], log_w, log_h, log_state);
+            apply_search_jump(
+                search,
+                &exec.beams[log_state.beam_index],
+                log_w,
+                log_h,
+                log_state,
+            );
         }
         KeyCode::Char('N') if search.is_active() => {
             search.prev();
-            apply_search_jump(search, &exec.beams[log_state.beam_index], log_w, log_h, log_state);
+            apply_search_jump(
+                search,
+                &exec.beams[log_state.beam_index],
+                log_w,
+                log_h,
+                log_state,
+            );
         }
         KeyCode::Esc if search.is_active() => {
             search.clear();
@@ -477,7 +503,11 @@ mod tests {
         (exec, LogViewState::new(0), LogSearch::new(), false)
     }
 
-    const METRICS: LogMetrics = LogMetrics { total_visual: 0, width: 80, height: 24 };
+    const METRICS: LogMetrics = LogMetrics {
+        total_visual: 0,
+        width: 80,
+        height: 24,
+    };
 
     fn press(
         code: KeyCode,
@@ -527,7 +557,10 @@ mod tests {
         assert_eq!(exec.focus, FocusPanel::Beams);
         let out = press(KeyCode::Char('/'), &mut exec, &mut ls, &mut s, &mut help);
         assert_eq!(out, ExecKeyOutcome::Continue);
-        assert!(exec.filter_input, "/ sur les beams ouvre le filtre de beams");
+        assert!(
+            exec.filter_input,
+            "/ sur les beams ouvre le filtre de beams"
+        );
         assert!(!s.input_active, "et n'ouvre pas la recherche de logs");
     }
 

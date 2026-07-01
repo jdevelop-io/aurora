@@ -475,13 +475,21 @@ impl PickerState {
 
     fn select_next(&mut self, count: usize) {
         if count > 0 {
-            self.selected = if self.selected + 1 >= count { 0 } else { self.selected + 1 };
+            self.selected = if self.selected + 1 >= count {
+                0
+            } else {
+                self.selected + 1
+            };
         }
     }
 
     fn select_prev(&mut self, count: usize) {
         if count > 0 {
-            self.selected = if self.selected == 0 { count - 1 } else { self.selected - 1 };
+            self.selected = if self.selected == 0 {
+                count - 1
+            } else {
+                self.selected - 1
+            };
         }
     }
 
@@ -490,7 +498,10 @@ impl PickerState {
     fn launch(&self) -> Option<PickerAction> {
         let checked = self.selected_beam_indices();
         if !checked.is_empty() {
-            let names = checked.iter().map(|&i| self.beams[i].name.clone()).collect();
+            let names = checked
+                .iter()
+                .map(|&i| self.beams[i].name.clone())
+                .collect();
             return Some(PickerAction::Launch(names));
         }
         self.filtered()
@@ -713,7 +724,10 @@ impl ExecutionState {
         if visible.is_empty() {
             return;
         }
-        let pos = visible.iter().position(|&i| i == self.selected).unwrap_or(0);
+        let pos = visible
+            .iter()
+            .position(|&i| i == self.selected)
+            .unwrap_or(0);
         let next = if pos + 1 >= visible.len() { 0 } else { pos + 1 };
         self.selected = visible[next];
     }
@@ -723,7 +737,10 @@ impl ExecutionState {
         if visible.is_empty() {
             return;
         }
-        let pos = visible.iter().position(|&i| i == self.selected).unwrap_or(0);
+        let pos = visible
+            .iter()
+            .position(|&i| i == self.selected)
+            .unwrap_or(0);
         let prev = if pos == 0 { visible.len() - 1 } else { pos - 1 };
         self.selected = visible[prev];
     }

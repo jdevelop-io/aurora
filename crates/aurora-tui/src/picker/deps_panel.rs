@@ -13,7 +13,9 @@ pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
         let mut lines = vec![
             Line::from(Span::styled(
                 format!(" {}", beam.name),
-                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
         ];

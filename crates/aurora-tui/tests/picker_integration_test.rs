@@ -48,7 +48,7 @@ fn picker_esc_clears_filter_before_quitting() {
     state.handle_key(key(KeyCode::Char('/')));
     state.handle_key(key(KeyCode::Char('b')));
     state.handle_key(key(KeyCode::Enter)); // filtre verrouillé
-    // Premier Échap : efface le filtre, ne quitte pas.
+                                           // Premier Échap : efface le filtre, ne quitte pas.
     assert!(state.handle_key(key(KeyCode::Esc)).is_none());
     assert!(state.search.is_empty());
     // Second Échap : filtre vide → quitte.

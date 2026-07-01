@@ -45,5 +45,9 @@ fn d_does_not_change_focus() {
     let mut exec = ExecutionState::new(vec![("a".to_string(), vec![])]);
     assert_eq!(exec.focus, FocusPanel::Beams);
     exec.handle_key(key(KeyCode::Char('d')));
-    assert_eq!(exec.focus, FocusPanel::Beams, "le toggle deps ne touche pas au focus");
+    assert_eq!(
+        exec.focus,
+        FocusPanel::Beams,
+        "le toggle deps ne touche pas au focus"
+    );
 }

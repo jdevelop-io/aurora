@@ -87,7 +87,10 @@ fn runner_clamp_selection_when_filtered_out() {
     exec.selected = 1; // « test »
     exec.beam_filter = "build".to_string();
     exec.clamp_selection_to_visible();
-    assert_eq!(exec.selected, 0, "sélection masquée par le filtre -> premier visible");
+    assert_eq!(
+        exec.selected, 0,
+        "sélection masquée par le filtre -> premier visible"
+    );
 }
 
 #[test]
