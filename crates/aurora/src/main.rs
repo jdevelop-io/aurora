@@ -1,6 +1,6 @@
-// Chargeur de plugins WASM présent mais pas encore câblé dans la map
-// d'exécuteurs (voir CLAUDE.md) : on tolère le code mort tant qu'il n'est pas
-// branché, plutôt que de le supprimer ou de le câbler prématurément.
+// WASM plugin loader present but not yet wired into the executor map
+// (see CLAUDE.md): dead code is tolerated as long as it is not wired up,
+// rather than removing it or wiring it prematurely.
 #[allow(dead_code)]
 mod plugins;
 
@@ -25,7 +25,7 @@ use tokio::sync::mpsc;
 async fn main() -> Result<()> {
     let cli = Command::new("aurora")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Aurora — task runner with HCL-inspired Beamfile DSL")
+        .about("Aurora: task runner with HCL-inspired Beamfile DSL")
         .arg(Arg::new("beam").help("Beam to run").index(1))
         .arg(
             Arg::new("no-cache")
@@ -102,8 +102,8 @@ async fn main() -> Result<()> {
     let interactive = matches.get_flag("interactive")
         || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui"));
 
-    // Résolution de la cible : picker en interactif, beam `default` en headless
-    // (le picker est intrinsèquement interactif et n'existe pas hors TTY).
+    // Target resolution: picker in interactive mode, `default` beam in headless mode
+    // (the picker is inherently interactive and does not exist outside a TTY).
     let target = if interactive {
         if let Some(beam_name) = matches.get_one::<String>("beam") {
             beam_name.clone()
@@ -117,7 +117,7 @@ async fn main() -> Result<()> {
             if picker_results.len() == 1 {
                 picker_results.into_iter().next().unwrap()
             } else {
-                // Multi-select : beam virtuel __multi__ dépendant des beams sélectionnés
+                // Multi-select: virtual beam __multi__ depending on the selected beams
                 let virtual_beam = aurora_core::ast::Beam {
                     name: "__multi__".to_string(),
                     description: Some("Multi-beam run".to_string()),
@@ -149,7 +149,7 @@ async fn main() -> Result<()> {
 
     let working_dir = beamfile_path.parent().unwrap().to_path_buf();
 
-    // Évaluer les variables environment (shell(...)) séquentiellement
+    // Evaluate environment variables (shell(...)) sequentially
     let env = if let Some(env_block) = &beam_file.environment {
         evaluate(env_block, &working_dir)?
     } else {
@@ -157,7 +157,7 @@ async fn main() -> Result<()> {
     };
 
     let (tx, rx) = mpsc::channel(128);
-    // Exclure le beam virtuel __multi__ de la liste affichée / des préfixes
+    // Exclude the virtual beam __multi__ from the displayed list / prefixes
     let beam_info: Vec<(String, Vec<String>)> = beam_file
         .beams
         .iter()
@@ -227,13 +227,13 @@ async fn main() -> Result<()> {
 
         aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
     } else {
-        // Mode headless : pas d'annulation interactive, `run` gère son propre canal.
+        // Headless mode: no interactive cancellation, `run` manages its own channel.
         let target_clone = target.clone();
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
-        // Couleur décidée par flux : stdout et stderr peuvent être redirigés
-        // indépendamment (ex. `aurora --no-tui 2>err.log` dans un terminal).
+        // Color decided per stream: stdout and stderr can be redirected
+        // independently (e.g. `aurora --no-tui 2>err.log` in a terminal).
         let out_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         let err_color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         let mut stdout = std::io::stdout();
@@ -248,9 +248,9 @@ async fn main() -> Result<()> {
         )
         .await?;
 
-        // Le scheduler peut échouer avant d'émettre AllDone (erreur de construction
-        // du DAG : cycle, dépendance inconnue). On joint sa tâche pour propager
-        // l'échec, sinon un Beamfile invalide sortirait en 0.
+        // The scheduler can fail before emitting AllDone (DAG construction error:
+        // cycle, unknown dependency). We join its task to propagate
+        // the failure, otherwise an invalid Beamfile would exit with 0.
         let scheduler_ok = match handle.await {
             Ok(Ok(ok)) => ok,
             Ok(Err(e)) => {

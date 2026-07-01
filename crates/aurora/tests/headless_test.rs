@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 #[tokio::test]
 async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
     let (tx, rx) = mpsc::channel(16);
-    let beams = vec!["build".to_string(), "test".to_string()]; // largeur = 5
+    let beams = vec!["build".to_string(), "test".to_string()]; // width = 5
 
     tx.send(SchedulerEvent::BeamStarted {
         name: "build".into(),
@@ -60,7 +60,7 @@ async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
 
     assert!(!success);
     assert!(out.contains("[build] compiling"), "stdout prefix:\n{out}");
-    // "test" est complété à la largeur de "build" (5) → "[test ]"
+    // "test" is padded to the width of "build" (5) -> "[test ]"
     assert!(
         err.contains("[test ] boom"),
         "stderr prefix/padding:\n{err}"
@@ -140,12 +140,12 @@ async fn skipped_and_cancelled_markers_and_color_toggle() {
     assert!(out.contains("cached"), "skip reason:\n{out}");
     assert!(out.contains("[CANC]"), "cancelled marker:\n{out}");
     assert!(out.contains("cancelled"), "cancelled reason:\n{out}");
-    // Le bilan distingue les annulations des échecs (catégorie neutre)
+    // The summary distinguishes cancellations from failures (neutral category)
     assert!(
         out.contains("Done: 1 ok, 0 failed, 1 cancelled"),
         "summary distinguishes cancelled from failed:\n{out}"
     );
-    // use_color = true encadre les marqueurs avec des séquences ANSI
+    // use_color = true wraps the markers with ANSI sequences
     assert!(out.contains("\u{1b}["), "ansi escape present:\n{out:?}");
     assert!(out.contains("\u{1b}[0m"), "ansi reset present:\n{out:?}");
 }
@@ -174,7 +174,7 @@ async fn stderr_color_gated_independently_of_stdout() {
     drop(tx);
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    // stdout sans couleur, stderr avec couleur : les deux flux sont gâtés indépendamment
+    // stdout without color, stderr with color: the two streams are gated independently
     run_headless(&beams, false, true, rx, &mut out, &mut err)
         .await
         .unwrap();

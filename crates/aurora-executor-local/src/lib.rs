@@ -27,9 +27,9 @@ impl Executor for LocalExecutor {
     async fn execute(&self, input: ExecutionInput) -> Result<ExecutionOutput> {
         let script = format!("set -e\n{}", input.commands.join("\n"));
 
-        // env_clear() : le processus enfant ne doit PAS hériter de
-        // l'environnement ambiant d'Aurora (secrets CI, clés, etc.). L'env
-        // fourni dans `input.env` fait autorité (voir aurora-core/src/env.rs).
+        // env_clear(): the child process must NOT inherit Aurora's ambient
+        // environment (CI secrets, keys, etc.). The env provided in
+        // `input.env` is authoritative (see aurora-core/src/env.rs).
         let mut child = Command::new("sh")
             .arg("-c")
             .arg(&script)

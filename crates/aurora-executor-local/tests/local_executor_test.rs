@@ -2,8 +2,8 @@ use aurora_executor_api::{ExecutionInput, Executor};
 use aurora_executor_local::LocalExecutor;
 use std::collections::HashMap;
 
-/// L'exécuteur n'hérite plus de l'environnement ambiant : il faut donc fournir
-/// au moins PATH pour que `sh` et les binaires soient résolus.
+/// The executor no longer inherits the ambient environment: at least PATH
+/// must therefore be provided so that `sh` and binaries can be resolved.
 fn base_env() -> HashMap<String, String> {
     HashMap::from([(
         "PATH".to_string(),

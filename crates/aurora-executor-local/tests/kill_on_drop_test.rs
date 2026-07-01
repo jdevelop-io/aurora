@@ -3,9 +3,9 @@ use aurora_executor_local::LocalExecutor;
 use std::collections::HashMap;
 use std::time::Duration;
 
-// Abandonner le future d'exécution doit tuer le `sh` enfant. On lance un
-// `sleep 2 && touch marker`, on drop le future après 200 ms, puis on vérifie
-// qu'aucun marker n'apparaît : preuve que l'enfant a bien été tué.
+// Dropping the execution future must kill the child `sh`. We launch a
+// `sleep 2 && touch marker`, drop the future after 200 ms, then verify
+// that no marker appears: proof that the child was indeed killed.
 #[tokio::test]
 async fn test_kill_on_drop_terminates_child() {
     let dir = std::env::temp_dir().join(format!("aurora_kill_{}", std::process::id()));
@@ -13,8 +13,8 @@ async fn test_kill_on_drop_terminates_child() {
     let marker = dir.join("marker");
     let _ = std::fs::remove_file(&marker);
 
-    // Conserver PATH : env_clear() vide l'environnement de l'enfant, sinon
-    // `sleep`/`touch` peuvent ne pas être résolus.
+    // Keep PATH: env_clear() empties the child's environment, otherwise
+    // `sleep`/`touch` might not be resolved.
     let mut env = HashMap::new();
     if let Ok(path) = std::env::var("PATH") {
         env.insert("PATH".to_string(), path);
@@ -31,14 +31,14 @@ async fn test_kill_on_drop_terminates_child() {
 
     let fut = exec.execute(input);
     tokio::select! {
-        _ = fut => panic!("le future ne devait pas se terminer en 200 ms"),
+        _ = fut => panic!("the future should not have completed within 200 ms"),
         _ = tokio::time::sleep(Duration::from_millis(200)) => {}
     }
-    // `fut` est drop ici.
+    // `fut` is dropped here.
 
     tokio::time::sleep(Duration::from_millis(2500)).await;
     assert!(
         !marker.exists(),
-        "l'enfant aurait dû être tué (kill_on_drop)"
+        "the child should have been killed (kill_on_drop)"
     );
 }

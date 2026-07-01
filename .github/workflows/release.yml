@@ -1,13 +1,13 @@
 name: Release
 
-# Déclenché quand tu pushes un tag de version, ex. : v0.2.0
+# Triggered when you push a version tag, e.g.: v0.2.0
 on:
   push:
     tags:
       - "v*"
 
-# Par défaut, aucun job n'a d'accès en écriture : le droit est élevé au cas par
-# cas (ici sur le job build, qui publie la release).
+# By default, no job has write access: the permission is elevated on a
+# case-by-case basis (here on the build job, which publishes the release).
 permissions:
   contents: read
 
@@ -15,7 +15,7 @@ jobs:
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
-    # Droit d'écriture limité à ce job (création de release + upload des assets).
+    # Write permission limited to this job (release creation + asset upload).
     permissions:
       contents: write
     strategy:
@@ -41,12 +41,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Ne pas laisser le token GITHUB_TOKEN dans .git/config pendant le
-          # build : les build.rs des dépendances s'exécutent sur le runner et ne
-          # doivent pas pouvoir lire un credential d'écriture.
+          # Do not leave the GITHUB_TOKEN token in .git/config during the
+          # build: the dependencies' build.rs scripts run on the runner and must
+          # not be able to read a write credential.
           persist-credentials: false
 
-      - name: Installer la toolchain Rust
+      - name: Install the Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -56,7 +56,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - name: Installer cross
+      - name: Install cross
         if: matrix.cross
         run: cargo install cross --locked
 
@@ -68,7 +68,7 @@ jobs:
         if: matrix.cross
         run: cross build --release --locked --target ${{ matrix.target }} --bin aurora
 
-      - name: Empaqueter l'archive
+      - name: Package the archive
         shell: bash
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -90,8 +90,8 @@ jobs:
             archive="${name}.tar.gz"
             tar -czf "$archive" "${name}"
           fi
-          # Empreinte SHA-256 publiée à côté de l'archive, vérifiée par les
-          # installeurs avant exécution du binaire.
+          # SHA-256 checksum published alongside the archive, verified by
+          # installers before running the binary.
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "$archive" > "${archive}.sha256"
           else
@@ -99,10 +99,10 @@ jobs:
           fi
           echo "ASSET=dist/${archive}" >> "$GITHUB_ENV"
 
-      - name: Publier sur la release
+      - name: Publish to the release
         uses: softprops/action-gh-release@v3
         with:
-          # La release du tag est créée si elle n'existe pas ; chaque job y ajoute son archive.
+          # The tag's release is created if it does not exist; each job adds its archive to it.
           files: |
             ${{ env.ASSET }}
             ${{ env.ASSET }}.sha256

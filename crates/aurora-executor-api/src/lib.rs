@@ -11,7 +11,7 @@ pub struct ExecutionInput {
     pub working_dir: PathBuf,
     /// Executor-specific configuration (e.g. {"image": "ubuntu:22.04"} for docker)
     pub config: serde_json::Value,
-    /// Canal optionnel pour streamer les lignes de sortie en temps réel.
+    /// Optional channel to stream output lines in real time.
     /// `(line, is_stderr)`
     #[serde(skip)]
     pub output_tx: Option<mpsc::Sender<(String, bool)>>,

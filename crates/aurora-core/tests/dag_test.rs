@@ -84,8 +84,8 @@ fn test_single_beam_no_deps() {
 
 #[test]
 fn test_deep_dependency_chain_no_stack_overflow() {
-    // Chaîne linéaire profonde b0 -> b1 -> ... -> b(N-1). Une traversée
-    // récursive déborderait la pile ; la version itérative doit terminer.
+    // Deep linear chain b0 -> b1 -> ... -> b(N-1). A recursive traversal
+    // would overflow the stack; the iterative version must terminate.
     let n = 100_000usize;
     let mut deps: Vec<(String, Vec<String>)> = Vec::with_capacity(n);
     for i in 0..n {

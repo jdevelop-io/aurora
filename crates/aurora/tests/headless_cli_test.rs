@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Crée un répertoire de travail temporaire avec un Beamfile et le renvoie.
+/// Creates a temporary working directory with a Beamfile and returns it.
 fn fixture_dir(tag: &str, beamfile: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("aurora-headless-{}-{}", tag, std::process::id()));
     let _ = fs::remove_dir_all(&dir);

@@ -16,14 +16,14 @@ pub struct BeamCache {
     cache_dir: PathBuf,
 }
 
-/// Transforme un nom de beam (potentiellement contrôlé par un Beamfile non
-/// fiable) en nom de fichier sûr, confiné au répertoire de cache.
+/// Turns a beam name (potentially controlled by an untrusted Beamfile) into a
+/// safe file name, confined to the cache directory.
 ///
-/// Sans cette normalisation, un nom comme `/etc/cron.d/x` ou `../../.ssh/x`
-/// ferait écrire/supprimer un fichier hors du cache via `PathBuf::join`
-/// (path traversal). On remplace tout caractère non sûr et on suffixe un hash
-/// du nom d'origine : la lisibilité est conservée pour les noms simples, et
-/// l'unicité est garantie même en cas de collision de la sanitisation.
+/// Without this normalization, a name like `/etc/cron.d/x` or `../../.ssh/x`
+/// would write/delete a file outside the cache via `PathBuf::join` (path
+/// traversal). Every unsafe character is replaced and a hash of the original
+/// name is appended as a suffix: readability is preserved for simple names,
+/// and uniqueness is guaranteed even if the sanitization collides.
 fn safe_file_stem(beam_name: &str) -> String {
     let sanitized: String = beam_name
         .chars()
@@ -87,7 +87,7 @@ impl BeamCache {
         Ok(())
     }
 
-    /// Retourne (stdout, stderr) depuis le cache, ou ([], []) si absent.
+    /// Returns (stdout, stderr) from the cache, or ([], []) if absent.
     pub fn load_logs(&self, beam_name: &str) -> (Vec<String>, Vec<String>) {
         let Ok(content) = fs::read_to_string(self.entry_path(beam_name)) else {
             return (vec![], vec![]);

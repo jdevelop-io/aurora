@@ -84,7 +84,7 @@ async fn test_scheduler_zero_parallelism_does_not_deadlock() {
         make_beam("b", vec!["a"], vec!["echo b"]),
     ];
     let (tx, mut rx) = mpsc::channel(32);
-    // max_parallelism = 0 (issu d'un Beamfile) ne doit pas figer le run.
+    // max_parallelism = 0 (coming from a Beamfile) must not freeze the run.
     let scheduler = Scheduler::new(
         beams,
         local_executors(),
@@ -96,7 +96,7 @@ async fn test_scheduler_zero_parallelism_does_not_deadlock() {
     let res =
         tokio::time::timeout(std::time::Duration::from_secs(10), scheduler.run("b", &[])).await;
     let ok = res
-        .expect("le scheduler s'est figé avec max_parallelism = 0")
+        .expect("the scheduler froze with max_parallelism = 0")
         .unwrap();
     assert!(ok);
 
@@ -154,8 +154,8 @@ async fn test_scheduler_failed_cancels_dependents() {
 
 #[tokio::test]
 async fn test_scheduler_cancellation_is_transitive() {
-    // deploy -> test -> build ; build échoue. test ET deploy doivent être
-    // annulés : deploy ne doit jamais s'exécuter alors que test n'a pas tourné.
+    // deploy -> test -> build; build fails. Both test AND deploy must be
+    // cancelled: deploy must never run, while test never ran either.
     let beams = vec![
         make_beam("build", vec![], vec!["false"]),
         make_beam("test", vec!["build"], vec!["echo test"]),
@@ -188,30 +188,30 @@ async fn test_scheduler_cancellation_is_transitive() {
 
     assert!(
         matches!(status_of("build"), Some(BeamStatus::Failed { .. })),
-        "build doit échouer"
+        "build must fail"
     );
     assert!(
         matches!(status_of("test"), Some(BeamStatus::Cancelled)),
-        "test doit être annulé"
+        "test must be cancelled"
     );
     assert!(
         matches!(status_of("deploy"), Some(BeamStatus::Cancelled)),
-        "deploy doit être annulé (et non exécuté)"
+        "deploy must be cancelled (and not run)"
     );
 
-    // deploy ne doit apparaître dans aucun événement de sortie : il n'a pas tourné.
+    // deploy must not appear in any output event: it never ran.
     let deploy_ran = events
         .iter()
         .any(|e| matches!(e, SchedulerEvent::BeamOutput { name, .. } if name == "deploy"));
-    assert!(!deploy_ran, "deploy ne devait produire aucune sortie");
+    assert!(!deploy_ran, "deploy should not have produced any output");
 }
 
-// Vérifie que, lorsque pre_success n'est pas downward-closed (p est pre_success
-// mais sa propre dépendance q est dans le run set), p reste silencieux même si
-// q arrive à 0 d'in-degree — le scheduler ne doit pas le spawner.
+// Verifies that when pre_success is not downward-closed (p is pre_success
+// but its own dependency q is in the run set), p stays silent even if q
+// reaches an in-degree of 0; the scheduler must not spawn it.
 #[tokio::test]
 async fn test_pre_success_beam_not_spawned_when_dependency_completes() {
-    // Graphe : q <- p <- root   ;   pre_success = ["p"]
+    // Graph: q <- p <- root   ;   pre_success = ["p"]
     let beams = vec![
         make_beam("q", vec![], vec!["echo q"]),
         make_beam("p", vec!["q"], vec!["echo p"]),
@@ -246,15 +246,15 @@ async fn test_pre_success_beam_not_spawned_when_dependency_completes() {
         .collect();
     assert!(
         p_events.is_empty(),
-        "p est pre_success et ne doit émettre aucun événement : {:?}",
+        "p is pre_success and must not emit any events: {:?}",
         p_events
     );
 }
 
 #[tokio::test]
 async fn test_allow_failure_does_not_block_dependents() {
-    // `b` échoue mais est toléré ; `d` en dépend et doit s'exécuter, et le run
-    // global doit réussir (overall_success == true).
+    // `b` fails but is tolerated; `d` depends on it and must run, and the
+    // overall run must succeed (overall_success == true).
     let mut b = make_beam("b", vec![], vec!["false"]);
     b.allow_failure = true;
     let d = make_beam("d", vec!["b"], vec!["echo d"]);
@@ -271,7 +271,7 @@ async fn test_allow_failure_does_not_block_dependents() {
     .run("d", &[])
     .await
     .unwrap();
-    assert!(ok, "un échec toléré ne doit pas faire échouer le run");
+    assert!(ok, "a tolerated failure must not fail the run");
 
     let mut events = vec![];
     while let Ok(evt) = rx.try_recv() {
@@ -284,14 +284,15 @@ async fn test_allow_failure_does_not_block_dependents() {
         matches!(e,
         SchedulerEvent::BeamCompleted { name, status: BeamStatus::Success { .. } } if name == "d")
     });
-    assert!(b_allowed, "b doit être en échec toléré (FailedAllowed)");
-    assert!(d_ran, "d doit s'exécuter malgré l'échec toléré de b");
+    assert!(b_allowed, "b must be a tolerated failure (FailedAllowed)");
+    assert!(d_ran, "d must run despite b's tolerated failure");
 }
 
-// `slow` (3s) et `quick_a` (1s) n'ont aucune dépendance. `quick_b` dépend
-// UNIQUEMENT de `quick_a`, `root` dépend de `quick_b` et `slow`. Avec un vrai
-// pipelining, `quick_b` doit démarrer dès la fin de `quick_a` (~1s), sans
-// attendre `slow`. Le modèle par niveaux le retardait jusqu'à la fin de `slow`.
+// `slow` (3s) and `quick_a` (1s) have no dependencies. `quick_b` depends
+// ONLY on `quick_a`, `root` depends on `quick_b` and `slow`. With true
+// pipelining, `quick_b` must start as soon as `quick_a` finishes (~1s),
+// without waiting for `slow`. The level-based model used to delay it until
+// `slow` finished.
 #[tokio::test]
 async fn test_scheduler_pipelines_across_levels() {
     let beams = vec![
@@ -327,12 +328,10 @@ async fn test_scheduler_pipelines_across_levels() {
         }
     }
 
-    let t = b_started_at
-        .expect("quick_b n'a jamais démarré")
-        .as_secs_f64();
+    let t = b_started_at.expect("quick_b never started").as_secs_f64();
     assert!(
         t < 2.0,
-        "quick_b devait démarrer vers 1s, démarré à {:.2}s (barrière de niveau)",
+        "quick_b should have started around 1s, started at {:.2}s (level barrier)",
         t
     );
 }

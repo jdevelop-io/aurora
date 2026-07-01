@@ -200,6 +200,9 @@ beam "build" {
     let bf = parse(input).unwrap();
     let container = bf.beams.iter().find(|b| b.name == "container").unwrap();
     let build = bf.beams.iter().find(|b| b.name == "build").unwrap();
-    assert!(container.allow_failure, "allow_failure = true doit être lu");
-    assert!(!build.allow_failure, "absence du flag = false par défaut");
+    assert!(container.allow_failure, "allow_failure = true must be read");
+    assert!(
+        !build.allow_failure,
+        "absence of the flag = false by default"
+    );
 }

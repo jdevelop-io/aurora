@@ -1,11 +1,11 @@
 /target/
 !Beamfile
 
-# Annule l'ignore global de .claude pour suivre les commandes/réglages du projet.
+# Cancels the global ignore of .claude to track the project's commands/settings.
 !.claude/
-# Données runtime des superpowers, hors versionnement.
+# Superpowers runtime data, excluded from version control.
 /.claude/superpowers/
 /.superpowers/
 
-# Fichiers de configuration des IDE JetBrains.
+# JetBrains IDE configuration files.
 /.idea/

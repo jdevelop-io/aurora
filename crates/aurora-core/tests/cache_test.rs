@@ -54,7 +54,7 @@ fn test_malicious_beam_name_stays_in_cache_dir() {
     let outside = tempdir().unwrap();
     let cache = BeamCache::new(tmp.path().to_path_buf());
 
-    // Noms tentant un path traversal / chemin absolu.
+    // Names attempting a path traversal / absolute path.
     let evil_abs = outside.path().join("pwned").to_string_lossy().to_string();
     for name in [
         "../../../../etc/cron.d/evil",
@@ -63,14 +63,14 @@ fn test_malicious_beam_name_stays_in_cache_dir() {
         evil_abs.as_str(),
     ] {
         cache.save(name, "h").unwrap();
-        // Aucun fichier ne doit apparaître hors du répertoire de cache.
+        // No file must appear outside the cache directory.
         assert!(
             !std::path::Path::new(&format!("{}.json", evil_abs)).exists(),
-            "écriture hors du cache pour {name}"
+            "write outside the cache for {name}"
         );
     }
 
-    // Toutes les entrées écrites restent confinées dans le répertoire de cache.
+    // All written entries stay confined to the cache directory.
     for entry in fs::read_dir(tmp.path()).unwrap() {
         let path = entry.unwrap().path();
         assert_eq!(path.parent().unwrap(), tmp.path());

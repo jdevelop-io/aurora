@@ -3,15 +3,15 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
 
-/// Variables d'environnement de base reprises du processus parent.
+/// Base environment variables carried over from the parent process.
 ///
-/// On NE propage volontairement PAS l'intégralité de l'environnement : un
-/// Beamfile peut être non fiable, et tout hériter exposerait des secrets
-/// (tokens CI, clés cloud type `AWS_*`, etc.) aux commandes arbitraires des
-/// beams, en local comme dans les conteneurs (chaque variable est transmise via
-/// `docker -e`). Seules ces variables, nécessaires au fonctionnement d'un shell
-/// et des outils courants, sont reprises. Toute variable supplémentaire doit
-/// être déclarée explicitement dans le bloc `environment { }`.
+/// The full environment is deliberately NOT propagated: a Beamfile can be
+/// untrusted, and inheriting everything would expose secrets (CI tokens,
+/// cloud keys such as `AWS_*`, etc.) to the arbitrary commands run by beams,
+/// both locally and in containers (each variable is passed through
+/// `docker -e`). Only these variables, needed for a shell and common tools
+/// to work, are carried over. Any additional variable must be declared
+/// explicitly in the `environment { }` block.
 const ENV_ALLOWLIST: &[&str] = &[
     // POSIX / Unix
     "PATH",
@@ -45,17 +45,17 @@ const ENV_ALLOWLIST: &[&str] = &[
     "NUMBER_OF_PROCESSORS",
 ];
 
-/// Construit l'environnement de base à partir de la liste blanche (plus les
-/// variables de locale `LC_*`).
+/// Builds the base environment from the allowlist (plus the `LC_*` locale
+/// variables).
 fn base_env() -> HashMap<String, String> {
     std::env::vars()
         .filter(|(k, _)| ENV_ALLOWLIST.contains(&k.as_str()) || k.starts_with("LC_"))
         .collect()
 }
 
-/// Évalue les variables du bloc `environment` séquentiellement.
-/// Les variables shell(`...`) sont exécutées, les littéraux copiés.
-/// Chaque variable est disponible pour les suivantes (via la map `result`).
+/// Evaluates the variables of the `environment` block sequentially.
+/// shell(`...`) variables are executed, literals are copied as is.
+/// Each variable is available to the following ones (via the `result` map).
 pub fn evaluate(env_block: &Environment, working_dir: &Path) -> Result<HashMap<String, String>> {
     let mut result = base_env();
 

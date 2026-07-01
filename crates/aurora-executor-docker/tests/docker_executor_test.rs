@@ -1,10 +1,10 @@
-// Ces tests nécessitent Docker. Marqués #[ignore] par défaut.
+// These tests require Docker. Marked #[ignore] by default.
 use aurora_executor_api::{ExecutionInput, Executor};
 use aurora_executor_docker::DockerExecutor;
 use std::collections::HashMap;
 
-// Ne nécessite PAS Docker : valide que les volumes dangereux sont rejetés
-// avant tout lancement de conteneur (défense contre l'évasion de sandbox).
+// Does NOT require Docker: validates that dangerous volumes are rejected
+// before any container launch (defense against sandbox escape).
 #[tokio::test]
 async fn test_dangerous_volume_is_rejected() {
     let executor = DockerExecutor::new();
@@ -22,7 +22,7 @@ async fn test_dangerous_volume_is_rejected() {
             output_tx: None,
         };
         let result = executor.execute(input).await;
-        assert!(result.is_err(), "volume dangereux accepté : {vol}");
+        assert!(result.is_err(), "dangerous volume accepted: {vol}");
     }
 }
 

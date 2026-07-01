@@ -54,10 +54,10 @@ impl BeamGraph {
             None => return vec![],
         };
 
-        // DFS itérative (pile explicite) : évite le débordement de pile sur de
-        // longues chaînes de dépendances (un Beamfile pourrait en déclarer des
-        // dizaines de milliers). Le HashSet donne une appartenance en O(1), au
-        // lieu du O(n) d'un Vec::contains qui rendait le parcours quadratique.
+        // Iterative DFS (explicit stack): avoids stack overflow on long
+        // dependency chains (a Beamfile could declare tens of thousands of
+        // them). The HashSet gives O(1) membership, instead of the O(n) of a
+        // Vec::contains that made the traversal quadratic.
         let mut seen: HashSet<NodeIndex> = HashSet::new();
         let mut order: Vec<NodeIndex> = vec![];
         let mut stack = vec![root_idx];
@@ -87,8 +87,8 @@ impl BeamGraph {
         };
         let mut seen: HashSet<NodeIndex> = HashSet::new();
         let mut order: Vec<NodeIndex> = vec![];
-        // `start` est marqué vu sans être collecté : on veut ses dépendants, pas
-        // lui-même. Parcours itératif pour rester sûr sur de longues chaînes.
+        // `start` is marked seen without being collected: we want its
+        // dependents, not itself. Iterative traversal to stay safe on long chains.
         seen.insert(start);
         let mut stack = vec![start];
         while let Some(node) = stack.pop() {

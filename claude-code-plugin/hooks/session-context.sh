@@ -11,7 +11,7 @@ input="$(cat)"
 # Prefer the project root Claude Code exposes; fall back to the event cwd, then pwd.
 cwd="${CLAUDE_PROJECT_DIR:-}"
 if [ -z "$cwd" ]; then
-  # Extraction regex (pas un parseur JSON complet) ; fallback bénin vers CLAUDE_PROJECT_DIR/pwd.
+  # Regex extraction (not a full JSON parser); benign fallback to CLAUDE_PROJECT_DIR/pwd.
   cwd="$(printf '%s' "$input" \
     | sed -n 's/.*"cwd"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
     | head -n1)"
@@ -22,8 +22,8 @@ fi
 [ -f "$cwd/Beamfile" ] || exit 0
 
 if command -v aurora >/dev/null 2>&1; then
-  # Récupère la liste des beams ; vide en cas d'échec (cd ou aurora). Forme
-  # explicite plutôt que `&& ... || true` pour rester sans ambiguïté (SC2015).
+  # Fetch the beam list; empty on failure (cd or aurora). Explicit
+  # form rather than `&& ... || true` to stay unambiguous (SC2015).
   beams="$(cd "$cwd" && aurora --list 2>/dev/null)" || beams=""
   context="This project uses Aurora (a Beamfile is present). Use the using-aurora skill to read or edit it and to run the CLI."$'\n\n'"$beams"
 else
@@ -38,8 +38,8 @@ escape_for_json() {
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
-  # Supprime les octets de contrôle bruts restants (U+0000–U+001F, hormis les
-  # \n, \r, \t déjà échappés) pour garantir un additionalContext JSON valide.
+  # Strip remaining raw control bytes (U+0000 to U+001F, excluding the
+  # \n, \r, \t already escaped) to guarantee a valid JSON additionalContext.
   s="$(printf '%s' "$s" | LC_ALL=C tr -d '\000-\010\013\014\016-\037')"
   printf '%s' "$s"
 }

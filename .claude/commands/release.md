@@ -1,49 +1,49 @@
 ---
-description: Bump la version, commit, tag et push pour déclencher le workflow de release
+description: Bump the version, commit, tag and push to trigger the release workflow
 argument-hint: <X.Y.Z | patch | minor | major>
 allowed-tools: Bash, Read, Edit
 ---
 
-Tu prépares et déclenches une release d'Aurora. Argument fourni : `$ARGUMENTS`.
+You are preparing and triggering an Aurora release. Argument provided: `$ARGUMENTS`.
 
-La version vit dans `Cargo.toml` racine (`[workspace.package] version`), tous les
-crates en héritent. Le workflow `.github/workflows/release.yml` se déclenche au push
-d'un tag `v*`.
+The version lives in the root `Cargo.toml` (`[workspace.package] version`), all
+crates inherit it. The `.github/workflows/release.yml` workflow is triggered on push
+of a `v*` tag.
 
-Exécute les étapes dans l'ordre. **Arrête-toi immédiatement et explique** si une
-vérification échoue, sans rien committer ni pousser.
+Execute the steps in order. **Stop immediately and explain** if a
+check fails, without committing or pushing anything.
 
-## 1. Calculer la version cible
+## 1. Compute the target version
 
-- Lis la version actuelle : la ligne `version = "X.Y.Z"` en début de `Cargo.toml`.
-- Selon `$ARGUMENTS` :
-  - `X.Y.Z` ou `vX.Y.Z` (semver exact) → utilise ce numéro (sans le `v`).
-  - `patch` → incrémente Z. `minor` → incrémente Y, Z=0. `major` → incrémente X, Y=0, Z=0.
-  - vide ou autre → **arrête-toi** et rappelle l'usage : `/release <X.Y.Z | patch | minor | major>`.
-- Note `NEW` (ex. `0.3.0`) et `TAG = vNEW` (ex. `v0.3.0`). Vérifie que `NEW` est bien
-  strictement supérieur à la version actuelle, sinon arrête-toi.
+- Read the current version: the `version = "X.Y.Z"` line at the start of `Cargo.toml`.
+- Depending on `$ARGUMENTS`:
+  - `X.Y.Z` or `vX.Y.Z` (exact semver) -> use this number (without the `v`).
+  - `patch` -> increment Z. `minor` -> increment Y, Z=0. `major` -> increment X, Y=0, Z=0.
+  - empty or other -> **stop** and remind the usage: `/release <X.Y.Z | patch | minor | major>`.
+- Note `NEW` (e.g. `0.3.0`) and `TAG = vNEW` (e.g. `v0.3.0`). Verify that `NEW` is
+  strictly greater than the current version, otherwise stop.
 
-## 2. Garde-fous (tout doit passer avant de continuer)
+## 2. Guardrails (everything must pass before continuing)
 
 ```bash
-git status --porcelain        # doit être vide (arbre propre)
-git rev-parse --abbrev-ref HEAD   # doit être "main"
+git status --porcelain        # must be empty (clean tree)
+git rev-parse --abbrev-ref HEAD   # must be "main"
 git fetch origin --tags --quiet
-git rev-list --left-right --count main...origin/main   # main ne doit pas être en retard
-git tag -l "$TAG"             # doit être vide (tag local inexistant)
-git ls-remote --tags origin "$TAG"   # doit être vide (tag distant inexistant)
+git rev-list --left-right --count main...origin/main   # main must not be behind
+git tag -l "$TAG"             # must be empty (local tag does not exist)
+git ls-remote --tags origin "$TAG"   # must be empty (remote tag does not exist)
 ```
 
-Si l'arbre n'est pas propre, si on n'est pas sur `main`, si `main` est en retard sur
-`origin/main`, ou si le tag existe déjà : arrête-toi et explique.
+If the tree is not clean, if you are not on `main`, if `main` is behind
+`origin/main`, or if the tag already exists: stop and explain.
 
-## 3. Bumper les fichiers
+## 3. Bump the files
 
-- `Cargo.toml` : remplace la ligne `version = "<actuelle>"` (début de ligne) par `version = "NEW"`.
-- `Cargo.lock` : resynchronise via cargo (étape 4, le build met à jour les entrées `aurora*`).
-- `README.md` :
-  - Section `## Status` : la mention `Project at v…` doit pointer sur `vNEW`.
-  - Exemple d'install : `AURORA_VERSION=v…` doit pointer sur `vNEW`.
+- `Cargo.toml`: replace the `version = "<current>"` line (start of line) with `version = "NEW"`.
+- `Cargo.lock`: resynchronized via cargo (step 4, the build updates the `aurora*` entries).
+- `README.md`:
+  - `## Status` section: the `Project at v…` mention must point to `vNEW`.
+  - Install example: `AURORA_VERSION=v…` must point to `vNEW`.
 
 ```bash
 sed -i -E 's/^version = "[0-9]+\.[0-9]+\.[0-9]+"/version = "NEW"/' Cargo.toml
@@ -51,17 +51,17 @@ sed -i -E 's/(Project at v)[0-9]+\.[0-9]+(\.[0-9]+)?/\1NEW/' README.md
 sed -i -E 's/(AURORA_VERSION=v)[0-9]+\.[0-9]+\.[0-9]+/\1NEW/' README.md
 ```
 
-(Remplace `NEW` par le numéro réel dans les commandes.)
+(Replace `NEW` with the actual number in the commands.)
 
-## 4. Valider (cargo)
+## 4. Validate (cargo)
 
 ```bash
-cargo build --release --quiet   # met aussi Cargo.lock à jour avec NEW
+cargo build --release --quiet   # also updates Cargo.lock with NEW
 cargo test --quiet
 ```
 
-Si le build ou les tests échouent : arrête-toi, n'engage rien. Vérifie ensuite que les
-6 entrées `aurora*` de `Cargo.lock` sont bien passées à `NEW`.
+If the build or tests fail: stop, commit nothing. Then verify that the
+6 `aurora*` entries of `Cargo.lock` have indeed switched to `NEW`.
 
 ## 5. Commit, tag, push
 
@@ -73,10 +73,10 @@ git push origin main
 git push origin "vNEW"
 ```
 
-## 6. Rapport
+## 6. Report
 
-Confirme la version publiée et donne les liens de suivi :
-- Workflow : `https://github.com/jdevelop-io/aurora/actions`
-- Release : `https://github.com/jdevelop-io/aurora/releases/tag/vNEW`
+Confirm the published version and give the tracking links:
+- Workflow: `https://github.com/jdevelop-io/aurora/actions`
+- Release: `https://github.com/jdevelop-io/aurora/releases/tag/vNEW`
 
-N'ajoute aucune attribution Claude/Anthropic dans le commit ou le tag.
+Do not add any Claude/Anthropic attribution in the commit or the tag.

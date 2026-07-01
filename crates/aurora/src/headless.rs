@@ -1,13 +1,13 @@
-//! Rendu texte du mode headless : draine le flux d'événements du scheduler,
-//! l'affiche en lignes préfixées par beam (stdout/stderr séparés), puis imprime
-//! un récap final. Renvoie le succès global, qui pilote le code de sortie.
+//! Text rendering for headless mode: drains the scheduler's event stream,
+//! displays it as lines prefixed by beam (stdout/stderr separated), then prints
+//! a final recap. Returns the overall success, which drives the exit code.
 
 use std::io::Write;
 
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent, SkipReason};
 use tokio::sync::mpsc;
 
-/// Enrobe `text` dans un code couleur ANSI lorsque `use_color` est vrai.
+/// Wraps `text` in an ANSI color code when `use_color` is true.
 fn paint(text: &str, code: &str, use_color: bool) -> String {
     if use_color {
         format!("\u{1b}[{code}m{text}\u{1b}[0m")
@@ -16,13 +16,13 @@ fn paint(text: &str, code: &str, use_color: bool) -> String {
     }
 }
 
-/// Formate une durée en secondes avec une décimale (ex. "4.2s").
+/// Formats a duration in seconds with one decimal place (e.g. "4.2s").
 fn fmt_duration(d: std::time::Duration) -> String {
     format!("{:.1}s", d.as_secs_f64())
 }
 
-/// Construit la ligne de récap d'un beam terminé.
-/// Renvoie `None` pour les statuts non terminaux (Pending/Running), jamais émis ici.
+/// Builds the recap line for a completed beam.
+/// Returns `None` for non-terminal statuses (Pending/Running), never emitted here.
 fn recap_line(name: &str, status: &BeamStatus, width: usize, use_color: bool) -> Option<String> {
     let (marker, color, detail) = match status {
         BeamStatus::Success {
@@ -56,19 +56,19 @@ fn recap_line(name: &str, status: &BeamStatus, width: usize, use_color: bool) ->
         BeamStatus::Cancelled => ("CANC", "35", "cancelled".to_string()),
         BeamStatus::Pending | BeamStatus::Running => return None,
     };
-    // Marqueur cadré sur 6 caractères ("[FAIL]") avant coloration, pour aligner
-    // sans que les codes ANSI (largeur nulle) ne décalent les colonnes.
+    // Marker padded to 6 characters ("[FAIL]") before coloring, so the columns
+    // stay aligned without the ANSI codes (zero width) shifting them.
     let marker = format!("{:<6}", format!("[{marker}]"));
     let marker = paint(&marker, color, use_color);
     Some(format!("{marker} {name:<width$}  {detail}"))
 }
 
-/// Draine le flux d'événements jusqu'à `AllDone`, imprime les lignes préfixées
-/// puis le récap. Renvoie le succès global porté par `AllDone`.
+/// Drains the event stream until `AllDone`, prints the prefixed lines
+/// then the recap. Returns the overall success carried by `AllDone`.
 ///
-/// La couleur est décidée par flux de sortie cible (`out_color` pour stdout,
-/// `err_color` pour stderr) et non globalement : un `2>fichier` ne doit pas
-/// hériter de la couleur décidée pour stdout (et inversement).
+/// Color is decided per target output stream (`out_color` for stdout,
+/// `err_color` for stderr) rather than globally: a `2>file` redirection must not
+/// inherit the color decided for stdout (and vice versa).
 pub async fn run_headless(
     beam_names: &[String],
     out_color: bool,
@@ -113,9 +113,9 @@ pub async fn run_headless(
         if let Some(line) = recap_line(name, status, width, out_color) {
             writeln!(out, "{line}")?;
         }
-        // Comme le runner interactif : `cancelled` est une catégorie neutre,
-        // jamais comptée comme un échec. Seul un beam réellement en échec
-        // (hors allow_failure) alimente `failed`.
+        // Like the interactive runner: `cancelled` is a neutral category,
+        // never counted as a failure. Only a beam that actually fails
+        // (outside allow_failure) feeds `failed`.
         match status {
             BeamStatus::Success { .. }
             | BeamStatus::Skipped { .. }
@@ -125,8 +125,8 @@ pub async fn run_headless(
             BeamStatus::Pending | BeamStatus::Running => {}
         }
     }
-    // La catégorie `cancelled` n'apparaît que lorsqu'elle est non nulle, pour
-    // garder le bilan d'un run propre lisible.
+    // The `cancelled` category only appears when it is nonzero, to
+    // keep the recap of a clean run readable.
     let mut summary = format!("Done: {ok} ok, {failed} failed");
     if cancelled > 0 {
         summary.push_str(&format!(", {cancelled} cancelled"));

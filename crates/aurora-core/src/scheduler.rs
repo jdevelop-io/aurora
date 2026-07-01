@@ -46,13 +46,13 @@ pub enum SchedulerEvent {
     },
 }
 
-/// Issue d'une tâche de beam, pour piloter l'ordonnancement aval.
+/// Outcome of a beam task, used to drive downstream scheduling.
 enum BeamOutcome {
-    /// Compte comme un succès (succès réel, skip, cache, ou échec toléré).
+    /// Counts as a success (actual success, skip, cache hit, or tolerated failure).
     Ok,
-    /// Échec non toléré.
+    /// Non-tolerated failure.
     Failed,
-    /// Annulé par l'utilisateur.
+    /// Cancelled by the user.
     Cancelled,
 }
 
@@ -87,8 +87,9 @@ impl Scheduler {
         }
     }
 
-    /// Variante non annulable, signature historique : délègue avec un canal muet
-    /// (l'émetteur reste vivant pour la durée du run, donc aucune annulation).
+    /// Non-cancellable variant, the historical signature: delegates with a
+    /// silent channel (the sender stays alive for the whole run, so there is
+    /// never any cancellation).
     pub async fn run(self, root: &str, pre_success: &[String]) -> Result<bool> {
         let (_cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
         self.run_cancellable(root, pre_success, cancel_rx).await
@@ -135,8 +136,8 @@ impl Scheduler {
         let mut cancelled: HashSet<String> = HashSet::new();
         let mut spawned: HashSet<String> = HashSet::new();
         let mut set: JoinSet<(String, BeamOutcome)> = JoinSet::new();
-        // Émetteur d'annulation par beam lancé : sa réception dans la tâche fait
-        // gagner le `select!` et déclenche l'annulation.
+        // One cancellation sender per spawned beam: receiving it inside the
+        // task makes the `select!` win and triggers the cancellation.
         let mut cancels: HashMap<String, oneshot::Sender<()>> = HashMap::new();
 
         for n in &nodes {
@@ -157,8 +158,8 @@ impl Scheduler {
                     let (name, outcome) = match result {
                         Ok(pair) => pair,
                         Err(_) => {
-                            // Tâche paniquée : on ne peut pas débloquer ses
-                            // dépendants ; la boucle se termine quand le set se vide.
+                            // Panicked task: its dependents cannot be unblocked;
+                            // the loop ends once the set is empty.
                             overall_success = false;
                             continue;
                         }
@@ -166,7 +167,7 @@ impl Scheduler {
 
                     match outcome {
                         BeamOutcome::Ok => {
-                            // Succès : débloque les dépendants directs.
+                            // Success: unblock the direct dependents.
                             for dep in graph.direct_dependents(&name) {
                                 if !nodes.contains(&dep) || cancelled.contains(&dep) || spawned.contains(&dep) || pre.contains(&dep) {
                                     continue;
@@ -183,8 +184,9 @@ impl Scheduler {
                         }
                         BeamOutcome::Failed | BeamOutcome::Cancelled => {
                             overall_success = false;
-                            // Annule toute la fermeture aval : ces beams n'atteindront
-                            // jamais un in-degree nul, on émet leur Cancelled une fois.
+                            // Cancel the whole downstream closure: these beams
+                            // will never reach an in-degree of zero, so we emit
+                            // their Cancelled once.
                             for dep in graph.transitive_dependents(&name) {
                                 if nodes.contains(&dep) && !spawned.contains(&dep) && cancelled.insert(dep.clone()) {
                                     let _ = self.tx.send(SchedulerEvent::BeamCompleted {
@@ -197,8 +199,8 @@ impl Scheduler {
                     }
                 }
                 Some(name) = cancel_rx.recv() => {
-                    // Demande d'annulation depuis la TUI : déclencher le oneshot du
-                    // beam s'il est en cours. Ignoré s'il est déjà terminé.
+                    // Cancellation request from the TUI: trigger the beam's
+                    // oneshot if it is running. Ignored if it has already finished.
                     if let Some(s) = cancels.remove(&name) {
                         let _ = s.send(());
                     }
@@ -378,9 +380,10 @@ impl Scheduler {
             };
 
             let start = Instant::now();
-            // Course entre l'exécution et une demande d'annulation. Si l'annulation
-            // gagne, le future `executor.execute(input)` est drop : son process
-            // enfant est tué (kill_on_drop) et on émet Cancelled.
+            // Race between the execution and a cancellation request. If the
+            // cancellation wins, the `executor.execute(input)` future is
+            // dropped: its child process is killed (kill_on_drop) and we emit
+            // Cancelled.
             let result = tokio::select! {
                 r = executor.execute(input) => r,
                 _ = &mut cancel_rx => {
@@ -389,10 +392,11 @@ impl Scheduler {
                         status: BeamStatus::Cancelled,
                     }).await;
                     let _ = fwd_handle.await;
-                    // Un beam `allow_failure` annulé est traité comme un échec
-                    // toléré : son statut affiché reste Cancelled, mais côté
-                    // ordonnancement il compte comme réussi (dépendants débloqués,
-                    // run global non échoué). Sinon, l'annulation est propagée.
+                    // A cancelled `allow_failure` beam is treated as a tolerated
+                    // failure: its displayed status stays Cancelled, but for
+                    // scheduling purposes it counts as a success (dependents
+                    // unblocked, overall run not failed). Otherwise, the
+                    // cancellation is propagated.
                     let outcome = if beam.allow_failure {
                         BeamOutcome::Ok
                     } else {

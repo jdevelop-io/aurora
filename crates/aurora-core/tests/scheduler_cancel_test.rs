@@ -34,9 +34,10 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
     }
 }
 
-// `slow` tourne longtemps et a un dépendant `after`. `independent` est court et
-// sans lien. On annule `slow` en cours : `slow` -> Cancelled, `after` -> Cancelled,
-// `independent` -> Success, et le run global échoue.
+// `slow` runs for a long time and has a dependent `after`. `independent` is
+// short and unrelated. We cancel `slow` while it is running: `slow` ->
+// Cancelled, `after` -> Cancelled, `independent` -> Success, and the overall
+// run fails.
 #[tokio::test]
 async fn test_cancel_running_beam_cancels_it_and_dependents() {
     let beams = vec![
@@ -63,7 +64,7 @@ async fn test_cancel_running_beam_cancels_it_and_dependents() {
         .unwrap()
     });
 
-    // Attendre que `slow` démarre, puis l'annuler.
+    // Wait for `slow` to start, then cancel it.
     let mut slow_started = false;
     let mut events = vec![];
     while let Some(evt) = rx.recv().await {
@@ -82,7 +83,7 @@ async fn test_cancel_running_beam_cancels_it_and_dependents() {
 
     let overall = tokio::time::timeout(Duration::from_secs(5), handle)
         .await
-        .expect("le scheduler ne s'est pas terminé après annulation")
+        .expect("the scheduler did not finish after cancellation")
         .unwrap();
 
     let status_of = |beam: &str| -> Option<BeamStatus> {
@@ -92,30 +93,30 @@ async fn test_cancel_running_beam_cancels_it_and_dependents() {
         })
     };
 
-    assert!(slow_started, "slow aurait dû démarrer");
+    assert!(slow_started, "slow should have started");
     assert!(
         matches!(status_of("slow"), Some(BeamStatus::Cancelled)),
-        "slow doit être annulé"
+        "slow must be cancelled"
     );
     assert!(
         matches!(status_of("after"), Some(BeamStatus::Cancelled)),
-        "after (dépendant) doit être annulé"
+        "after (dependent) must be cancelled"
     );
     assert!(
         matches!(status_of("independent"), Some(BeamStatus::Success { .. })),
-        "independent doit réussir"
+        "independent must succeed"
     );
-    assert!(!overall, "le run global doit échouer après une annulation");
+    assert!(!overall, "the overall run must fail after a cancellation");
 
     let done_ok = events
         .iter()
         .any(|e| matches!(e, SchedulerEvent::AllDone { success: false }));
-    assert!(done_ok, "AllDone doit reporter success=false");
+    assert!(done_ok, "AllDone must report success=false");
 }
 
-// Annuler un beam `allow_failure` se comporte comme un échec toléré : son
-// dépendant tourne quand même (débloqué) et le run global reste vert. Le beam
-// annulé s'affiche tout de même `Cancelled`.
+// Cancelling an `allow_failure` beam behaves like a tolerated failure: its
+// dependent still runs (unblocked) and the overall run stays green. The
+// cancelled beam still displays as `Cancelled`.
 #[tokio::test]
 async fn test_cancel_allow_failure_beam_does_not_cancel_dependents() {
     let mut slow = make_beam("slow", vec![], vec!["sleep 30"]);
@@ -157,7 +158,7 @@ async fn test_cancel_allow_failure_beam_does_not_cancel_dependents() {
 
     let overall = tokio::time::timeout(Duration::from_secs(5), handle)
         .await
-        .expect("le scheduler ne s'est pas terminé après annulation")
+        .expect("the scheduler did not finish after cancellation")
         .unwrap();
 
     let status_of = |beam: &str| -> Option<BeamStatus> {
@@ -167,17 +168,17 @@ async fn test_cancel_allow_failure_beam_does_not_cancel_dependents() {
         })
     };
 
-    assert!(slow_started, "slow aurait dû démarrer");
+    assert!(slow_started, "slow should have started");
     assert!(
         matches!(status_of("slow"), Some(BeamStatus::Cancelled)),
-        "slow annulé doit s'afficher Cancelled"
+        "cancelled slow must display as Cancelled"
     );
     assert!(
         matches!(status_of("after"), Some(BeamStatus::Success { .. })),
-        "after doit tourner malgré l'annulation de slow (allow_failure)"
+        "after must run despite slow being cancelled (allow_failure)"
     );
     assert!(
         overall,
-        "annuler un beam allow_failure ne doit pas faire échouer le run"
+        "cancelling an allow_failure beam must not fail the run"
     );
 }

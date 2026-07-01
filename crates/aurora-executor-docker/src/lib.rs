@@ -4,18 +4,18 @@ use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 
-/// Rejette les montages de volumes qui permettraient une évasion du conteneur
-/// (socket Docker → contrôle du démon, racine ou chemins système de l'hôte).
+/// Rejects volume mounts that would allow a container escape
+/// (Docker socket -> daemon control, host root or system paths).
 ///
-/// N'est appliqué qu'aux volumes fournis explicitement via la config ; le
-/// montage par défaut (working_dir) n'est pas concerné.
+/// Only applies to volumes provided explicitly via the config; the
+/// default mount (working_dir) is not affected.
 fn validate_volume(spec: &str) -> Result<()> {
     // Format: hostPath[:containerPath[:mode]]
     let host_path = spec.split(':').next().unwrap_or("");
     let normalized = host_path.trim_end_matches('/');
 
     if normalized.is_empty() {
-        anyhow::bail!("volume interdit (racine hôte « / ») : {spec}");
+        anyhow::bail!("forbidden volume (host root \"/\"): {spec}");
     }
 
     const FORBIDDEN: &[&str] = &[
@@ -33,7 +33,7 @@ fn validate_volume(spec: &str) -> Result<()> {
     ];
     for p in FORBIDDEN {
         if normalized == *p || normalized.starts_with(&format!("{p}/")) {
-            anyhow::bail!("volume interdit (chemin système {p}) : {spec}");
+            anyhow::bail!("forbidden volume (system path {p}): {spec}");
         }
     }
     Ok(())
@@ -72,8 +72,8 @@ impl Executor for DockerExecutor {
                     .iter()
                     .filter_map(|s| s.as_str().map(|s| s.to_string()))
                     .collect();
-                // Les volumes fournis par la config sont validés : on échoue
-                // plutôt que de monter silencieusement un chemin dangereux.
+                // Volumes provided via the config are validated: we fail
+                // rather than silently mounting a dangerous path.
                 for v in &vols {
                     validate_volume(v)?;
                 }
@@ -87,7 +87,7 @@ impl Executor for DockerExecutor {
         let mut cmd = Command::new("docker");
         cmd.kill_on_drop(true);
         cmd.arg("run").arg("--rm");
-        // Empêche l'escalade de privilèges via binaires setuid dans l'image.
+        // Prevents privilege escalation via setuid binaries in the image.
         cmd.arg("--security-opt").arg("no-new-privileges");
         cmd.arg("-w").arg("/app");
 

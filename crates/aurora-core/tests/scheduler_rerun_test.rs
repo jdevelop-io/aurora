@@ -44,7 +44,7 @@ async fn pre_success_beams_emit_no_events() {
         std::env::vars().collect(),
     );
 
-    // "dep" est déjà réussi — ne doit émettre aucun événement
+    // "dep" has already succeeded; must not emit any events
     scheduler.run("main", &["dep".to_string()]).await.unwrap();
 
     let mut events = vec![];
@@ -52,7 +52,7 @@ async fn pre_success_beams_emit_no_events() {
         events.push(e);
     }
 
-    // Aucun BeamStarted ni BeamCompleted pour "dep"
+    // No BeamStarted nor BeamCompleted for "dep"
     let dep_events: Vec<_> = events
         .iter()
         .filter(|e| match e {
@@ -64,13 +64,13 @@ async fn pre_success_beams_emit_no_events() {
         .collect();
     assert!(
         dep_events.is_empty(),
-        "dep ne doit pas émettre d'événements : {:?}",
+        "dep must not emit any events: {:?}",
         dep_events
     );
 
-    // "main" doit avoir été exécuté normalement
+    // "main" must have run normally
     let main_started = events
         .iter()
         .any(|e| matches!(e, SchedulerEvent::BeamStarted { name } if name == "main"));
-    assert!(main_started, "main doit avoir été démarré");
+    assert!(main_started, "main must have been started");
 }

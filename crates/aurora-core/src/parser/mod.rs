@@ -34,7 +34,7 @@ pub fn parse(input: &str) -> Result<BeamFile> {
         }
     }
 
-    // Résoudre les var_ref dans les configs d'executor
+    // Resolve var_ref in executor configs
     let vars: HashMap<String, String> = bf
         .variables
         .iter()
@@ -75,7 +75,7 @@ fn parse_aurora_block(pair: Pair<Rule>) -> Result<AuroraConfig> {
         max_parallelism: None,
     };
     for field_wrapper in pair.into_inner() {
-        // aurora_field is a wrapper rule — unwrap to get the actual field rule
+        // aurora_field is a wrapper rule: unwrap to get the actual field rule
         let field = match field_wrapper.as_rule() {
             Rule::aurora_field => field_wrapper.into_inner().next().unwrap(),
             _ => continue,
@@ -105,7 +105,7 @@ fn parse_variable_block(pair: Pair<Rule>) -> Result<Variable> {
         description: None,
     };
     for field_wrapper in inner {
-        // variable_field is a wrapper rule — unwrap to get the actual field rule
+        // variable_field is a wrapper rule: unwrap to get the actual field rule
         let field = match field_wrapper.as_rule() {
             Rule::variable_field => field_wrapper.into_inner().next().unwrap(),
             _ => continue,
@@ -161,7 +161,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
         allow_failure: false,
     };
     for field_wrapper in inner {
-        // beam_field is a wrapper rule — unwrap to get the actual field rule
+        // beam_field is a wrapper rule: unwrap to get the actual field rule
         let field = match field_wrapper.as_rule() {
             Rule::beam_field => field_wrapper.into_inner().next().unwrap(),
             _ => continue,
@@ -225,7 +225,7 @@ fn parse_run(pair: Pair<Rule>) -> Result<Run> {
     let mut commands = vec![];
     let mut executor = None;
     for field_wrapper in pair.into_inner() {
-        // run_field is a wrapper rule — unwrap to get the actual field rule
+        // run_field is a wrapper rule: unwrap to get the actual field rule
         let field = match field_wrapper.as_rule() {
             Rule::run_field => field_wrapper.into_inner().next().unwrap(),
             _ => continue,
