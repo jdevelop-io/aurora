@@ -1,78 +1,18 @@
 use crate::app::PickerState;
-use ratatui::{
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
-    Frame,
-};
+use crate::deps_panel::{render_deps, render_panel};
+use ratatui::{layout::Rect, text::Line, Frame};
 
 pub fn render_deps_panel(f: &mut Frame, state: &PickerState, area: Rect) {
     let filtered = state.filtered();
-    let content = if let Some((orig_idx, beam, _)) = filtered.get(state.selected) {
-        let mut lines = vec![
-            Line::from(Span::styled(
-                format!(" {}", beam.name),
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-        ];
-
-        if beam.depends_on.is_empty() {
-            lines.push(Line::from(Span::styled(
-                "  (none)",
-                Style::default().fg(Color::DarkGray),
-            )));
-        } else {
-            let last = beam.depends_on.len() - 1;
-            for (i, dep) in beam.depends_on.iter().enumerate() {
-                let prefix = if i == last {
-                    "  └── "
-                } else {
-                    "  ├── "
-                };
-                lines.push(Line::from(Span::styled(
-                    format!("{}{}", prefix, dep),
-                    Style::default().fg(Color::Cyan),
-                )));
-            }
-        }
-
-        // Beams that depend on this beam
+    if let Some((_, beam, _)) = filtered.get(state.selected) {
         let dependents: Vec<&str> = state
             .beams
             .iter()
             .filter(|b| b.depends_on.iter().any(|d| d == &beam.name))
             .map(|b| b.name.as_str())
             .collect();
-
-        if !dependents.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                " Required by:",
-                Style::default().fg(Color::White),
-            )));
-            for dep in dependents {
-                lines.push(Line::from(Span::styled(
-                    format!("  → {}", dep),
-                    Style::default().fg(Color::Magenta),
-                )));
-            }
-        }
-
-        // Annotate orig_idx to avoid the unused warning
-        let _ = orig_idx;
-        lines
+        render_deps(f, area, &beam.name, &beam.depends_on, &dependents);
     } else {
-        vec![Line::from("")]
-    };
-
-    let panel = Paragraph::new(content).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Dependencies "),
-    );
-    f.render_widget(panel, area);
+        render_panel(f, area, vec![Line::from("")]);
+    }
 }

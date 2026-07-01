@@ -1,4 +1,5 @@
 pub mod app;
+mod deps_panel;
 pub mod execution;
 pub mod picker;
 pub mod widgets;
