@@ -9,7 +9,20 @@ use std::collections::HashMap;
 #[grammar = "parser/aurora.pest"]
 struct AuroraParser;
 
+/// Upper bound on a Beamfile's size. A task file is small in practice; the cap
+/// guards the parser against memory and stack exhaustion on untrusted input
+/// (a very large or deeply nested file), and implicitly bounds nesting depth
+/// since deep nesting needs bytes.
+const MAX_BEAMFILE_BYTES: usize = 1024 * 1024;
+
 pub fn parse(input: &str) -> Result<BeamFile> {
+    if input.len() > MAX_BEAMFILE_BYTES {
+        bail!(
+            "Beamfile too large: {} bytes (maximum {} bytes)",
+            input.len(),
+            MAX_BEAMFILE_BYTES
+        );
+    }
     let pairs = AuroraParser::parse(Rule::beamfile, input).context("Failed to parse Beamfile")?;
 
     let mut beam_file = BeamFile {

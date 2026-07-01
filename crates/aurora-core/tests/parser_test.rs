@@ -230,6 +230,14 @@ beam "test" {
 }
 
 #[test]
+fn test_parse_rejects_oversized_beamfile() {
+    // A pathologically large Beamfile is rejected before parsing, to bound the
+    // parser's memory and stack use on untrusted input.
+    let huge = "x".repeat(2 * 1024 * 1024);
+    assert!(parse(&huge).is_err());
+}
+
+#[test]
 fn test_parse_empty_beamfile_is_valid() {
     // A Beamfile with no beams still parses: empty is valid.
     let bf = parse("").unwrap();
