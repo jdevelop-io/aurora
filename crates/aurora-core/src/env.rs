@@ -47,7 +47,12 @@ const ENV_ALLOWLIST: &[&str] = &[
 
 /// Builds the base environment from the allowlist (plus the `LC_*` locale
 /// variables).
-fn base_env() -> HashMap<String, String> {
+///
+/// This is the single entry point for the ambient environment: callers must
+/// use it (or [`evaluate`], which builds on it) rather than
+/// `std::env::vars()`, so the allowlist is applied even when a Beamfile
+/// declares no `environment { }` block.
+pub fn base_env() -> HashMap<String, String> {
     std::env::vars()
         .filter(|(k, _)| ENV_ALLOWLIST.contains(&k.as_str()) || k.starts_with("LC_"))
         .collect()

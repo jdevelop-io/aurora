@@ -149,11 +149,13 @@ async fn main() -> Result<()> {
 
     let working_dir = beamfile_path.parent().unwrap().to_path_buf();
 
-    // Evaluate environment variables (shell(...)) sequentially
-    let env = if let Some(env_block) = &beam_file.environment {
-        evaluate(env_block, &working_dir)?
-    } else {
-        std::env::vars().collect()
+    // Evaluate environment variables (shell(...)) sequentially. When no
+    // `environment { }` block is declared, fall back to the allowlisted base
+    // environment, never to the full process environment: a Beamfile is
+    // untrusted and must not inherit ambient secrets (CI tokens, AWS_*, ...).
+    let env = match &beam_file.environment {
+        Some(env_block) => evaluate(env_block, &working_dir)?,
+        None => aurora_core::env::base_env(),
     };
 
     let (tx, rx) = mpsc::channel(128);

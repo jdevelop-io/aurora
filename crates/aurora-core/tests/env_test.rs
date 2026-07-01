@@ -1,0 +1,65 @@
+use aurora_core::ast::{EnvValue, EnvVar, Environment};
+use aurora_core::env::{base_env, evaluate};
+use std::path::Path;
+
+/// The whole point of the allowlist is that an untrusted Beamfile never sees
+/// ambient secrets. This test sets a fake secret and a locale variable, then
+/// asserts the allowlist keeps the former out and lets the latter (and PATH)
+/// through. All env mutations live in a single test to avoid races with the
+/// process-global environment.
+#[test]
+fn base_env_filters_secrets_but_keeps_allowlisted_and_locale() {
+    std::env::set_var("AURORA_TEST_SECRET", "leak-me");
+    std::env::set_var("LC_TEST_LOCALE", "fr_FR.UTF-8");
+
+    let env = base_env();
+
+    assert!(
+        !env.contains_key("AURORA_TEST_SECRET"),
+        "a non-allowlisted secret must never be carried over"
+    );
+    assert!(env.contains_key("PATH"), "PATH must be carried over");
+    assert!(
+        env.contains_key("LC_TEST_LOCALE"),
+        "LC_* locale variables must be carried over"
+    );
+
+    std::env::remove_var("AURORA_TEST_SECRET");
+    std::env::remove_var("LC_TEST_LOCALE");
+}
+
+/// An empty `environment {}` block still applies the allowlist: it never
+/// leaks the full process environment.
+#[test]
+fn evaluate_empty_block_applies_allowlist() {
+    std::env::set_var("AURORA_TEST_SECRET2", "leak-me");
+    let block = Environment { vars: vec![] };
+
+    let env = evaluate(&block, Path::new(".")).unwrap();
+
+    assert!(!env.contains_key("AURORA_TEST_SECRET2"));
+    std::env::remove_var("AURORA_TEST_SECRET2");
+}
+
+/// `shell(...)` variables are evaluated sequentially and each is visible to
+/// the following ones.
+#[test]
+fn evaluate_chains_shell_variables_sequentially() {
+    let block = Environment {
+        vars: vec![
+            EnvVar {
+                name: "A".to_string(),
+                value: EnvValue::Shell("echo one".to_string()),
+            },
+            EnvVar {
+                name: "B".to_string(),
+                value: EnvValue::Shell("echo \"$A-two\"".to_string()),
+            },
+        ],
+    };
+
+    let env = evaluate(&block, Path::new(".")).unwrap();
+
+    assert_eq!(env.get("A").map(String::as_str), Some("one"));
+    assert_eq!(env.get("B").map(String::as_str), Some("one-two"));
+}
