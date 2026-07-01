@@ -21,6 +21,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
+/// Synthetic beam injected when several beams are selected at once in the
+/// picker: it depends on every selected beam and is filtered out of any
+/// user-facing listing.
+const MULTI_BEAM: &str = "__multi__";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Command::new("aurora")
@@ -119,7 +124,7 @@ async fn main() -> Result<()> {
             } else {
                 // Multi-select: virtual beam __multi__ depending on the selected beams
                 let virtual_beam = aurora_core::ast::Beam {
-                    name: "__multi__".to_string(),
+                    name: MULTI_BEAM.to_string(),
                     description: Some("Multi-beam run".to_string()),
                     depends_on: picker_results,
                     inputs: vec![],
@@ -130,7 +135,7 @@ async fn main() -> Result<()> {
                     allow_failure: false,
                 };
                 beam_file.beams.push(virtual_beam);
-                "__multi__".to_string()
+                MULTI_BEAM.to_string()
             }
         } else {
             return Ok(());
@@ -163,7 +168,7 @@ async fn main() -> Result<()> {
     let beam_info: Vec<(String, Vec<String>)> = beam_file
         .beams
         .iter()
-        .filter(|b| b.name != "__multi__")
+        .filter(|b| b.name != MULTI_BEAM)
         .map(|b| (b.name.clone(), b.depends_on.clone()))
         .collect();
 
@@ -197,7 +202,7 @@ async fn main() -> Result<()> {
         let rerun_beams: Vec<_> = beam_file
             .beams
             .iter()
-            .filter(|b| b.name != "__multi__")
+            .filter(|b| b.name != MULTI_BEAM)
             .cloned()
             .collect();
         let rerun_executors = executors.clone();
