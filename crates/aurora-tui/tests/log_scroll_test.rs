@@ -11,7 +11,7 @@ fn bottom_is_total_minus_height() {
 #[test]
 fn content_fitting_screen_has_bottom_zero() {
     let mut s = LogViewState::new(0);
-    s.scroll_to_bottom(10, 20); // total < hauteur => max 0
+    s.scroll_to_bottom(10, 20); // total < height => max 0
     assert_eq!(s.scroll, 0);
 }
 
