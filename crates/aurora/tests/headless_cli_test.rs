@@ -52,6 +52,34 @@ fn passing_beam_streams_prefixed_output_and_exits_zero() {
     let _ = fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn dry_run_prints_execution_plan_by_level() {
+    let beamfile = r#"
+beam "composer" { run { commands = ["echo c"] } }
+beam "lint" { depends_on = ["composer"] run { commands = ["echo l"] } }
+beam "test" { depends_on = ["composer"] run { commands = ["echo t"] } }
+beam "qa"   { depends_on = ["lint", "test"] }
+"#;
+    let dir = fixture_dir("dryrun", beamfile);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["qa", "--dry-run"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "dry-run must exit 0:\n{stdout}");
+    assert!(
+        stdout.contains("level 0: composer"),
+        "plan must show level 0 first:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("qa"),
+        "plan must include the target:\n{stdout}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
 const BROKEN_BEAMFILE: &str = r#"
 aurora {
   version = "1"

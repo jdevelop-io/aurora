@@ -104,7 +104,7 @@ async fn main() -> Result<()> {
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?;
-        println!("Would execute beam: {}", target);
+        print_execution_plan(&beam_file, &target)?;
         return Ok(());
     }
 
@@ -301,6 +301,30 @@ fn find_beamfile() -> Result<PathBuf> {
             None => bail!("No Beamfile found in current directory or any parent"),
         }
     }
+}
+
+/// Prints, without running anything, the beams a target would execute grouped
+/// by dependency level (level 0 runs first). Building the DAG here also
+/// surfaces a malformed Beamfile (cycle, unknown dependency) during a dry run.
+fn print_execution_plan(beam_file: &aurora_core::ast::BeamFile, target: &str) -> Result<()> {
+    let deps: Vec<(String, Vec<String>)> = beam_file
+        .beams
+        .iter()
+        .map(|b| (b.name.clone(), b.depends_on.clone()))
+        .collect();
+    let graph = aurora_core::dag::BeamGraph::from_deps(deps)?;
+    let levels = graph.execution_levels(target)?;
+
+    println!("Execution plan for '{target}':");
+    if levels.is_empty() {
+        println!("  (nothing to run)");
+    }
+    for (i, level) in levels.iter().enumerate() {
+        let mut names = level.clone();
+        names.sort();
+        println!("  level {i}: {}", names.join(", "));
+    }
+    Ok(())
 }
 
 fn resolve_target(
