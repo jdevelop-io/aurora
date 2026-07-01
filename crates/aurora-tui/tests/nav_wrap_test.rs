@@ -58,6 +58,39 @@ fn runner_select_first_last() {
 }
 
 #[test]
+fn runner_filter_limits_visible_and_navigation() {
+    let mut exec = ExecutionState::new(vec![
+        ("build".to_string(), vec![]),
+        ("test".to_string(), vec![]),
+        ("build-docs".to_string(), vec![]),
+    ]);
+    exec.beam_filter = "build".to_string();
+    assert_eq!(
+        exec.visible_indices(),
+        vec![0, 2],
+        "seuls les beams « build* » sont visibles, ordre d'exécution préservé"
+    );
+
+    exec.selected = 0;
+    exec.select_next();
+    assert_eq!(exec.selected, 2, "next saute le beam filtré (« test »)");
+    exec.select_next();
+    assert_eq!(exec.selected, 0, "wrap sur le seul sous-ensemble visible");
+}
+
+#[test]
+fn runner_clamp_selection_when_filtered_out() {
+    let mut exec = ExecutionState::new(vec![
+        ("build".to_string(), vec![]),
+        ("test".to_string(), vec![]),
+    ]);
+    exec.selected = 1; // « test »
+    exec.beam_filter = "build".to_string();
+    exec.clamp_selection_to_visible();
+    assert_eq!(exec.selected, 0, "sélection masquée par le filtre -> premier visible");
+}
+
+#[test]
 fn runner_select_wraps_both_directions() {
     let mut exec = ExecutionState::new(vec![
         ("a".to_string(), vec![]),

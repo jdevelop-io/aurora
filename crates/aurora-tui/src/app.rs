@@ -506,6 +506,12 @@ pub struct ExecutionState {
     pub selected: usize,
     pub done: Option<bool>,
     pub focus: FocusPanel,
+    pub show_deps: bool,
+    /// Filtre de la liste de beams (saisi via `/` quand le focus est sur les
+    /// beams). Vide = tous les beams visibles.
+    pub beam_filter: String,
+    /// Mode saisie du filtre de beams actif.
+    pub filter_input: bool,
 }
 
 impl ExecutionState {
@@ -518,6 +524,35 @@ impl ExecutionState {
             selected: 0,
             done: None,
             focus: FocusPanel::Beams,
+            show_deps: false,
+            beam_filter: String::new(),
+            filter_input: false,
+        }
+    }
+
+    /// Indices des beams correspondant au filtre courant, dans l'ordre
+    /// d'exécution (pas de réordonnancement : la liste reste stable). Tous les
+    /// beams si le filtre est vide.
+    pub fn visible_indices(&self) -> Vec<usize> {
+        if self.beam_filter.is_empty() {
+            return (0..self.beams.len()).collect();
+        }
+        use crate::picker::fuzzy::fuzzy_score;
+        self.beams
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| fuzzy_score(&self.beam_filter, &b.name, None) > 0)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Recentre la sélection sur le premier beam visible si la sélection
+    /// courante est masquée par le filtre. À appeler après chaque édition du
+    /// filtre.
+    pub fn clamp_selection_to_visible(&mut self) {
+        let visible = self.visible_indices();
+        if !visible.contains(&self.selected) {
+            self.selected = visible.first().copied().unwrap_or(0);
         }
     }
 
@@ -628,6 +663,10 @@ impl ExecutionState {
                 self.focus = FocusPanel::Logs;
                 None
             }
+            KeyCode::Char('d') => {
+                self.show_deps = !self.show_deps;
+                None
+            }
             KeyCode::Char('q') => Some(ExecutionAction::Quit),
             KeyCode::Enter => Some(ExecutionAction::OpenLogView {
                 beam_index: self.selected,
@@ -670,35 +709,35 @@ impl ExecutionState {
     }
 
     pub fn select_next(&mut self) {
-        let count = self.beams.len();
-        if count == 0 {
+        let visible = self.visible_indices();
+        if visible.is_empty() {
             return;
         }
-        self.selected = if self.selected + 1 >= count {
-            0
-        } else {
-            self.selected + 1
-        };
+        let pos = visible.iter().position(|&i| i == self.selected).unwrap_or(0);
+        let next = if pos + 1 >= visible.len() { 0 } else { pos + 1 };
+        self.selected = visible[next];
     }
 
     pub fn select_prev(&mut self) {
-        let count = self.beams.len();
-        if count == 0 {
+        let visible = self.visible_indices();
+        if visible.is_empty() {
             return;
         }
-        self.selected = if self.selected == 0 {
-            count - 1
-        } else {
-            self.selected - 1
-        };
+        let pos = visible.iter().position(|&i| i == self.selected).unwrap_or(0);
+        let prev = if pos == 0 { visible.len() - 1 } else { pos - 1 };
+        self.selected = visible[prev];
     }
 
     pub fn select_first(&mut self) {
-        self.selected = 0;
+        if let Some(&first) = self.visible_indices().first() {
+            self.selected = first;
+        }
     }
 
     pub fn select_last(&mut self) {
-        self.selected = self.beams.len().saturating_sub(1);
+        if let Some(&last) = self.visible_indices().last() {
+            self.selected = last;
+        }
     }
 }
 

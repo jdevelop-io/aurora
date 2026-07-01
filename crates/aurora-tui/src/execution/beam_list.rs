@@ -17,13 +17,18 @@ pub fn render_beam_list(
     area: Rect,
     focused: bool,
 ) {
-    let title = " Aurora ";
+    // Titre : « Aurora », complété par le filtre actif le cas échéant.
+    let title = if state.beam_filter.is_empty() {
+        " Aurora ".to_string()
+    } else {
+        format!(" Aurora — /{} ", state.beam_filter)
+    };
 
     let items: Vec<ListItem> = state
-        .beams
-        .iter()
-        .enumerate()
-        .map(|(i, beam)| {
+        .visible_indices()
+        .into_iter()
+        .map(|i| {
+            let beam = &state.beams[i];
             let symbol = match &beam.status {
                 BeamStatus::Running => {
                     SPINNER_FRAMES[(tick / 2 % SPINNER_FRAMES.len() as u64) as usize]

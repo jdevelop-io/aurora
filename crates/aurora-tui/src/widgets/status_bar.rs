@@ -22,6 +22,7 @@ const RUNNING_FULL: &[(&str, &str)] = &[
     ("g/G", "haut/bas"),
     ("/", "cherche"),
     ("y", "copier"),
+    ("d", "deps"),
     ("?", "aide"),
     ("q", "annuler"),
 ];
@@ -40,6 +41,7 @@ const DONE_FULL: &[(&str, &str)] = &[
     ("/", "cherche"),
     ("y", "copier"),
     ("r", "relancer"),
+    ("d", "deps"),
     ("?", "aide"),
     ("q", "quitter"),
 ];
