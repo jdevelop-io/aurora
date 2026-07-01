@@ -3,7 +3,7 @@ use crate::cache::BeamCache;
 use crate::dag::BeamGraph;
 use anyhow::Result;
 use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -114,8 +114,6 @@ impl Scheduler {
         pre_success: &[String],
         mut cancel_rx: mpsc::UnboundedReceiver<String>,
     ) -> Result<bool> {
-        use std::collections::HashSet;
-
         let deps: Vec<(String, Vec<String>)> = self
             .beams
             .values()
@@ -138,12 +136,12 @@ impl Scheduler {
 
         let mut remaining: HashMap<String, usize> = HashMap::new();
         for n in &nodes {
-            let deg = graph
+            let in_degree = graph
                 .direct_dependencies(n)
                 .into_iter()
                 .filter(|d| nodes.contains(d) && !pre.contains(d))
                 .count();
-            remaining.insert(n.clone(), deg);
+            remaining.insert(n.clone(), in_degree);
         }
 
         let mut cancelled: HashSet<String> = HashSet::new();
@@ -158,8 +156,8 @@ impl Scheduler {
                 continue;
             }
             if remaining[n] == 0 {
-                let s = self.spawn_beam(&mut set, &semaphore, n);
-                cancels.insert(n.clone(), s);
+                let cancel_tx = self.spawn_beam(&mut set, &semaphore, n);
+                cancels.insert(n.clone(), cancel_tx);
                 spawned.insert(n.clone());
             }
         }
@@ -188,8 +186,9 @@ impl Scheduler {
                                 if let Some(r) = remaining.get_mut(&dep) {
                                     *r = r.saturating_sub(1);
                                     if *r == 0 {
-                                        let s = self.spawn_beam(&mut set, &semaphore, &dep);
-                                        cancels.insert(dep.clone(), s);
+                                        let cancel_tx =
+                                            self.spawn_beam(&mut set, &semaphore, &dep);
+                                        cancels.insert(dep.clone(), cancel_tx);
                                         spawned.insert(dep);
                                     }
                                 }
