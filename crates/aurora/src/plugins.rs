@@ -3,6 +3,15 @@ use async_trait::async_trait;
 use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
 use extism::{Manifest, Plugin, Wasm};
 use std::path::PathBuf;
+use std::time::Duration;
+
+/// Wall-clock cap for a single plugin call: a hostile or buggy `.wasm` must not
+/// be able to hang the run indefinitely.
+const PLUGIN_TIMEOUT: Duration = Duration::from_secs(300);
+
+/// Memory cap for a plugin (WASM pages are 64 KiB each), so a runaway module
+/// cannot exhaust host memory. 8192 pages = 512 MiB.
+const PLUGIN_MAX_MEMORY_PAGES: u32 = 8192;
 
 pub struct WasmExecutor {
     name: String,
@@ -33,7 +42,13 @@ impl Executor for WasmExecutor {
 
         tokio::task::spawn_blocking(move || -> Result<ExecutionOutput> {
             let wasm = Wasm::file(&plugin_path);
-            let manifest = Manifest::new([wasm]);
+            // Plugins are untrusted, unsigned code: bound their time and memory,
+            // and grant no host access. WASI stays disabled (the `false` below),
+            // so a plugin has no filesystem or network by default.
+            let manifest = Manifest::new([wasm])
+                .with_timeout(PLUGIN_TIMEOUT)
+                .with_memory_max(PLUGIN_MAX_MEMORY_PAGES)
+                .disallow_all_hosts();
             let mut plugin = Plugin::new(&manifest, [], false)?;
             let output_bytes = plugin.call::<&[u8], &[u8]>("execute", &input_json)?;
             Ok(serde_json::from_slice(output_bytes)?)
