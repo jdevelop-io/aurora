@@ -276,153 +276,186 @@ impl Scheduler {
         semaphore: &Option<Arc<Semaphore>>,
         beam_name: &str,
     ) -> (oneshot::Sender<()>, tokio::task::Id) {
-        let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
+        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
 
         let beam = self.beams[beam_name].clone();
-        let env = self.env.clone();
         let executor = self.resolve_executor(&beam);
-        let tx = self.tx.clone();
-        let sem = semaphore.clone();
-        let cache = self.cache.clone();
-        let cache_enabled = self.cache_enabled;
-        let working_dir = self.working_dir.clone();
+        let task_env = TaskEnv {
+            env: self.env.clone(),
+            tx: self.tx.clone(),
+            sem: semaphore.clone(),
+            cache: self.cache.clone(),
+            cache_enabled: self.cache_enabled,
+            working_dir: self.working_dir.clone(),
+        };
 
-        let handle = set.spawn(async move {
-            let _permit = match sem {
-                Some(s) => Some(s.acquire_owned().await.unwrap()),
-                None => None,
-            };
+        let handle = set.spawn(run_beam_task(beam, executor, cancel_rx, task_env));
+        (cancel_tx, handle.id())
+    }
+}
 
-            let _ = tx
-                .send(SchedulerEvent::BeamStarted {
-                    name: beam.name.clone(),
-                })
-                .await;
+/// The shared scheduler state a beam task needs, cloned once per spawn. Grouped
+/// so [`run_beam_task`] takes a handful of arguments instead of a long list.
+struct TaskEnv {
+    env: HashMap<String, String>,
+    tx: mpsc::Sender<SchedulerEvent>,
+    sem: Option<Arc<Semaphore>>,
+    cache: Arc<BeamCache>,
+    cache_enabled: bool,
+    working_dir: PathBuf,
+}
 
-            // A beam without a `run` block is a pure aggregation node: it
-            // succeeds immediately once its dependencies are done.
-            if beam.run.is_none() {
-                let _ = tx
-                    .send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status: BeamStatus::Success {
-                            duration: Duration::ZERO,
-                            cached: false,
-                        },
-                    })
-                    .await;
-                return (beam.name, BeamOutcome::Ok);
-            }
+/// Runs a single beam to completion: acquires the parallelism permit, applies
+/// gating and cache, then executes while racing cancellation. Emits the beam's
+/// lifecycle events and returns its scheduling outcome.
+async fn run_beam_task(
+    beam: Beam,
+    executor: Arc<dyn Executor>,
+    mut cancel_rx: oneshot::Receiver<()>,
+    task_env: TaskEnv,
+) -> (String, BeamOutcome) {
+    let TaskEnv {
+        env,
+        tx,
+        sem,
+        cache,
+        cache_enabled,
+        working_dir,
+    } = task_env;
 
-            // Gating: skip when `skip_if` succeeds, then when `condition` is
-            // not met. Either way the beam counts as a success for scheduling.
-            if let Some(reason) = gate_skip_reason(&beam, &working_dir, &env).await {
-                let _ = tx
-                    .send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status: BeamStatus::Skipped { reason },
-                    })
-                    .await;
-                return (beam.name, BeamOutcome::Ok);
-            }
+    let _permit = match sem {
+        Some(s) => Some(s.acquire_owned().await.unwrap()),
+        None => None,
+    };
 
-            // Cache: on a valid hit, replay the recorded output and skip.
-            let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
-                cache.hash_inputs_at(&working_dir, &beam.inputs).ok().flatten()
-            } else {
-                None
-            };
-            if let Some(ref hash) = inputs_hash {
-                if cache.is_valid(&beam.name, hash, &beam.outputs, &working_dir) {
-                    replay_cached_output(&cache, &beam.name, &tx).await;
-                    let _ = tx
-                        .send(SchedulerEvent::BeamCompleted {
-                            name: beam.name.clone(),
-                            status: BeamStatus::Skipped {
-                                reason: SkipReason::Cached,
-                            },
-                        })
-                        .await;
-                    return (beam.name, BeamOutcome::Ok);
-                }
-            }
+    let _ = tx
+        .send(SchedulerEvent::BeamStarted {
+            name: beam.name.clone(),
+        })
+        .await;
 
-            // Execute, streaming output live and racing against cancellation.
-            let run = beam.run.as_ref().unwrap();
-            let (out_tx, fwd_handle) = spawn_output_forwarder(tx.clone(), beam.name.clone());
-            let input = ExecutionInput {
-                commands: run.commands.clone(),
-                env,
-                working_dir: working_dir.clone(),
-                config: build_executor_config(run),
-                output_tx: Some(out_tx),
-            };
+    // A beam without a `run` block is a pure aggregation node: it
+    // succeeds immediately once its dependencies are done.
+    if beam.run.is_none() {
+        let _ = tx
+            .send(SchedulerEvent::BeamCompleted {
+                name: beam.name.clone(),
+                status: BeamStatus::Success {
+                    duration: Duration::ZERO,
+                    cached: false,
+                },
+            })
+            .await;
+        return (beam.name, BeamOutcome::Ok);
+    }
 
-            let start = Instant::now();
-            // Race between the execution and a cancellation request. If the
-            // cancellation wins, the `executor.execute(input)` future is
-            // dropped: its child process is killed (kill_on_drop) and we emit
-            // Cancelled.
-            let result = tokio::select! {
-                r = executor.execute(input) => r,
-                _ = &mut cancel_rx => {
-                    let _ = tx.send(SchedulerEvent::BeamCompleted {
-                        name: beam.name.clone(),
-                        status: BeamStatus::Cancelled,
-                    }).await;
-                    let _ = fwd_handle.await;
-                    // A cancelled `allow_failure` beam is treated as a tolerated
-                    // failure: its displayed status stays Cancelled, but for
-                    // scheduling purposes it counts as a success (dependents
-                    // unblocked, overall run not failed). Otherwise, the
-                    // cancellation is propagated.
-                    let outcome = if beam.allow_failure {
-                        BeamOutcome::Ok
-                    } else {
-                        BeamOutcome::Cancelled
-                    };
-                    return (beam.name, outcome);
-                }
-            };
-            let (stdout_lines, stderr_lines) = fwd_handle.await.unwrap_or_default();
-            let duration = start.elapsed();
+    // Gating: skip when `skip_if` succeeds, then when `condition` is
+    // not met. Either way the beam counts as a success for scheduling.
+    if let Some(reason) = gate_skip_reason(&beam, &working_dir, &env).await {
+        let _ = tx
+            .send(SchedulerEvent::BeamCompleted {
+                name: beam.name.clone(),
+                status: BeamStatus::Skipped { reason },
+            })
+            .await;
+        return (beam.name, BeamOutcome::Ok);
+    }
 
-            // Side effects tied to the outcome: persist the cache on success,
-            // surface the error message on failure to spawn.
-            match &result {
-                Ok(output) if output.success() => {
-                    if let Some(ref hash) = inputs_hash {
-                        let _ =
-                            cache.save_with_logs(&beam.name, hash, &stdout_lines, &stderr_lines);
-                    }
-                }
-                Err(e) => {
-                    // Surface the executor error instead of dropping it: an
-                    // unreachable Docker daemon, a missing image or a rejected
-                    // volume would otherwise fail with an opaque exit code -1.
-                    let _ = tx
-                        .send(SchedulerEvent::BeamOutput {
-                            name: beam.name.clone(),
-                            line: format!("aurora: executor error: {e:#}"),
-                            is_stderr: true,
-                        })
-                        .await;
-                }
-                _ => {}
-            }
-
-            let (status, outcome) = classify_execution(&result, beam.allow_failure, duration);
+    // Cache: on a valid hit, replay the recorded output and skip.
+    let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
+        cache
+            .hash_inputs_at(&working_dir, &beam.inputs)
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
+    if let Some(ref hash) = inputs_hash {
+        if cache.is_valid(&beam.name, hash, &beam.outputs, &working_dir) {
+            replay_cached_output(&cache, &beam.name, &tx).await;
             let _ = tx
                 .send(SchedulerEvent::BeamCompleted {
                     name: beam.name.clone(),
-                    status,
+                    status: BeamStatus::Skipped {
+                        reason: SkipReason::Cached,
+                    },
                 })
                 .await;
-            (beam.name, outcome)
-        });
-
-        (cancel_tx, handle.id())
+            return (beam.name, BeamOutcome::Ok);
+        }
     }
+
+    // Execute, streaming output live and racing against cancellation.
+    let run = beam.run.as_ref().unwrap();
+    let (out_tx, fwd_handle) = spawn_output_forwarder(tx.clone(), beam.name.clone());
+    let input = ExecutionInput {
+        commands: run.commands.clone(),
+        env,
+        working_dir: working_dir.clone(),
+        config: build_executor_config(run),
+        output_tx: Some(out_tx),
+    };
+
+    let start = Instant::now();
+    // Race between the execution and a cancellation request. If the
+    // cancellation wins, the `executor.execute(input)` future is
+    // dropped: its child process is killed (kill_on_drop) and we emit
+    // Cancelled.
+    let result = tokio::select! {
+        r = executor.execute(input) => r,
+        _ = &mut cancel_rx => {
+            let _ = tx.send(SchedulerEvent::BeamCompleted {
+                name: beam.name.clone(),
+                status: BeamStatus::Cancelled,
+            }).await;
+            let _ = fwd_handle.await;
+            // A cancelled `allow_failure` beam is treated as a tolerated
+            // failure: its displayed status stays Cancelled, but for
+            // scheduling purposes it counts as a success (dependents
+            // unblocked, overall run not failed). Otherwise, the
+            // cancellation is propagated.
+            let outcome = if beam.allow_failure {
+                BeamOutcome::Ok
+            } else {
+                BeamOutcome::Cancelled
+            };
+            return (beam.name, outcome);
+        }
+    };
+    let (stdout_lines, stderr_lines) = fwd_handle.await.unwrap_or_default();
+    let duration = start.elapsed();
+
+    // Side effects tied to the outcome: persist the cache on success,
+    // surface the error message on failure to spawn.
+    match &result {
+        Ok(output) if output.success() => {
+            if let Some(ref hash) = inputs_hash {
+                let _ = cache.save_with_logs(&beam.name, hash, &stdout_lines, &stderr_lines);
+            }
+        }
+        Err(e) => {
+            // Surface the executor error instead of dropping it: an
+            // unreachable Docker daemon, a missing image or a rejected
+            // volume would otherwise fail with an opaque exit code -1.
+            let _ = tx
+                .send(SchedulerEvent::BeamOutput {
+                    name: beam.name.clone(),
+                    line: format!("aurora: executor error: {e:#}"),
+                    is_stderr: true,
+                })
+                .await;
+        }
+        _ => {}
+    }
+
+    let (status, outcome) = classify_execution(&result, beam.allow_failure, duration);
+    let _ = tx
+        .send(SchedulerEvent::BeamCompleted {
+            name: beam.name.clone(),
+            status,
+        })
+        .await;
+    (beam.name, outcome)
 }
 
 /// Runs a gating shell command and reports whether it succeeded (exit 0). A
