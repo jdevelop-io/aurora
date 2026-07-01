@@ -230,6 +230,23 @@ impl Scheduler {
         Ok(overall_success)
     }
 
+    /// Selects the executor for a beam from its `run.executor` name, falling
+    /// back to `local`. `local` is registered by the composition root, so its
+    /// absence is a programming error rather than a runtime condition.
+    fn resolve_executor(&self, beam: &Beam) -> Arc<dyn Executor> {
+        let executor_name = beam
+            .run
+            .as_ref()
+            .and_then(|r| r.executor.as_ref())
+            .map(|e| e.name.as_str())
+            .unwrap_or("local");
+        self.executors
+            .get(executor_name)
+            .or_else(|| self.executors.get("local"))
+            .cloned()
+            .expect("no local executor registered")
+    }
+
     fn spawn_beam(
         &self,
         set: &mut JoinSet<(String, BeamOutcome)>,
@@ -240,19 +257,7 @@ impl Scheduler {
 
         let beam = self.beams[beam_name].clone();
         let env = self.env.clone();
-        let executor_name = beam
-            .run
-            .as_ref()
-            .and_then(|r| r.executor.as_ref())
-            .map(|e| e.name.as_str())
-            .unwrap_or("local")
-            .to_string();
-        let executor = self
-            .executors
-            .get(&executor_name)
-            .or_else(|| self.executors.get("local"))
-            .cloned()
-            .expect("no local executor registered");
+        let executor = self.resolve_executor(&beam);
         let tx = self.tx.clone();
         let sem = semaphore.clone();
         let cache = self.cache.clone();
