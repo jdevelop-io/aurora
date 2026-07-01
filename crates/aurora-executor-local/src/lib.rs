@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use aurora_executor_api::{pump_child, ExecutionInput, ExecutionOutput, Executor};
 use tokio::process::Command;
 
 pub struct LocalExecutor;
@@ -30,7 +29,7 @@ impl Executor for LocalExecutor {
         // env_clear(): the child process must NOT inherit Aurora's ambient
         // environment (CI secrets, keys, etc.). The env provided in
         // `input.env` is authoritative (see aurora-core/src/env.rs).
-        let mut child = Command::new("sh")
+        let child = Command::new("sh")
             .arg("-c")
             .arg(&script)
             .current_dir(&input.working_dir)
@@ -41,43 +40,6 @@ impl Executor for LocalExecutor {
             .kill_on_drop(true)
             .spawn()?;
 
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
-        let tx_out = input.output_tx.clone();
-        let tx_err = input.output_tx.clone();
-
-        let (stdout_lines, stderr_lines, status) = tokio::join!(
-            async move {
-                let mut reader = BufReader::new(stdout).lines();
-                let mut lines = vec![];
-                while let Ok(Some(line)) = reader.next_line().await {
-                    if let Some(ref tx) = tx_out {
-                        let _ = tx.send((line.clone(), false)).await;
-                    }
-                    lines.push(line);
-                }
-                lines
-            },
-            async move {
-                let mut reader = BufReader::new(stderr).lines();
-                let mut lines = vec![];
-                while let Ok(Some(line)) = reader.next_line().await {
-                    if let Some(ref tx) = tx_err {
-                        let _ = tx.send((line.clone(), true)).await;
-                    }
-                    lines.push(line);
-                }
-                lines
-            },
-            child.wait(),
-        );
-
-        let exit_code = status?.code().unwrap_or(-1);
-
-        Ok(ExecutionOutput {
-            exit_code,
-            stdout: stdout_lines.join("\n").into_bytes(),
-            stderr: stderr_lines.join("\n").into_bytes(),
-        })
+        pump_child(child, input.output_tx).await
     }
 }
