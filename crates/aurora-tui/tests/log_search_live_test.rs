@@ -44,7 +44,7 @@ fn first_match_appears_after_search() {
 
 #[test]
 fn does_not_jump_index_back_to_zero_on_recompute() {
-    let mut b = beam(&["m", "m", "m"]);
+    let b = beam(&["m", "m", "m"]);
     let mut search = LogSearch::new();
     search.query = "m".to_string();
     search.recompute(&b);

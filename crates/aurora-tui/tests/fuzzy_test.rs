@@ -9,7 +9,7 @@ fn exact_name_match_is_highest() {
 #[test]
 fn substring_match_is_high() {
     let score = fuzzy_score("build", "rebuild", None);
-    assert!(score >= 500 && score < 1000);
+    assert!((500..1000).contains(&score));
 }
 
 #[test]
