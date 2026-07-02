@@ -47,6 +47,10 @@ pub struct Beam {
     pub depends_on: Vec<String>,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
+    /// Working directory for this beam. When set, the beam's run commands,
+    /// inputs/outputs and gates all resolve against this directory. Relative
+    /// paths join onto the Beamfile directory; absolute paths replace it.
+    pub dir: Option<String>,
     pub skip_if: Option<String>,
     pub condition: Option<Condition>,
     pub run: Option<Run>,

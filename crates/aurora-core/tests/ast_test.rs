@@ -8,6 +8,7 @@ fn test_beam_with_all_fields() {
         depends_on: vec!["composer".to_string()],
         inputs: vec!["src/**/*.php".to_string()],
         outputs: vec![],
+        dir: None,
         skip_if: Some("test -z \"$CHANGED\"".to_string()),
         condition: None,
         run: Some(Run {
@@ -34,6 +35,7 @@ fn test_aggregate_beam() {
         depends_on: vec!["lint".to_string(), "test".to_string()],
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: None,

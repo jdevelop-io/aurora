@@ -19,6 +19,7 @@ fn slow_beam(name: &str) -> Beam {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: Some(Run {
@@ -36,6 +37,7 @@ fn aggregate(name: &str, deps: &[&str]) -> Beam {
         depends_on: deps.iter().map(|s| s.to_string()).collect(),
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: None,

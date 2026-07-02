@@ -42,6 +42,7 @@ beam_field = {
     beam_depends_on  |
     beam_inputs      |
     beam_outputs     |
+    beam_dir         |
     beam_skip_if     |
     beam_allow_failure |
     beam_condition   |
@@ -51,6 +52,7 @@ beam_description = { "description" ~ "=" ~ string }
 beam_depends_on  = { "depends_on"  ~ "=" ~ string_list }
 beam_inputs      = { "inputs"      ~ "=" ~ string_list }
 beam_outputs     = { "outputs"     ~ "=" ~ string_list }
+beam_dir         = { "dir"         ~ "=" ~ string }
 beam_skip_if     = { "skip_if"     ~ "=" ~ string }
 beam_allow_failure = { "allow_failure" ~ "=" ~ bool }
 

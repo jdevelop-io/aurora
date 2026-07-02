@@ -28,6 +28,7 @@ fn beam(name: &str, executor: Option<&str>, depends_on: Vec<&str>) -> Beam {
         depends_on: depends_on.into_iter().map(String::from).collect(),
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: Some(Run {

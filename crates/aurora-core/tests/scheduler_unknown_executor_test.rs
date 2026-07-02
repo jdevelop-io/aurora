@@ -21,6 +21,7 @@ fn beam_with_executor(name: &str, executor_name: &str) -> Beam {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: Some(Run {

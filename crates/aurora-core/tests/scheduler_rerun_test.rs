@@ -14,6 +14,7 @@ fn beam(name: &str, deps: Vec<&str>) -> Beam {
         depends_on: deps.iter().map(|s| s.to_string()).collect(),
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: Some(Run {

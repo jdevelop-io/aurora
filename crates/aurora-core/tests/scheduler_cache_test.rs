@@ -24,6 +24,7 @@ fn cached_beam(dir: &std::path::Path) -> Beam {
         depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
         outputs: vec!["out.txt".to_string()],
+        dir: None,
         skip_if: None,
         condition: None,
         run: Some(Run {
@@ -54,6 +55,7 @@ async fn cache_hit_replays_recorded_output() {
         depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
         outputs: vec!["out.txt".to_string()],
+        dir: None,
         skip_if: None,
         condition: None,
         run: Some(Run {

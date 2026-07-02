@@ -230,6 +230,33 @@ beam "test" {
 }
 
 #[test]
+fn test_parse_beam_dir() {
+    let input = r#"
+beam "build" {
+  dir = "packages/api"
+  run {
+    commands = ["npm run build"]
+  }
+}
+"#;
+    let bf = parse(input).unwrap();
+    assert_eq!(bf.beams[0].dir.as_deref(), Some("packages/api"));
+}
+
+#[test]
+fn test_parse_beam_without_dir_is_none() {
+    let input = r#"
+beam "build" {
+  run {
+    commands = ["npm run build"]
+  }
+}
+"#;
+    let bf = parse(input).unwrap();
+    assert_eq!(bf.beams[0].dir, None);
+}
+
+#[test]
 fn test_parse_rejects_oversized_beamfile() {
     // A pathologically large Beamfile is rejected before parsing, to bound the
     // parser's memory and stack use on untrusted input.

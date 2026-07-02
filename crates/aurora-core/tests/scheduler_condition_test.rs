@@ -19,6 +19,7 @@ fn beam_with_condition(op: ConditionOp, shells: Vec<&str>) -> Beam {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: Some(Condition {
             op,

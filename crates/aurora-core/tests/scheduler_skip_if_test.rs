@@ -19,6 +19,7 @@ fn beam_with_skip_if(cmd: &str) -> Beam {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: Some(cmd.to_string()),
         condition: None,
         run: Some(Run {

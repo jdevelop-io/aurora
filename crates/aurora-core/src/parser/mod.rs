@@ -239,6 +239,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: None,
@@ -262,6 +263,9 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
             }
             Rule::beam_outputs => {
                 beam.outputs = parse_string_list(field.into_inner().next().unwrap());
+            }
+            Rule::beam_dir => {
+                beam.dir = Some(unquote(field.into_inner().next().unwrap()));
             }
             Rule::beam_skip_if => {
                 beam.skip_if = Some(unquote(field.into_inner().next().unwrap()));

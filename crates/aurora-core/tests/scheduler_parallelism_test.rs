@@ -45,6 +45,7 @@ fn fan_out_beams(n: usize) -> Vec<Beam> {
             depends_on: vec![],
             inputs: vec![],
             outputs: vec![],
+            dir: None,
             skip_if: None,
             condition: None,
             run: Some(Run {
@@ -63,6 +64,7 @@ fn fan_out_beams(n: usize) -> Vec<Beam> {
         depends_on: (0..n).map(|i| format!("b{i}")).collect(),
         inputs: vec![],
         outputs: vec![],
+        dir: None,
         skip_if: None,
         condition: None,
         run: None,
