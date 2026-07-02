@@ -129,10 +129,10 @@ the cache are flagged as skipped:
 
 ```bash
 $ aurora check --dry-run
-fmt      → run
-clippy   → run    (depends_on: fmt)
-test     → run    (depends_on: fmt)
-check    → run    (aggregate)
+Execution plan for 'check':
+  level 0: fmt
+  level 1: clippy, test
+  level 2: check
 ```
 
 Force a full rebuild by ignoring the cache:
@@ -237,7 +237,7 @@ A beam can declare:
 - `run { commands = [...] }`: commands to run, with an optional `executor` block (`local`, `docker`, plugin),
 - a beam without `run` is a pure orchestration aggregate.
 
-Variables are declared with `variable {}` (overridable via `--var`) and referenced with `var.name`. The `environment {}` block defines variables evaluated sequentially and available to every beam.
+Variables are declared with `variable {}` (overridable via `--var`) and referenced with `var.name`. The `environment {}` block defines variables evaluated sequentially and available to every beam. Inside a beam's `commands`, `${var.name}` is interpolated with the variable's value (after any `--var` override); other `${...}` sequences are left for the shell.
 
 ## Architecture
 

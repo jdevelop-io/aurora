@@ -59,8 +59,9 @@ beam "test" {
 
 ### `condition` block
 
-Note: the `condition {}` block is currently parsed but not yet evaluated at runtime, so it has no effect today. For
-conditional execution, use `skip_if`. The syntax is documented here for forward compatibility.
+The `condition {}` block is evaluated at runtime, before the beam runs: `any` succeeds if at least one clause exits
+zero, `all` requires every clause to exit zero. When the condition is not met the beam is skipped. `skip_if` is the
+single-command shorthand and is evaluated first.
 
 Run the beam only if shell clauses pass. `any` succeeds if at least one clause exits zero; `all` requires every clause to exit zero.
 
@@ -94,6 +95,10 @@ beam "build-in-container" {
 ```
 
 When no `executor` is given, the `local` executor (native shell) is used.
+
+Inside `commands`, `${var.<name>}` is replaced by the value of the Beamfile variable `<name>` (honouring `--var`
+overrides). Any other `${...}` is passed through to the shell unchanged, so `${HOME}` and environment variables from the
+`environment {}` block still expand normally. Referencing an undeclared variable is an error.
 
 ## Worked example
 

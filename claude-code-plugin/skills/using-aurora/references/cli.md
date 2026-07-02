@@ -23,10 +23,11 @@ Aurora reads the `Beamfile` in the current directory.
     test                  Run tests
   ```
 
-- `--dry-run` — resolve the target beam name (honouring `default` when no beam is given) and print
-  `Would execute beam: <name>`, then exit without running anything. It prints only the target name, not the full DAG.
-- `--no-cache` — currently has no effect: the flag is accepted but not yet wired, so caching is always applied. To
-  force a beam to re-run, change one of its declared `inputs` or delete its entry under `.aurora/cache/`.
+- `--dry-run` — build the DAG for the target beam (honouring `default` when no beam is given) and print the execution
+  plan grouped by dependency level (`Execution plan for '<target>':` then one `level N: a, b` line per level), then exit
+  without running anything. Building the DAG here also surfaces a malformed Beamfile (cycle, unknown dependency).
+- `--no-cache` — ignore the cache for this run: no entry is read and none is persisted, so no `.aurora/cache` directory
+  is written. Every beam runs regardless of unchanged inputs.
 - `--var key=value` — override a variable's default. Repeatable: `--var a=1 --var b=2`. Invalid format (missing `=`) is an error.
 - `--no-tui` — force plain, non-interactive output even in a terminal. Output is streamed per beam (lines
   prefixed with the beam name, stdout and stderr kept separate) and ends with an ASCII recap

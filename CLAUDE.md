@@ -107,7 +107,8 @@ stems (with a hash suffix) to prevent path traversal from an untrusted Beamfile.
 
 Every executor implements the async `Executor` trait from `aurora-executor-api`. `local` and `docker` are registered in
 `main.rs`. WASM/`extism` plugins are supported via `aurora/src/plugins.rs` (`WasmExecutor`, `discover_plugins` reads
-`~/.aurora/plugins/*.wasm`); note this loader exists but is not yet wired into the executor map in `main.rs`.
+`~/.aurora/plugins/*.wasm`). `main.rs` registers them into the executor map after the native executors via
+`register_plugins`, which skips any name that collides with a built-in so `local`/`docker` cannot be shadowed.
 
 ## Conventions
 

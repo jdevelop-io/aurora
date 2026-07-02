@@ -23,8 +23,8 @@ called **beams** and are declared in a `Beamfile` (an HCL-inspired DSL).
   AND every declared `output` still exists on disk. Wrong `inputs`/`outputs` mislead the cache: too few inputs means
   stale results, missing outputs means needless reruns.
 - **Executors** decide where commands run: `local` (the default native shell) and `docker` (inside a container via the
-  Docker CLI). A WASM/extism plugin loader exists but is not yet wired into the executor map, so only `local` and
-  `docker` are usable in a beam today.
+  Docker CLI). WASM/extism plugins discovered under `~/.aurora/plugins/*.wasm` are also registered as executors, after
+  the native ones and without shadowing a built-in, so `local` and `docker` always keep their meaning.
 - **The process environment is NOT inherited wholesale.** Only an allowlist is propagated to beams (a Beamfile is
   treated as untrusted). Anything a beam needs must be declared in the `environment {}` block or passed with `--var`.
 
@@ -50,8 +50,9 @@ Read `references/cli.md` for the complete flag set and behaviours.
 
 ## Common pitfalls
 
-- Writing a `condition {}` block expecting it to gate execution: it is parsed but not yet evaluated, so it has no
-  effect today. Use `skip_if` for conditional skipping.
+- Misjudging a `condition {}` block: it is evaluated at runtime before the beam runs (`any` needs one clause to exit
+  zero, `all` needs every clause), and the beam is skipped when it is not met. `skip_if` is the single-command
+  shorthand, evaluated first.
 - Relying on an environment variable without declaring it in `environment {}` or passing `--var`.
 - Referencing a beam name in `depends_on` that does not exist (DAG error) or that forms a cycle.
 
