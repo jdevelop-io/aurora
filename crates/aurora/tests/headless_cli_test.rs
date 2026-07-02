@@ -181,3 +181,55 @@ fn failing_beam_exits_one() {
     );
     assert!(stdout.contains("[FAIL]"), "recap fail marker:\n{stdout}");
 }
+
+/// A Beamfile whose beam declares `inputs`, so a normal run persists a
+/// cache entry. Cache persistence requires non-empty `inputs` and the input
+/// file present on disk, so `cacheable_dir` also writes that file.
+const CACHEABLE_BEAMFILE: &str = r#"
+aurora {
+  version = "1"
+  default = "cached"
+}
+
+beam "cached" {
+  description = "beam with declared inputs"
+  inputs = ["input.txt"]
+  run { commands = ["echo hello"] }
+}
+"#;
+
+fn cacheable_dir() -> TempDir {
+    let dir = fixture_dir(CACHEABLE_BEAMFILE);
+    fs::write(dir.path().join("input.txt"), "content").unwrap();
+    dir
+}
+
+#[test]
+fn no_cache_writes_no_cache_directory() {
+    let dir = cacheable_dir();
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["cached", "--no-tui", "--no-cache"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "run should succeed");
+    assert!(
+        !dir.path().join(".aurora/cache").exists(),
+        "--no-cache must not persist a cache directory"
+    );
+}
+
+#[test]
+fn default_run_writes_cache_directory() {
+    let dir = cacheable_dir();
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["cached", "--no-tui"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "run should succeed");
+    assert!(
+        dir.path().join(".aurora/cache").exists(),
+        "a normal run persists a cache directory (proving --no-cache matters)"
+    );
+}
