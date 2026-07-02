@@ -37,9 +37,10 @@ These close the gap with `just`/`taskfile` for everyday authoring.
 - [ ] **Per-invocation beam arguments** — `aurora deploy staging` passing
   `staging` to the beam, beyond the current global `--var`. Both `just` and
   `task` support this; it is the most-requested missing ergonomic.
-- [ ] **Per-beam working directory (`dir`)** — the `local` executor currently
-  runs every beam from the Beamfile directory; `docker` already has `workdir`.
-  Essential in monorepos.
+- [x] **Per-beam working directory (`dir`)** — a beam declares `dir = "..."`;
+  its run commands, `inputs`/`outputs` and gates all resolve against that
+  directory. Relative paths join onto the Beamfile directory, absolute paths
+  replace it. Essential in monorepos.
 
 ## Modern expectations
 
