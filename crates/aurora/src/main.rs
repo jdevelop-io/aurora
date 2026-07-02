@@ -1,9 +1,3 @@
-// WASM plugin loader present but not yet wired into the executor map
-// (see CLAUDE.md): dead code is tolerated as long as it is not wired up,
-// rather than removing it or wiring it prematurely.
-#[allow(dead_code)]
-mod plugins;
-
 use anyhow::{bail, Result};
 use aurora::headless;
 use aurora_core::{env::evaluate, events::SchedulerEvent, parser::parse};
@@ -157,6 +151,10 @@ async fn main() -> Result<()> {
     ] {
         executors.insert(executor.name().to_string(), executor);
     }
+
+    // Register community WASM executors discovered under ~/.aurora/plugins.
+    // Native executors take precedence: a plugin cannot shadow local/docker.
+    aurora::plugins::register_plugins(&mut executors, aurora::plugins::discover_plugins());
 
     // `beamfile_path` always ends with the `Beamfile` component, so it has a
     // parent; fall back to the current directory rather than panic if not.

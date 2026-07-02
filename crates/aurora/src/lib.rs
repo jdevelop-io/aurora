@@ -2,6 +2,7 @@
 //! that are testable independently of the TUI (headless mode).
 
 pub mod headless;
+pub mod plugins;
 
 use aurora_core::ast::Beam;
 use aurora_core::events::SchedulerEvent;

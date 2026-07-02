@@ -2,7 +2,9 @@ use anyhow::Result;
 use async_trait::async_trait;
 use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
 use extism::{Manifest, Plugin, Wasm};
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Wall-clock cap for a single plugin call: a hostile or buggy `.wasm` must not
@@ -61,12 +63,19 @@ pub fn discover_plugins() -> Vec<(String, PathBuf)> {
     let plugins_dir = dirs::home_dir()
         .map(|h| h.join(".aurora/plugins"))
         .unwrap_or_default();
+    discover_plugins_in(&plugins_dir)
+}
 
-    if !plugins_dir.exists() {
+/// Lists `*.wasm` files in `dir` as `(name, path)` pairs, where `name` is the
+/// file stem. A missing directory yields an empty list. Split from
+/// [`discover_plugins`] so the discovery logic is testable without a real home
+/// directory.
+pub fn discover_plugins_in(dir: &Path) -> Vec<(String, PathBuf)> {
+    if !dir.exists() {
         return vec![];
     }
 
-    std::fs::read_dir(&plugins_dir)
+    std::fs::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(|entry| {
@@ -80,4 +89,38 @@ pub fn discover_plugins() -> Vec<(String, PathBuf)> {
             }
         })
         .collect()
+}
+
+/// Registers each discovered plugin into `executors`. A native (built-in)
+/// executor always wins: a plugin whose name is already taken is skipped with
+/// an stderr warning, and so is a plugin that fails to load. Returns the names
+/// actually registered.
+pub fn register_plugins(
+    executors: &mut HashMap<String, Arc<dyn Executor>>,
+    discovered: Vec<(String, PathBuf)>,
+) -> Vec<String> {
+    let mut registered = Vec::new();
+    for (name, path) in discovered {
+        if executors.contains_key(&name) {
+            eprintln!(
+                "aurora: ignoring plugin '{}' ({}): a built-in executor already uses that name",
+                name,
+                path.display()
+            );
+            continue;
+        }
+        match WasmExecutor::load(name.clone(), path.clone()) {
+            Ok(executor) => {
+                executors.insert(name.clone(), Arc::new(executor) as Arc<dyn Executor>);
+                registered.push(name);
+            }
+            Err(e) => eprintln!(
+                "aurora: skipping plugin '{}' ({}): {}",
+                name,
+                path.display(),
+                e
+            ),
+        }
+    }
+    registered
 }
