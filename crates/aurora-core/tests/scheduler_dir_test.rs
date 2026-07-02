@@ -80,6 +80,62 @@ async fn dir_sets_command_working_directory() {
     );
 }
 
+/// A beam whose `dir` does not exist fails with a clear error rather than a
+/// raw shell "cannot cd" or a confusing cache miss.
+#[tokio::test]
+async fn missing_dir_fails_beam_clearly() {
+    let root = tempfile::tempdir().unwrap();
+
+    let beam = Beam {
+        name: "build".to_string(),
+        description: None,
+        depends_on: vec![],
+        inputs: vec![],
+        outputs: vec![],
+        dir: Some("does-not-exist".to_string()),
+        skip_if: None,
+        condition: None,
+        run: Some(Run {
+            commands: vec!["echo hi".to_string()],
+            executor: None,
+        }),
+        allow_failure: false,
+    };
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let scheduler = Scheduler::new(
+        vec![beam],
+        local_executors(),
+        tx,
+        None,
+        PathBuf::from(root.path()),
+        HashMap::new(),
+    );
+    scheduler.run("build", &[]).await.unwrap();
+
+    let mut events = vec![];
+    while let Ok(evt) = rx.try_recv() {
+        events.push(evt);
+    }
+
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            SchedulerEvent::BeamCompleted {
+                name,
+                status: BeamStatus::Failed { .. },
+            } if name == "build"
+        )),
+        "missing dir should fail the beam"
+    );
+    assert!(
+        output_lines(&events, "build").iter().any(|l| l
+            .contains("working directory does not exist")
+            && l.contains("does-not-exist")),
+        "error should name the missing directory"
+    );
+}
+
 /// A relative `input` is resolved under `dir`: an unchanged file inside `dir`
 /// yields a cache-skip on rerun, proving inputs are hashed package-locally.
 #[tokio::test]

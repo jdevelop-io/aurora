@@ -429,6 +429,32 @@ async fn run_beam_task(
         None => working_dir,
     };
 
+    // A declared `dir` that is not an existing directory is a configuration
+    // error: fail loudly with the offending path instead of leaking a raw
+    // `sh: cannot cd` or a confusing cache miss. Mirrors the unknown-executor
+    // failure path below.
+    if beam.dir.is_some() && !working_dir.is_dir() {
+        let err = anyhow::anyhow!(
+            "working directory does not exist: {}",
+            working_dir.display()
+        );
+        let _ = tx
+            .send(SchedulerEvent::BeamOutput {
+                name: beam.name.clone(),
+                line: format!("aurora: {err:#}"),
+                is_stderr: true,
+            })
+            .await;
+        let (status, outcome) = classify_execution(&Err(err), beam.allow_failure, Duration::ZERO);
+        let _ = tx
+            .send(SchedulerEvent::BeamCompleted {
+                name: beam.name.clone(),
+                status,
+            })
+            .await;
+        return (beam.name, outcome);
+    }
+
     // A beam that named an executor which is not registered is a
     // configuration error: fail it loudly instead of silently downgrading
     // to the host `local` executor. Checked before gating and cache so a
