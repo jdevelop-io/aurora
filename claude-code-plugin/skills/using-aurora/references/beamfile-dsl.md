@@ -63,8 +63,6 @@ The `condition {}` block is evaluated at runtime, before the beam runs: `any` su
 zero, `all` requires every clause to exit zero. When the condition is not met the beam is skipped. `skip_if` is the
 single-command shorthand and is evaluated first.
 
-Run the beam only if shell clauses pass. `any` succeeds if at least one clause exits zero; `all` requires every clause to exit zero.
-
 ```hcl
 beam "deploy" {
   condition {
