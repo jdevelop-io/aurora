@@ -130,15 +130,15 @@ fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> R
     Ok(out)
 }
 
-/// True when `s` matches the grammar's `ident` rule
-/// (`ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "-")*`).
+/// True when `s` is a valid identifier: the grammar's `ident` rule matches the
+/// whole string. Validating against the grammar rather than re-implementing the
+/// character classes by hand keeps this in lockstep with `aurora.pest`, so the
+/// two definitions cannot drift apart.
 fn is_ident(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() => {}
-        _ => return false,
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    AuroraParser::parse(Rule::ident, s)
+        .ok()
+        .and_then(|mut pairs| pairs.next())
+        .is_some_and(|pair| pair.as_str() == s)
 }
 
 fn parse_block(pair: Pair<Rule>, bf: &mut BeamFile) -> Result<()> {
