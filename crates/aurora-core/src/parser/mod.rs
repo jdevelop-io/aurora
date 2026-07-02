@@ -71,6 +71,9 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
 
     for beam in &mut beam_file.beams {
         let beam_name = beam.name.clone();
+        if let Some(dir) = &mut beam.dir {
+            *dir = interpolate_command(dir, &vars, &beam_name)?;
+        }
         if let Some(run) = &mut beam.run {
             for cmd in &mut run.commands {
                 *cmd = interpolate_command(cmd, &vars, &beam_name)?;

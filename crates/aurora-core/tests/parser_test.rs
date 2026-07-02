@@ -257,6 +257,38 @@ beam "build" {
 }
 
 #[test]
+fn test_dir_interpolates_variables() {
+    let input = r#"
+variable "pkg" {
+  default = "api"
+}
+beam "build" {
+  dir = "packages/${var.pkg}"
+  run {
+    commands = ["npm run build"]
+  }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_variables(&mut bf).unwrap();
+    assert_eq!(bf.beams[0].dir.as_deref(), Some("packages/api"));
+}
+
+#[test]
+fn test_dir_unknown_variable_is_error() {
+    let input = r#"
+beam "build" {
+  dir = "packages/${var.missing}"
+  run {
+    commands = ["npm run build"]
+  }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    assert!(resolve_variables(&mut bf).is_err());
+}
+
+#[test]
 fn test_parse_rejects_oversized_beamfile() {
     // A pathologically large Beamfile is rejected before parsing, to bound the
     // parser's memory and stack use on untrusted input.
