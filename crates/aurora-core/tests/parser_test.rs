@@ -115,7 +115,7 @@ beam "b" {
     let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
     assert_eq!(exec.config.get("image").unwrap(), "var.image");
 
-    resolve_variables(&mut bf);
+    resolve_variables(&mut bf).unwrap();
     let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
     assert_eq!(exec.config.get("image").unwrap(), "old:1");
 }
@@ -136,7 +136,7 @@ beam "b" {
 "#;
     let mut bf = parse(input).unwrap();
     bf.variables[0].default = "new:2".to_string(); // simulates --var image=new:2
-    resolve_variables(&mut bf);
+    resolve_variables(&mut bf).unwrap();
 
     let exec = bf.beams[0].run.as_ref().unwrap().executor.as_ref().unwrap();
     assert_eq!(exec.config.get("image").unwrap(), "new:2");
@@ -327,4 +327,83 @@ beam "build" {
         !build.allow_failure,
         "absence of the flag = false by default"
     );
+}
+
+#[test]
+fn interpolates_var_in_command() {
+    let input = r#"
+variable "profile" { default = "release" }
+beam "build" {
+  run { commands = ["cargo build --profile ${var.profile} for ${var.profile}"] }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_variables(&mut bf).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["cargo build --profile release for release"]
+    );
+}
+
+#[test]
+fn interpolation_leaves_shell_expansion_untouched() {
+    let input = r#"
+variable "profile" { default = "release" }
+beam "build" {
+  run { commands = ["echo ${HOME} ${var.profile} ${OTHER}"] }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_variables(&mut bf).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["echo ${HOME} release ${OTHER}"]
+    );
+}
+
+#[test]
+fn interpolation_honors_overridden_default() {
+    let input = r#"
+variable "profile" { default = "debug" }
+beam "build" { run { commands = ["build ${var.profile}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    // Simulate a --var override applied post-parse.
+    bf.variables
+        .iter_mut()
+        .find(|v| v.name == "profile")
+        .unwrap()
+        .default = "release".to_string();
+    resolve_variables(&mut bf).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["build release"]
+    );
+}
+
+#[test]
+fn unknown_var_in_command_is_error() {
+    let input = r#"
+beam "build" { run { commands = ["build ${var.missing}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    let err = resolve_variables(&mut bf).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("missing"), "message names the variable: {msg}");
+    assert!(msg.contains("build"), "message names the beam: {msg}");
+}
+
+#[test]
+fn unknown_var_in_executor_config_is_error() {
+    let input = r#"
+beam "build" {
+  run {
+    commands = ["cargo build"]
+    executor "docker" { image = var.missing }
+  }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    let err = resolve_variables(&mut bf).unwrap_err();
+    assert!(err.to_string().contains("missing"), "{}", err);
 }

@@ -50,32 +50,95 @@ pub fn parse(input: &str) -> Result<BeamFile> {
     Ok(beam_file)
 }
 
-/// Resolves `var.<name>` references in executor configs against the current
-/// variable defaults.
+/// Resolves variable references now that any `--var` override has been applied
+/// to `Variable.default`.
 ///
-/// This runs as a separate step, after parsing, so that `--var` overrides
-/// (applied to `Variable.default` post-parse) are honored. Resolving inside
-/// [`parse`] would freeze the executor config to the original defaults and
-/// make `--var` a no-op for executor fields such as the Docker image.
-pub fn resolve_variables(beam_file: &mut BeamFile) {
+/// Two forms are handled:
+/// - inside `run.commands`, the embedded token `${var.<name>}` is replaced by
+///   the variable's value; any other `${...}` (for example `${HOME}`) is left
+///   untouched for the shell;
+/// - inside an executor config, a field whose whole value is `var.<name>` is
+///   replaced.
+///
+/// An unknown variable reference is a hard error: a silent typo inside a shell
+/// command is a trap.
+pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
     let vars: HashMap<String, String> = beam_file
         .variables
         .iter()
         .map(|v| (v.name.clone(), v.default.clone()))
         .collect();
+
     for beam in &mut beam_file.beams {
+        let beam_name = beam.name.clone();
         if let Some(run) = &mut beam.run {
+            for cmd in &mut run.commands {
+                *cmd = interpolate_command(cmd, &vars, &beam_name)?;
+            }
             if let Some(exec_cfg) = &mut run.executor {
                 for val in exec_cfg.config.values_mut() {
                     if let Some(var_name) = val.strip_prefix("var.") {
-                        if let Some(resolved) = vars.get(var_name) {
-                            *val = resolved.clone();
+                        match vars.get(var_name) {
+                            Some(resolved) => *val = resolved.clone(),
+                            None => bail!(
+                                "unknown variable '{}' referenced in beam '{}'",
+                                var_name,
+                                beam_name
+                            ),
                         }
                     }
                 }
             }
         }
     }
+    Ok(())
+}
+
+/// Interpolates `${var.<name>}` tokens in `s`. Non-`var` `${...}` sequences are
+/// copied verbatim so shell parameter expansion still works. An unknown
+/// variable is a hard error identified by `beam`.
+fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> Result<String> {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < s.len() {
+        // `$` and `{` are ASCII, so byte checks keep `i` on a char boundary.
+        if bytes[i] == b'$' && i + 1 < s.len() && bytes[i + 1] == b'{' {
+            if let Some(rel) = s[i + 2..].find('}') {
+                let end = i + 2 + rel;
+                let inner = &s[i + 2..end];
+                if let Some(name) = inner.strip_prefix("var.") {
+                    if is_ident(name) {
+                        match vars.get(name) {
+                            Some(v) => {
+                                out.push_str(v);
+                                i = end + 1;
+                                continue;
+                            }
+                            None => {
+                                bail!("unknown variable '{}' referenced in beam '{}'", name, beam)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    Ok(out)
+}
+
+/// True when `s` matches the grammar's `ident` rule
+/// (`ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_" | "-")*`).
+fn is_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 fn parse_block(pair: Pair<Rule>, bf: &mut BeamFile) -> Result<()> {

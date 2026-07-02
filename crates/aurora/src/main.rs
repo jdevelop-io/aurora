@@ -82,9 +82,9 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Resolve `var.<name>` references in executor configs now that any --var
-    // override has been applied, so the overrides actually take effect.
-    aurora_core::parser::resolve_variables(&mut beam_file);
+    // Resolve `var.<name>` references now that any --var override has been
+    // applied, so the overrides actually take effect.
+    aurora_core::parser::resolve_variables(&mut beam_file)?;
 
     if matches.get_flag("list") {
         println!("Available beams:");
