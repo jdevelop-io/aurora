@@ -419,6 +419,16 @@ async fn run_beam_task(
         return (beam.name, BeamOutcome::Ok);
     }
 
+    // `dir` rebases everything the beam does (gates, inputs/outputs, run
+    // commands) onto that directory. A relative `dir` joins onto the Beamfile
+    // directory; an absolute one replaces it (Path::join semantics). This
+    // shadows the binding from `TaskEnv`, so `gate_skip_reason`,
+    // `cache_lookup_blocking` and the `ExecutionInput` below all inherit it.
+    let working_dir = match &beam.dir {
+        Some(dir) => working_dir.join(dir),
+        None => working_dir,
+    };
+
     // A beam that named an executor which is not registered is a
     // configuration error: fail it loudly instead of silently downgrading
     // to the host `local` executor. Checked before gating and cache so a
