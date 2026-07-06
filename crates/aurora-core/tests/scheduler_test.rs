@@ -20,6 +20,7 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
         depends_on: deps.iter().map(|s| s.to_string()).collect(),
         inputs: vec![],
         outputs: vec![],
+        variables: vec![],
         dir: None,
         skip_if: None,
         condition: None,

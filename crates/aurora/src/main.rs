@@ -123,6 +123,7 @@ async fn main() -> Result<()> {
                     depends_on: picker_results,
                     inputs: vec![],
                     outputs: vec![],
+                    variables: vec![],
                     dir: None,
                     skip_if: None,
                     condition: None,

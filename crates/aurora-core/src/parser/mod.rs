@@ -63,7 +63,7 @@ pub fn parse(input: &str) -> Result<BeamFile> {
 /// An unknown variable reference is a hard error: a silent typo inside a shell
 /// command is a trap.
 pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
-    let vars: HashMap<String, String> = beam_file
+    let globals: HashMap<String, String> = beam_file
         .variables
         .iter()
         .map(|v| (v.name.clone(), v.default.clone()))
@@ -71,6 +71,13 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
 
     for beam in &mut beam_file.beams {
         let beam_name = beam.name.clone();
+        // Effective scope: a beam-local variable shadows a global of the same
+        // name. `--var` only ever changed the globals, so locals stay private.
+        let mut vars = globals.clone();
+        for local in &beam.variables {
+            vars.insert(local.name.clone(), local.default.clone());
+        }
+
         if let Some(dir) = &mut beam.dir {
             *dir = interpolate_command(dir, &vars, &beam_name)?;
         }
@@ -242,6 +249,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        variables: vec![],
         dir: None,
         skip_if: None,
         condition: None,
@@ -278,6 +286,9 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
             }
             Rule::beam_condition => {
                 beam.condition = Some(parse_condition(field)?);
+            }
+            Rule::variable_block => {
+                beam.variables.push(parse_variable_block(field)?);
             }
             Rule::beam_run => {
                 beam.run = Some(parse_run(field)?);

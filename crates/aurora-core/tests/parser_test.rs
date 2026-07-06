@@ -466,3 +466,68 @@ beam "build" {
     let err = resolve_variables(&mut bf).unwrap_err();
     assert!(err.to_string().contains("missing"), "{}", err);
 }
+
+#[test]
+fn test_parse_beam_local_variable() {
+    let input = r#"
+beam "deploy" {
+  variable "strategy" { default = "rolling" }
+  run { commands = ["deploy.sh --strategy ${var.strategy}"] }
+}
+"#;
+    let bf = parse(input).unwrap();
+    let beam = &bf.beams[0];
+    assert_eq!(beam.variables.len(), 1);
+    assert_eq!(beam.variables[0].name, "strategy");
+    assert_eq!(beam.variables[0].default, "rolling");
+}
+
+#[test]
+fn test_local_variable_shadows_global() {
+    let input = r#"
+variable "strategy" { default = "global" }
+beam "deploy" {
+  variable "strategy" { default = "local" }
+  run { commands = ["echo ${var.strategy}"] }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_variables(&mut bf).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["echo local"]
+    );
+}
+
+#[test]
+fn test_two_beams_same_local_name_are_independent() {
+    let input = r#"
+beam "build"  { variable "s" { default = "fast" }    run { commands = ["echo ${var.s}"] } }
+beam "deploy" { variable "s" { default = "rolling" } run { commands = ["echo ${var.s}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_variables(&mut bf).unwrap();
+    let build = bf.beams.iter().find(|b| b.name == "build").unwrap();
+    let deploy = bf.beams.iter().find(|b| b.name == "deploy").unwrap();
+    assert_eq!(build.run.as_ref().unwrap().commands, vec!["echo fast"]);
+    assert_eq!(deploy.run.as_ref().unwrap().commands, vec!["echo rolling"]);
+}
+
+#[test]
+fn test_global_var_override_does_not_touch_local() {
+    // --var targets globals only; a same-named local keeps its own default.
+    let input = r#"
+variable "s" { default = "global" }
+beam "deploy" {
+  variable "s" { default = "local" }
+  run { commands = ["echo ${var.s}"] }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    bf.variables[0].default = "overridden".to_string(); // simulates --var s=overridden
+    resolve_variables(&mut bf).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["echo local"]
+    );
+}

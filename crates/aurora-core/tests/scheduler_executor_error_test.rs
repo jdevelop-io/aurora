@@ -40,6 +40,7 @@ async fn executor_error_is_surfaced_to_output() {
         depends_on: vec![],
         inputs: vec![],
         outputs: vec![],
+        variables: vec![],
         dir: None,
         skip_if: None,
         condition: None,

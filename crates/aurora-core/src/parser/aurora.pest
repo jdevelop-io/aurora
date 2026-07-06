@@ -46,6 +46,7 @@ beam_field = {
     beam_skip_if     |
     beam_allow_failure |
     beam_condition   |
+    variable_block   |
     beam_run
 }
 beam_description = { "description" ~ "=" ~ string }
