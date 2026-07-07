@@ -333,14 +333,37 @@ cargo test --workspace
 
 ## Claude Code plugin
 
-Aurora ships a [Claude Code](https://claude.ai/code) plugin so the assistant understands Aurora and can read, write, and run `Beamfile`s in your project. Install it from this repository's marketplace:
+Aurora ships a [Claude Code](https://claude.ai/code) plugin so the assistant understands Aurora and can read, write, and run `Beamfile`s in your project.
+
+### Install the plugin
+
+Add this repository as a plugin marketplace, then install the `aurora` plugin. Run both commands inside Claude Code:
 
 ```text
 /plugin marketplace add jdevelop-io/aurora
 /plugin install aurora
 ```
 
-It adds a skill (Aurora's model, the Beamfile DSL, and the CLI), an `aurora-expert` agent (authoring and migration from make/just/taskfile/npm), and hooks that validate Beamfiles on edit and surface available beams at session start. See [`claude-code-plugin`](claude-code-plugin) for details.
+- `/plugin marketplace add jdevelop-io/aurora` registers this repository's marketplace (`.claude-plugin/marketplace.json`) as a source.
+- `/plugin install aurora` installs the plugin published by that marketplace.
+
+### Update or remove
+
+```text
+/plugin marketplace update aurora
+/plugin uninstall aurora
+```
+
+- `/plugin marketplace update aurora` refreshes the marketplace metadata to pick up new plugin versions.
+- `/plugin uninstall aurora` removes the plugin.
+
+### What the plugin provides
+
+- **Skill `using-aurora`** — Aurora's execution model, the Beamfile DSL, and the CLI, with reference files loaded on demand.
+- **Agent `aurora-expert`** — authors `Beamfile`s and migrates `make`/`just`/`taskfile`/npm scripts to Aurora.
+- **Hooks** — validate a `Beamfile` after it is edited (`aurora --dry-run`) and surface available beams at session start. Both no-op silently when the `aurora` binary is not installed.
+
+The plugin assumes the `aurora` binary is installed separately (see [Installation](#installation) above). See [`claude-code-plugin`](claude-code-plugin) for details.
 
 ## Status
 
