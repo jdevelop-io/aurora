@@ -57,6 +57,12 @@ async fn main() -> Result<()> {
                 .action(clap::ArgAction::SetTrue)
                 .conflicts_with("no-tui")
                 .help("Force the TUI, even when output is not a terminal"),
+        )
+        .arg(
+            Arg::new("args")
+                .help("Positional arguments for the target beam (use -- before hyphen-leading values)")
+                .index(2)
+                .num_args(0..),
         );
 
     let matches = cli.get_matches();
@@ -143,6 +149,15 @@ async fn main() -> Result<()> {
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?
     };
+
+    // Positional arguments belong to the explicitly invoked target. Resolve
+    // `${arg.N}` / `${args}` now that the target is known; a value that must
+    // reach a dependency is a global variable, not an argument.
+    let args: Vec<String> = matches
+        .get_many::<String>("args")
+        .map(|values| values.cloned().collect())
+        .unwrap_or_default();
+    aurora_core::parser::resolve_arguments(&mut beam_file, &target, &args)?;
 
     // Register each executor under the name it reports, so the registry key and
     // Executor::name() cannot drift apart.
