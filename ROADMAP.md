@@ -34,9 +34,11 @@ Already in place and differentiating against `make`/`just`/`taskfile`:
 
 These close the gap with `just`/`taskfile` for everyday authoring.
 
-- [ ] **Per-invocation beam arguments** — `aurora deploy staging` passing
-  `staging` to the beam, beyond the current global `--var`. Both `just` and
-  `task` support this; it is the most-requested missing ergonomic.
+- [x] **Per-invocation beam arguments**: `aurora deploy web-01` binds `web-01`
+  to the invoked target as `${arg.1}`; `${args}` forwards the whole tail
+  (`aurora test -- --nocapture`). Beams may also declare private, local
+  `variable` blocks; a global `variable` remains the channel for values shared
+  down the dependency chain.
 - [x] **Per-beam working directory (`dir`)** — a beam declares `dir = "..."`;
   its run commands, `inputs`/`outputs` and gates all resolve against that
   directory. Relative paths join onto the Beamfile directory, absolute paths

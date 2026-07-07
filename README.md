@@ -239,6 +239,75 @@ A beam can declare:
 
 Variables are declared with `variable {}` (overridable via `--var`) and referenced with `var.name`. The `environment {}` block defines variables evaluated sequentially and available to every beam. Inside a beam's `commands`, `${var.name}` is interpolated with the variable's value (after any `--var` override); other `${...}` sequences are left for the shell.
 
+### Positional arguments and beam-local variables
+
+Beyond the global `--var`, the invoked target can also receive per-invocation
+positional arguments, and any beam can declare `variable {}` blocks of its
+own that stay private to it.
+
+Positional arguments follow the target on the command line and are
+interpolated into that target's `run.commands`:
+
+- `${arg.N}`: the Nth argument, 1-indexed. Referencing an index beyond the
+  number of arguments passed is a hard error.
+- `${args}`: every argument joined by a single space; the empty string when
+  none are passed.
+
+```hcl
+beam "deploy" {
+  run { commands = ["deploy.sh --to ${arg.1}"] }
+}
+
+beam "test" {
+  run { commands = ["cargo test ${args}"] }
+}
+```
+
+```bash
+aurora deploy web-01                          # arg.1 = "web-01"
+aurora test -- --nocapture -p aurora-core     # args = "--nocapture -p aurora-core"
+```
+
+Aurora's own flags are parsed before the target, so a hyphen-leading argument
+must follow `--` (otherwise it would be read as an Aurora flag); a plain
+positional value such as `web-01` needs no `--`.
+
+Arguments reach the invoked target only:
+
+- a beam that belongs to the target's dependency graph (one that will
+  actually run as part of this invocation) and references `${arg.N}` or
+  `${args}` is a hard error, because a dependency never receives the
+  invocation's arguments; share the value through a global `variable`
+  instead;
+- an independent beam elsewhere in the Beamfile that references `${arg.N}` or
+  `${args}` is left untouched, since it is not part of the current run.
+
+A beam can also declare its own `variable {}` block, private to that beam and
+shadowing a global variable of the same name. Unlike a global variable, a
+local one is not reachable with `--var` (which targets globals only), so a
+value that must be shared down a dependency chain has to stay a global
+variable:
+
+```hcl
+variable "env" { default = "qa" }        # global: propagates to dependencies
+
+beam "build" {
+  run { commands = ["build.sh --env ${var.env}"] }
+}
+
+beam "deploy" {
+  depends_on = ["build"]
+  variable "strategy" { default = "rolling" }   # local: private to deploy
+  run { commands = ["deploy.sh --env ${var.env} --to ${arg.1} --strategy ${var.strategy}"] }
+}
+```
+
+```bash
+aurora deploy web-01 --var env=prod
+# build  -> build.sh --env prod
+# deploy -> deploy.sh --env prod --to web-01 --strategy rolling
+```
+
 ## Architecture
 
 The project is a Cargo workspace split into crates:
