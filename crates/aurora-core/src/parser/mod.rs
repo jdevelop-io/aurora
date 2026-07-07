@@ -3,7 +3,7 @@ use anyhow::{bail, Context, Result};
 use pest::iterators::Pair;
 use pest::Parser;
 use pest_derive::Parser;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Parser)]
 #[grammar = "parser/aurora.pest"]
@@ -154,14 +154,24 @@ fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> R
 
 /// Interpolates `${arg.N}` and `${args}` in the invoked `target`'s run
 /// commands, records the argument vector on that beam (so the cache key can
-/// fold it in), and rejects `${arg...}` used in any other beam.
+/// fold it in), and rejects `${arg...}` used in any beam that will actually
+/// run alongside it (the target's transitive dependencies).
 ///
 /// Arguments are target-only: a dependency is pulled in by the scheduler and
 /// never receives invocation arguments, so referencing them there is a
-/// configuration error rather than a silently empty expansion. Argument values
-/// are inserted literally and never re-interpolated, so an argument containing
-/// `${var.x}` or `${arg.1}` is not expanded a second time.
+/// configuration error rather than a silently empty expansion. A beam outside
+/// the target's dependency closure never runs as part of this invocation, so
+/// its own `${arg...}` (meant for when it is itself the target) is left
+/// alone. Argument values are inserted literally and never re-interpolated,
+/// so an argument containing `${var.x}` or `${arg.1}` is not expanded a
+/// second time.
 pub fn resolve_arguments(beam_file: &mut BeamFile, target: &str, args: &[String]) -> Result<()> {
+    // Beams that actually run: the target and its transitive dependencies.
+    // `${arg...}` is only a mistake in one of these (a dependency never receives
+    // the invocation's arguments); an unrelated beam elsewhere in the Beamfile
+    // is irrelevant to this run and left untouched.
+    let run_closure = dependency_closure(beam_file, target);
+
     for beam in &mut beam_file.beams {
         let beam_name = beam.name.clone();
         if beam_name == target {
@@ -171,13 +181,39 @@ pub fn resolve_arguments(beam_file: &mut BeamFile, target: &str, args: &[String]
                 }
             }
             beam.args = args.to_vec();
-        } else if let Some(run) = &beam.run {
-            for cmd in &run.commands {
-                reject_arguments(cmd, &beam_name)?;
+        } else if run_closure.contains(&beam_name) {
+            if let Some(run) = &beam.run {
+                for cmd in &run.commands {
+                    reject_arguments(cmd, &beam_name)?;
+                }
             }
         }
     }
     Ok(())
+}
+
+/// The transitive `depends_on` closure of `target`, excluding `target` itself,
+/// walked iteratively. Unknown dependency names and cycles are handled
+/// gracefully (the visited set bounds the walk); DAG validation itself is the
+/// scheduler's job. Used only to decide which beams' `${arg...}` references
+/// belong to the current run.
+fn dependency_closure(beam_file: &BeamFile, target: &str) -> HashSet<String> {
+    let deps: HashMap<&str, &[String]> = beam_file
+        .beams
+        .iter()
+        .map(|b| (b.name.as_str(), b.depends_on.as_slice()))
+        .collect();
+    let mut closure = HashSet::new();
+    let mut stack: Vec<String> = deps.get(target).map(|d| d.to_vec()).unwrap_or_default();
+    while let Some(name) = stack.pop() {
+        if !closure.insert(name.clone()) {
+            continue;
+        }
+        if let Some(next) = deps.get(name.as_str()) {
+            stack.extend(next.iter().cloned());
+        }
+    }
+    closure
 }
 
 /// Interpolates `${args}` (whole tail, space-joined) and `${arg.N}` (1-based)

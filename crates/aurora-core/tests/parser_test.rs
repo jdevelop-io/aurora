@@ -616,6 +616,25 @@ beam "build"  { run { commands = ["build ${arg.1}"] } }
 }
 
 #[test]
+fn test_args_in_independent_beam_are_left_untouched() {
+    // A beam that is NOT in the invoked target's dependency graph is irrelevant
+    // to this run: its ${arg...} is neither interpolated nor rejected.
+    let input = r#"
+beam "greet" { run { commands = ["echo ${arg.1}"] } }
+beam "test"  { run { commands = ["cargo test ${args}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_arguments(&mut bf, "greet", &["Alice".to_string()]).unwrap();
+    let greet = bf.beams.iter().find(|b| b.name == "greet").unwrap();
+    let test = bf.beams.iter().find(|b| b.name == "test").unwrap();
+    assert_eq!(greet.run.as_ref().unwrap().commands, vec!["echo Alice"]);
+    assert_eq!(
+        test.run.as_ref().unwrap().commands,
+        vec!["cargo test ${args}"]
+    );
+}
+
+#[test]
 fn test_arg_interpolation_leaves_shell_expansion_untouched() {
     let input = r#"beam "d" { run { commands = ["echo ${HOME} ${arg.1}"] } }"#;
     let mut bf = parse(input).unwrap();
