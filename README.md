@@ -34,7 +34,7 @@ By default the binary lands in `~/.local/bin`. Override the target directory or 
 specific version with environment variables:
 
 ```bash
-AURORA_INSTALL_DIR=/usr/local/bin AURORA_VERSION=v0.7.0 \
+AURORA_INSTALL_DIR=/usr/local/bin AURORA_VERSION=v0.8.0 \
   curl -fsSL https://raw.githubusercontent.com/jdevelop-io/aurora/main/install.sh | sh
 ```
 
@@ -367,7 +367,7 @@ The plugin assumes the `aurora` binary is installed separately (see [Installatio
 
 ## Status
 
-Project at v0.7.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place.
+Project at v0.8.0, under active development. The main building blocks (parser, DAG, local and docker executors, cache, TUI) are in place.
 
 ## License
 
