@@ -1,17 +1,21 @@
 # Aurora CLI reference
 
 ```
-aurora [BEAM] [FLAGS]
+aurora [FLAGS] [BEAM] [ARG]...
 ```
 
 Aurora reads the `Beamfile` in the current directory.
 
-## Positional argument
+## Positional arguments
 
 - `BEAM` — the beam to run. When omitted on a TTY (and without `--no-tui`), the picker TUI opens (fuzzy search;
   multi-select runs the selected beams via a virtual aggregate beam). In headless mode (no TTY, or `--no-tui`),
   the `default` beam from the `aurora {}` block IS used to run when no beam is given, since there is no picker.
   `-i`/`--interactive` forces the TUI even without a terminal, so the absence of a TTY does not always mean headless.
+- `[ARG]...` — positional arguments for the invoked `BEAM`, readable in its `run.commands` as `${arg.1}`, `${arg.2}`,
+  ... (1-indexed) and `${args}` (the whole tail, joined by single spaces). Aurora's own flags precede the beam; to pass
+  an argument that begins with `-`, place it after `--` (`aurora test -- --nocapture -p aurora-core`). Arguments reach
+  the invoked beam only (a dependency never receives them), and a missing `${arg.N}` is an error.
 
 ## Flags
 
@@ -62,4 +66,6 @@ aurora test                 # run the "test" beam and its dependencies
 aurora --list               # list beams
 aurora --dry-run test       # show which beam "test" resolves to
 aurora --var profile=release build
+aurora deploy web-01              # pass "web-01" to "deploy" as ${arg.1}
+aurora test -- --nocapture        # forward "--nocapture" to "test" as ${args}
 ```

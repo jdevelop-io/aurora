@@ -27,6 +27,19 @@ variable "profile" {
 }
 ```
 
+A `variable` block may also be declared **inside a beam**. It is then local to
+that beam: it shadows a top-level variable of the same name and is not reachable
+by `--var` (which targets top-level variables only). Use a top-level variable
+for a value shared across the dependency chain, a beam-local one for a value
+private to a single beam.
+
+```hcl
+beam "deploy" {
+  variable "strategy" { default = "rolling" }   # private to this beam
+  run { commands = ["deploy.sh --strategy ${var.strategy}"] }
+}
+```
+
 ## `environment` block
 
 Evaluated sequentially; each entry is visible to later entries. A value is either a string literal or a `shell(...)` call whose stdout becomes the value. Only an allowlist of the process environment is inherited, so declare what beams need here.
@@ -97,6 +110,31 @@ When no `executor` is given, the `local` executor (native shell) is used.
 Inside `commands`, `${var.<name>}` is replaced by the value of the Beamfile variable `<name>` (honouring `--var`
 overrides). Any other `${...}` is passed through to the shell unchanged, so `${HOME}` and environment variables from the
 `environment {}` block still expand normally. Referencing an undeclared variable is an error.
+
+### Positional arguments
+
+The invoked target can also receive positional arguments from the command line (`aurora deploy web-01`). Inside its
+`commands`:
+
+- `${arg.N}` — the Nth argument, 1-indexed (`${arg.1}`, `${arg.2}`, ...). Referencing an index beyond the arguments
+  passed is an error.
+- `${args}` — every argument joined by a single space; the empty string when none are passed. Handy for a passthrough
+  tail (`aurora test -- --nocapture`).
+
+Arguments are substituted in the invoked target only. A beam pulled in as a dependency never receives them; referencing
+`${arg...}` in a beam that runs as a dependency is an error (use a top-level variable for a value shared down the
+chain). Argument values are inserted literally and never re-interpolated, and a changed argument list re-runs the
+target even when its `inputs` are unchanged.
+
+```hcl
+beam "deploy" {
+  run { commands = ["deploy.sh --to ${arg.1}"] }
+}
+
+beam "test" {
+  run { commands = ["cargo test ${args}"] }
+}
+```
 
 ## Worked example
 
