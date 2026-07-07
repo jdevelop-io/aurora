@@ -13,7 +13,7 @@
       "name": "aurora",
       "source": "./claude-code-plugin",
       "description": "Teaches Claude Code how Aurora works: read and write Beamfiles, run the CLI, and migrate make/just/taskfile/npm scripts to Aurora.",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "category": "development"
     }
   ]

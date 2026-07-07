@@ -1,6 +1,6 @@
 {
   "name": "aurora",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Teaches Claude Code how Aurora works: read and write Beamfiles, run the CLI, and migrate make/just/taskfile/npm scripts to Aurora.",
   "author": {
     "name": "Jean-Denis VIDOT",
