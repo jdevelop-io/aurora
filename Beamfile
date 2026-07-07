@@ -29,3 +29,9 @@ beam "check" {
   description = "Format + lint + test"
   depends_on = ["clippy", "test"]
 }
+
+beam "install" {
+  description = "Install the aurora binary globally from source"
+  depends_on = ["check"]
+  run { commands = ["cargo install --path crates/aurora --force"] }
+}
