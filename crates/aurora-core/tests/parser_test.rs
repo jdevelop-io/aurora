@@ -644,3 +644,49 @@ fn test_arg_interpolation_leaves_shell_expansion_untouched() {
         vec!["echo ${HOME} x"]
     );
 }
+
+#[test]
+fn test_transitive_dependency_arg_reference_is_rejected() {
+    // a -> b -> c; targeting `a` must reject `${arg...}` used in the TRANSITIVE
+    // dependency c, not only in the direct dependency b.
+    let input = r#"
+beam "a" { depends_on = ["b"] run { commands = ["echo a"] } }
+beam "b" { depends_on = ["c"] run { commands = ["echo b"] } }
+beam "c" { run { commands = ["echo ${arg.1}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    let err = resolve_arguments(&mut bf, "a", &["x".to_string()]).unwrap_err();
+    assert!(
+        err.to_string().contains("c"),
+        "error must name the transitive dependency: {err}"
+    );
+}
+
+#[test]
+fn test_cyclic_beamfile_terminates_cleanly() {
+    // A dependency cycle in an untrusted Beamfile must terminate cleanly in
+    // resolve_arguments (which runs before the scheduler validates the DAG),
+    // never hang or panic. Here b is in a's closure and references ${args},
+    // so the call returns an Err rather than looping forever.
+    let input = r#"
+beam "a" { depends_on = ["b"] run { commands = ["echo a"] } }
+beam "b" { depends_on = ["a"] run { commands = ["echo ${args}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    assert!(
+        resolve_arguments(&mut bf, "a", &["x".to_string()]).is_err(),
+        "a beam in the cycle references ${{args}} and must be rejected, not hang"
+    );
+}
+
+#[test]
+fn test_unknown_dependency_does_not_panic() {
+    // A beam depending on a non-existent beam must not panic dependency_closure:
+    // the unknown name is simply absent from the closure.
+    let input = r#"
+beam "a" { depends_on = ["ghost"] run { commands = ["echo ${arg.1}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_arguments(&mut bf, "a", &["x".to_string()]).unwrap();
+    assert_eq!(bf.beams[0].run.as_ref().unwrap().commands, vec!["echo x"]);
+}
