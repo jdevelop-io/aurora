@@ -104,10 +104,11 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
     Ok(())
 }
 
-/// Interpolates `${var.<name>}` tokens in `s`. Non-`var` `${...}` sequences are
-/// copied verbatim so shell parameter expansion still works. An unknown
-/// variable is a hard error identified by `beam`.
-fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> Result<String> {
+/// Scans `s` for `${...}` tokens and rewrites each via `resolve`. When
+/// `resolve` returns `None` the token is copied verbatim (so `${HOME}` survives
+/// for the shell); `Some(Err(_))` aborts. One scanner shared by the variable
+/// and argument passes, so their `${...}` handling cannot drift apart.
+fn interpolate_tokens(s: &str, resolve: impl Fn(&str) -> Option<Result<String>>) -> Result<String> {
     let bytes = s.as_bytes();
     let mut out = String::with_capacity(s.len());
     let mut i = 0;
@@ -117,19 +118,10 @@ fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> R
             if let Some(rel) = s[i + 2..].find('}') {
                 let end = i + 2 + rel;
                 let inner = &s[i + 2..end];
-                if let Some(name) = inner.strip_prefix("var.") {
-                    if is_ident(name) {
-                        match vars.get(name) {
-                            Some(v) => {
-                                out.push_str(v);
-                                i = end + 1;
-                                continue;
-                            }
-                            None => {
-                                bail!("unknown variable '{}' referenced in beam '{}'", name, beam)
-                            }
-                        }
-                    }
+                if let Some(result) = resolve(inner) {
+                    out.push_str(&result?);
+                    i = end + 1;
+                    continue;
                 }
             }
         }
@@ -138,6 +130,98 @@ fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> R
         i += ch.len_utf8();
     }
     Ok(out)
+}
+
+/// Interpolates `${var.<name>}` tokens in `s`. Non-`var` `${...}` sequences are
+/// copied verbatim so shell parameter expansion still works. An unknown
+/// variable is a hard error identified by `beam`.
+fn interpolate_command(s: &str, vars: &HashMap<String, String>, beam: &str) -> Result<String> {
+    interpolate_tokens(s, |inner| {
+        let name = inner.strip_prefix("var.")?;
+        if !is_ident(name) {
+            return None;
+        }
+        Some(match vars.get(name) {
+            Some(v) => Ok(v.clone()),
+            None => Err(anyhow::anyhow!(
+                "unknown variable '{}' referenced in beam '{}'",
+                name,
+                beam
+            )),
+        })
+    })
+}
+
+/// Interpolates `${arg.N}` and `${args}` in the invoked `target`'s run
+/// commands, records the argument vector on that beam (so the cache key can
+/// fold it in), and rejects `${arg...}` used in any other beam.
+///
+/// Arguments are target-only: a dependency is pulled in by the scheduler and
+/// never receives invocation arguments, so referencing them there is a
+/// configuration error rather than a silently empty expansion. Argument values
+/// are inserted literally and never re-interpolated, so an argument containing
+/// `${var.x}` or `${arg.1}` is not expanded a second time.
+pub fn resolve_arguments(beam_file: &mut BeamFile, target: &str, args: &[String]) -> Result<()> {
+    for beam in &mut beam_file.beams {
+        let beam_name = beam.name.clone();
+        if beam_name == target {
+            if let Some(run) = &mut beam.run {
+                for cmd in &mut run.commands {
+                    *cmd = interpolate_arguments(cmd, args, &beam_name)?;
+                }
+            }
+            beam.args = args.to_vec();
+        } else if let Some(run) = &beam.run {
+            for cmd in &run.commands {
+                reject_arguments(cmd, &beam_name)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Interpolates `${args}` (whole tail, space-joined) and `${arg.N}` (1-based)
+/// in a single command. Other `${...}` sequences are copied verbatim.
+fn interpolate_arguments(s: &str, args: &[String], beam: &str) -> Result<String> {
+    interpolate_tokens(s, |inner| {
+        if inner == "args" {
+            return Some(Ok(args.join(" ")));
+        }
+        let idx = inner.strip_prefix("arg.")?;
+        Some(resolve_arg_index(idx, args, beam))
+    })
+}
+
+/// Resolves a single `${arg.N}` reference (1-based) to its value, or a hard
+/// error for a non-numeric index, a zero index, or an out-of-range index.
+fn resolve_arg_index(idx: &str, args: &[String], beam: &str) -> Result<String> {
+    let n: usize = idx.parse().map_err(|_| {
+        anyhow::anyhow!("invalid argument reference '${{arg.{idx}}}' in beam '{beam}'")
+    })?;
+    if n == 0 {
+        bail!("argument index is 1-based, got '${{arg.0}}' in beam '{beam}'");
+    }
+    args.get(n - 1).cloned().ok_or_else(|| {
+        anyhow::anyhow!(
+            "missing argument '${{arg.{n}}}' in beam '{beam}': {} argument(s) provided",
+            args.len()
+        )
+    })
+}
+
+/// Fails when a non-target beam references `${arg.N}` or `${args}`: arguments
+/// are only available to the invoked target.
+fn reject_arguments(s: &str, beam: &str) -> Result<()> {
+    interpolate_tokens(s, |inner| {
+        if inner == "args" || inner.strip_prefix("arg.").is_some() {
+            Some(Err(anyhow::anyhow!(
+                "beam '{beam}' references '${{{inner}}}', but arguments are only available to the invoked target"
+            )))
+        } else {
+            None
+        }
+    })
+    .map(|_| ())
 }
 
 /// True when `s` is a valid identifier: the grammar's `ident` rule matches the
@@ -250,6 +334,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
         inputs: vec![],
         outputs: vec![],
         variables: vec![],
+        args: vec![],
         dir: None,
         skip_if: None,
         condition: None,

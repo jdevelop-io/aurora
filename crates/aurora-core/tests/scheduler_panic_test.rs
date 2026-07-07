@@ -29,6 +29,7 @@ fn beam(name: &str, executor: Option<&str>, depends_on: Vec<&str>) -> Beam {
         inputs: vec![],
         outputs: vec![],
         variables: vec![],
+        args: vec![],
         dir: None,
         skip_if: None,
         condition: None,

@@ -1,4 +1,4 @@
-use aurora_core::parser::{parse, resolve_variables};
+use aurora_core::parser::{parse, resolve_arguments, resolve_variables};
 
 #[test]
 fn test_parse_minimal_beam() {
@@ -529,5 +529,99 @@ beam "deploy" {
     assert_eq!(
         bf.beams[0].run.as_ref().unwrap().commands,
         vec!["echo local"]
+    );
+}
+
+#[test]
+fn test_positional_arg_resolves_for_target() {
+    let input = r#"beam "deploy" { run { commands = ["deploy.sh ${arg.1} ${arg.2}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    let args = vec!["web-01".to_string(), "canary".to_string()];
+    resolve_arguments(&mut bf, "deploy", &args).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["deploy.sh web-01 canary"]
+    );
+    assert_eq!(bf.beams[0].args, args);
+}
+
+#[test]
+fn test_args_whole_tail_joins_with_spaces() {
+    let input = r#"beam "test" { run { commands = ["cargo test ${args}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    let args = vec![
+        "--nocapture".to_string(),
+        "-p".to_string(),
+        "core".to_string(),
+    ];
+    resolve_arguments(&mut bf, "test", &args).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["cargo test --nocapture -p core"]
+    );
+}
+
+#[test]
+fn test_args_empty_when_none_passed() {
+    let input = r#"beam "test" { run { commands = ["cargo test ${args}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    resolve_arguments(&mut bf, "test", &[]).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["cargo test "]
+    );
+}
+
+#[test]
+fn test_missing_arg_index_is_error() {
+    let input = r#"beam "deploy" { run { commands = ["deploy ${arg.2}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    let err = resolve_arguments(&mut bf, "deploy", &["only-one".to_string()]).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("arg.2"), "names the index: {msg}");
+    assert!(msg.contains("deploy"), "names the beam: {msg}");
+}
+
+#[test]
+fn test_arg_zero_is_error() {
+    let input = r#"beam "deploy" { run { commands = ["deploy ${arg.0}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    assert!(resolve_arguments(&mut bf, "deploy", &["x".to_string()]).is_err());
+}
+
+#[test]
+fn test_arg_value_is_inserted_literally_not_reinterpolated() {
+    // An argument that itself looks like a token must not be expanded again.
+    let input = r#"beam "deploy" { run { commands = ["echo ${arg.1}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    resolve_arguments(&mut bf, "deploy", &["${var.env}".to_string()]).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["echo ${var.env}"]
+    );
+}
+
+#[test]
+fn test_args_in_non_target_beam_are_rejected() {
+    let input = r#"
+beam "deploy" { depends_on = ["build"] run { commands = ["deploy ${arg.1}"] } }
+beam "build"  { run { commands = ["build ${arg.1}"] } }
+"#;
+    let mut bf = parse(input).unwrap();
+    let err = resolve_arguments(&mut bf, "deploy", &["x".to_string()]).unwrap_err();
+    assert!(
+        err.to_string().contains("build"),
+        "names the offending beam: {err}"
+    );
+}
+
+#[test]
+fn test_arg_interpolation_leaves_shell_expansion_untouched() {
+    let input = r#"beam "d" { run { commands = ["echo ${HOME} ${arg.1}"] } }"#;
+    let mut bf = parse(input).unwrap();
+    resolve_arguments(&mut bf, "d", &["x".to_string()]).unwrap();
+    assert_eq!(
+        bf.beams[0].run.as_ref().unwrap().commands,
+        vec!["echo ${HOME} x"]
     );
 }

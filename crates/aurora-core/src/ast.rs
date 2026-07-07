@@ -51,6 +51,9 @@ pub struct Beam {
     /// scoped to this beam: they shadow a global of the same name and are not
     /// reachable by `--var` (which targets globals only).
     pub variables: Vec<Variable>,
+    /// Positional arguments passed to this beam on the command line. Only ever
+    /// non-empty on the explicitly invoked target; folded into its cache key.
+    pub args: Vec<String>,
     /// Working directory for this beam. When set, the beam's run commands,
     /// inputs/outputs and gates all resolve against this directory. Relative
     /// paths join onto the Beamfile directory; absolute paths replace it.

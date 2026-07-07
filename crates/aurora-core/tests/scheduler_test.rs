@@ -21,6 +21,7 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
         inputs: vec![],
         outputs: vec![],
         variables: vec![],
+        args: vec![],
         dir: None,
         skip_if: None,
         condition: None,

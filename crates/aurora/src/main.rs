@@ -124,6 +124,7 @@ async fn main() -> Result<()> {
                     inputs: vec![],
                     outputs: vec![],
                     variables: vec![],
+                    args: vec![],
                     dir: None,
                     skip_if: None,
                     condition: None,
