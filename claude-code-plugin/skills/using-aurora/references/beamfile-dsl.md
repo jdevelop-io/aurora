@@ -1,6 +1,6 @@
 # Beamfile DSL reference
 
-A `Beamfile` is a sequence of top-level blocks: one optional `aurora` block, any number of `variable` blocks, one optional `environment` block, and any number of `beam` blocks. Comments start with `#` and run to end of line. Strings use double quotes. Lists are `["a", "b"]`.
+A `Beamfile` is a sequence of top-level blocks: one optional `aurora` block, any number of `variable` blocks, one optional `environment` block, and any number of `beam` blocks. Comments start with `#` and run to end of line. Strings use double quotes and support the escapes `\n`, `\t`, `\"`, and `\\` (an unknown escape stays verbatim). Lists are `["a", "b"]`; a trailing comma and an empty list `[]` are allowed.
 
 ## `aurora` block
 
@@ -42,7 +42,7 @@ beam "deploy" {
 
 ## `environment` block
 
-Evaluated sequentially; each entry is visible to later entries. A value is either a string literal or a `shell(...)` call whose stdout becomes the value. Only an allowlist of the process environment is inherited, so declare what beams need here.
+Evaluated sequentially; each entry is visible to later entries. A value is either a string literal or a `shell(...)` call whose stdout becomes the value. Only an allowlist of the process environment is inherited (a fixed list plus any `LC_*` variable), so declare what beams need here.
 
 ```hcl
 environment {
@@ -59,8 +59,9 @@ A named task. All fields are optional except that a beam usually has a `run` blo
 beam "test" {
   description   = "Run the test suite"
   depends_on    = ["build"]          # beams that must succeed first
-  inputs        = ["src/**", "Cargo.toml"]  # cache key (file contents + paths)
-  outputs       = ["target/debug/app"]      # must exist on disk for a cache hit
+  dir           = "crates/app"        # working directory for this beam (see below)
+  inputs        = ["src/**", "Cargo.toml"]  # cache key: glob patterns (file contents + paths)
+  outputs       = ["target/debug/app"]      # glob patterns; must exist on disk for a cache hit
   skip_if       = "test -f .skip-tests"      # shell command; the beam is skipped when this command exits zero (succeeds)
   allow_failure = false              # when true, a failure counts as success for scheduling
 
@@ -70,11 +71,30 @@ beam "test" {
 }
 ```
 
+`inputs` and `outputs` are glob patterns (for example `src/**`). A beam with no `inputs`, or whose globs match no file
+on disk, is never cached and always runs.
+
+### Working directory (`dir`)
+
+`dir` runs the beam in a subdirectory. It rebases everything the beam does onto that directory: its `run.commands`, its
+`inputs`/`outputs` (and therefore the cache key), and its gates (`skip_if`/`condition`). A relative `dir` joins onto
+the Beamfile's directory; an absolute `dir` replaces it. `dir` supports `${var.<name>}` interpolation like `commands`,
+and a declared `dir` that is not an existing directory fails the beam with a clear error.
+
+```hcl
+beam "build-api" {
+  dir     = "packages/api"     # relative to the Beamfile directory
+  inputs  = ["src/**"]          # resolved under packages/api
+  outputs = ["dist/**"]         # resolved under packages/api
+  run { commands = ["npm run build"] }   # runs in packages/api
+}
+```
+
 ### `condition` block
 
 The `condition {}` block is evaluated at runtime, before the beam runs: `any` succeeds if at least one clause exits
 zero, `all` requires every clause to exit zero. When the condition is not met the beam is skipped. `skip_if` is the
-single-command shorthand and is evaluated first.
+single-command shorthand and is evaluated first. Every clause is a `shell = "..."` command; there is no other clause kind.
 
 ```hcl
 beam "deploy" {

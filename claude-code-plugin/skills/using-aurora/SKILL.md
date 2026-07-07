@@ -17,14 +17,21 @@ called **beams** and are declared in a `Beamfile` (an HCL-inspired DSL).
 ## Mental model
 
 - **Beams** are named tasks declared in a `Beamfile`. Each beam runs one or more shell commands.
-- **Dependencies form a DAG.** `depends_on` declares prerequisites; Aurora runs independent beams in parallel and a
-  dependency before its dependents. Cycles are an error.
-- **Caching.** A beam is skipped when the SHA-256 hash of its declared `inputs` (file contents and paths) is unchanged
-  AND every declared `output` still exists on disk. Wrong `inputs`/`outputs` mislead the cache: too few inputs means
-  stale results, missing outputs means needless reruns.
+- **Dependencies form a DAG.** `depends_on` declares prerequisites; Aurora runs independent beams in parallel (bounded
+  by the optional `max_parallelism`) and a dependency before its dependents. Cycles are an error. When a beam fails and
+  is not `allow_failure`, its entire transitive-dependent subtree is cancelled and never runs; an `allow_failure`
+  beam's failure counts as success for scheduling, so its dependents still run.
+- **Caching.** A beam is skipped when the SHA-256 hash of its declared `inputs` (glob patterns; file contents and
+  paths) is unchanged AND every declared `output` still exists on disk. A beam with no `inputs`, or whose globs match
+  no file, is never cached and always runs. Positional arguments are part of the invoked target's cache key, and a
+  beam's `dir` moves where its `inputs`/`outputs` resolve. Wrong `inputs`/`outputs` mislead the cache: too few inputs
+  means stale results, missing outputs means needless reruns.
 - **Executors** decide where commands run: `local` (the default native shell) and `docker` (inside a container via the
   Docker CLI). WASM/extism plugins discovered under `~/.aurora/plugins/*.wasm` are also registered as executors, after
-  the native ones and without shadowing a built-in, so `local` and `docker` always keep their meaning.
+  the native ones and without shadowing a built-in, so `local` and `docker` always keep their meaning. Non-local
+  executors are sandboxed: `docker` runs with `--security-opt no-new-privileges` and rejects dangerous volume mounts
+  (the Docker socket, `/proc`, `/sys`, `/etc`, the host root); WASM plugins run untrusted with WASI disabled (no
+  filesystem or network access), a 512 MiB memory cap, and a 300-second timeout.
 - **The process environment is NOT inherited wholesale.** Only an allowlist is propagated to beams (a Beamfile is
   treated as untrusted). Anything a beam needs must be declared in the `environment {}` block or passed with `--var`.
 
@@ -55,6 +62,8 @@ Read `references/cli.md` for the complete flag set and behaviours.
   shorthand, evaluated first.
 - Relying on an environment variable without declaring it in `environment {}` or passing `--var`.
 - Referencing a beam name in `depends_on` that does not exist (DAG error) or that forms a cycle.
+- Assuming a `skip_if`/`condition` gate runs inside the beam's executor: gates always run on the local host (they
+  decide whether to run the beam using host state), even when the beam's `run` uses `docker` or a WASM plugin.
 
 ## Additional resources
 
