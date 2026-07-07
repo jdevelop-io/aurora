@@ -170,4 +170,21 @@ impl BeamCache {
 
         Ok(Some(format!("{:x}", hasher.finalize())))
     }
+
+    /// Folds an argument vector into an inputs hash so the invoked target
+    /// re-runs when its arguments change even though its `inputs` files did
+    /// not. An empty vector returns the hash unchanged, so every beam without
+    /// arguments (all but the invoked target) keeps its existing cache key.
+    pub fn hash_with_args(inputs_hash: &str, args: &[String]) -> String {
+        if args.is_empty() {
+            return inputs_hash.to_string();
+        }
+        let mut hasher = Sha256::new();
+        hasher.update(inputs_hash.as_bytes());
+        for arg in args {
+            hasher.update(b"\0");
+            hasher.update(arg.as_bytes());
+        }
+        format!("{:x}", hasher.finalize())
+    }
 }

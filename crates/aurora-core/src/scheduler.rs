@@ -505,6 +505,7 @@ async fn run_beam_task(
             &beam.name,
             &beam.inputs,
             &beam.outputs,
+            &beam.args,
             &working_dir,
         )
         .await
@@ -681,15 +682,21 @@ async fn cache_lookup_blocking(
     beam_name: &str,
     inputs: &[String],
     outputs: &[String],
+    args: &[String],
     working_dir: &Path,
 ) -> CacheLookup {
     let cache = cache.clone();
     let beam_name = beam_name.to_string();
     let inputs = inputs.to_vec();
     let outputs = outputs.to_vec();
+    let args = args.to_vec();
     let working_dir = working_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let hash = cache.hash_inputs_at(&working_dir, &inputs).ok().flatten();
+        let hash = cache
+            .hash_inputs_at(&working_dir, &inputs)
+            .ok()
+            .flatten()
+            .map(|h| BeamCache::hash_with_args(&h, &args));
         if let Some(ref hash) = hash {
             if cache.is_valid(&beam_name, hash, &outputs, &working_dir) {
                 let (stdout, stderr) = cache.load_logs(&beam_name);

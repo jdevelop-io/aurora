@@ -199,3 +199,33 @@ fn test_hash_inputs_none_when_no_file_matches() {
         .unwrap();
     assert!(hash.is_none());
 }
+
+#[test]
+fn test_hash_with_args_empty_is_identity() {
+    assert_eq!(BeamCache::hash_with_args("abc123", &[]), "abc123");
+}
+
+#[test]
+fn test_hash_with_args_differs_by_arguments() {
+    let a = BeamCache::hash_with_args("abc123", &["web-01".to_string()]);
+    let b = BeamCache::hash_with_args("abc123", &["web-02".to_string()]);
+    assert_ne!(a, b, "different arguments must produce different keys");
+    assert_ne!(a, "abc123", "arguments must change the key");
+}
+
+#[test]
+fn test_hash_with_args_is_stable_and_order_sensitive() {
+    let args1 = vec!["a".to_string(), "b".to_string()];
+    let args2 = vec!["a".to_string(), "b".to_string()];
+    let reordered = vec!["b".to_string(), "a".to_string()];
+    assert_eq!(
+        BeamCache::hash_with_args("h", &args1),
+        BeamCache::hash_with_args("h", &args2),
+        "same arguments hash the same"
+    );
+    assert_ne!(
+        BeamCache::hash_with_args("h", &args1),
+        BeamCache::hash_with_args("h", &reordered),
+        "argument order matters"
+    );
+}
