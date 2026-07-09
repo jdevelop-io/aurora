@@ -67,6 +67,6 @@ Read `references/cli.md` for the complete flag set and behaviours.
 
 ## Additional resources
 
-- **`references/beamfile-dsl.md`** — the complete Beamfile grammar (blocks, beam fields, conditions, executors), with
+- **`references/beamfile-dsl.md`**: the complete Beamfile grammar (blocks, beam fields, conditions, executors), with
   worked examples. Read it before writing or substantially editing a `Beamfile`.
-- **`references/cli.md`** — every CLI flag and behaviour, with examples. Read it for the full command surface.
+- **`references/cli.md`**: every CLI flag and behaviour, with examples. Read it for the full command surface.

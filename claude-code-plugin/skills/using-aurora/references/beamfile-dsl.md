@@ -136,9 +136,9 @@ overrides). Any other `${...}` is passed through to the shell unchanged, so `${H
 The invoked target can also receive positional arguments from the command line (`aurora deploy web-01`). Inside its
 `commands`:
 
-- `${arg.N}` — the Nth argument, 1-indexed (`${arg.1}`, `${arg.2}`, ...). Referencing an index beyond the arguments
+- `${arg.N}`: the Nth argument, 1-indexed (`${arg.1}`, `${arg.2}`, ...). Referencing an index beyond the arguments
   passed is an error.
-- `${args}` — every argument joined by a single space; the empty string when none are passed. Handy for a passthrough
+- `${args}`: every argument joined by a single space; the empty string when none are passed. Handy for a passthrough
   tail (`aurora test -- --nocapture`).
 
 Arguments are substituted in the invoked target only. A beam pulled in as a dependency never receives them; referencing
