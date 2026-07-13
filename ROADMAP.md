@@ -28,6 +28,12 @@ Already in place and differentiating against `make`/`just`/`taskfile`:
   claim: `just` genuinely cannot run dependencies in parallel, and `make` only
   does with an explicit `-j`, but **`task` parallelises its `deps` by default
   too**. The argument is the default and the bound, not throughput.
+- **Process-start cost on par with `make`** (`benchmarks/`): a beam needing no
+  shell is exec'd directly rather than through `sh -c`, and every program is
+  resolved to an absolute path, which lets Rust use `posix_spawn` instead of
+  forking a 24 MB address space. At equal features (Aurora always captures each
+  beam's output; `make` only does with `--output-sync`) Aurora is the faster of
+  the two.
 - **`${var.name}` interpolation in commands**, with a hard error on unknown
   variables (both commands and executor configs).
 - **Executors**: `local` (native shell), `docker`, and **WASM plugins**
@@ -76,17 +82,6 @@ Directions `make`/`just`/`taskfile` do not target.
   toward a shared or distributed cache (Turbo/Nx tier). The strongest
   long-term bet.
 - [ ] **Loops / matrix** — `for` over a list for matrix-style builds in CI.
-
-## Known weaknesses
-
-- [ ] **Process-start overhead** — Aurora is ~4x `make` at creating processes,
-  and on a dependency chain it is beaten by `task` too (`benchmarks/`). It is
-  invisible on a real graph, where a task costs hundreds of milliseconds, but it
-  is real. Two measured causes, both fixable: Aurora always spawns `sh -c`, where
-  `make` execs the command directly when it needs no shell; and it passes a bare
-  program name, which makes Rust's standard library fall back from `posix_spawn`
-  to `fork` + `exec` — costly for a 24 MB binary that links wasmtime, where
-  `make` is 244 KB.
 
 ## Non-goals (for now)
 

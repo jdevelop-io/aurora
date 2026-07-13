@@ -46,18 +46,27 @@ parallel is `just`; `make` can, but only if the user remembers the flag; Task
 runs its `deps` concurrently out of the box, exactly like Aurora. "No mainstream
 task runner offers this" was not true.
 
-**Aurora is slow at starting processes, and this is its worst result.** On 100
-independent tasks that exec a real binary: `make -j10` 18.5ms, Aurora 75.5ms,
-Task 126ms, `just` 341ms. On a 50-task chain, where nothing can be parallelised:
-make 42ms, Task 105ms, Aurora 168ms. Aurora is **4x `make`**, and on the chain it
-is beaten by Task too. On a real graph, where tasks cost hundreds of milliseconds
-each, tens of milliseconds of process creation disappear into the noise. It is
-still the honest result, and speed is not an argument Aurora gets to make today.
+**Aurora starts processes about as fast as `make`.** On 100 independent tasks that
+exec a real binary: `make -j10` 19.6ms, Aurora 20.7ms, Task 130ms, `just` 357ms.
+On a 50-task chain, where nothing can be parallelised: make 42ms, Aurora 46ms,
+Task 108ms.
 
-**Where Task wins.** On the bare-builtin scenario Task takes 39ms against
-Aurora's 63ms, because its in-process interpreter never forks. Real Beamfiles run
-compilers, linters and containers, not builtins, so this is Task's best case
-rather than a representative one — but it is a genuine design advantage.
+It was not always so. Aurora used to be 4x `make` here (75.5ms), for two reasons
+that had nothing to do with scheduling. It always spawned `sh -c`, where `make`
+execs the command directly when it needs no shell. And it passed a bare program
+name, which makes Rust's standard library fall back from `posix_spawn` to `fork` +
+`exec` — expensive for a 24 MB binary that links wasmtime, where `make` is 244 KB.
+Fixing both is what closed the gap; the scheduler was never the problem.
+
+**Aurora beats `make` at equal features.** `make -j` interleaves the output of
+parallel jobs into unreadable soup unless you ask for `--output-sync`, which
+captures it. Aurora always captures, so that is the honest comparison: Aurora
+21.0ms, `make -j10 --output-sync` 25.1ms.
+
+**Where Task wins, and where it does not.** Task embeds a Go shell interpreter
+(`mvdan/sh`) that runs builtins in-process without forking. That is a real design
+advantage on shell-only tasks. But any real command — a compiler, a linter, a
+container — has to be exec'd, and there Task is 6x slower than Aurora and `make`.
 
 **The cache is the differentiator, and it is a correctness argument, not a speed
 one.** Change a task's *command* while leaving its input files untouched:

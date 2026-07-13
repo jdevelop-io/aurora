@@ -214,6 +214,7 @@ dependencies = [
  "aurora-runner-executor-api",
  "libc",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 
