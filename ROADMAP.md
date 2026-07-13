@@ -1,9 +1,10 @@
 # Roadmap
 
 Aurora aims to be a serious, modern alternative to `make`, `just` and
-`taskfile`: a task runner whose differentiators are first-class parallel
-execution, real-time observability (the TUI), and caching that can grow from
-local to distributed.
+`taskfile`: a task runner whose differentiators are a cache that answers "would
+this produce the same result?" rather than "did the files change?", real-time
+observability (the TUI), and parallel execution by default. Speed is not one of
+them, and the benchmarks in `benchmarks/` say so out loud.
 
 This is a living document, not a dated commitment. It records the direction and
 the reasoning behind it. Items are grouped by how much they move Aurora toward
@@ -13,13 +14,22 @@ parity and then beyond it.
 
 Already in place and differentiating against `make`/`just`/`taskfile`:
 
-- **Parallel DAG scheduling** by default (event-driven, `max_parallelism`
-  bounded). `just` runs dependencies sequentially; `make -j` is fragile.
-- **Real-time TUI** (ratatui): beam picker with fuzzy search, live log
-  streaming, per-beam rerun. No mainstream task runner offers this.
-- **Input-hash caching**: a beam is skipped when its declared `inputs` are
+- **Definition-aware caching**: a beam is skipped when its declared `inputs` are
   unchanged, its definition (commands, variables, executor and its settings,
   `dir`, declared environment) is unchanged, and its `outputs` are present.
+  Measured against the competition (`benchmarks/`), this is the real
+  differentiator: change a command without touching its inputs and `make` (which
+  compares timestamps) and `task` (which checksums `sources`) both serve a stale
+  result. Aurora re-runs. `just` has no cache at all.
+- **Real-time TUI** (ratatui): beam picker with fuzzy search, live log
+  streaming, per-beam rerun. No mainstream task runner offers this.
+- **Parallel DAG scheduling** by default (event-driven, `max_parallelism`
+  bounded). Worth stating precisely, because the benchmark deflated the original
+  claim: `just` genuinely cannot run dependencies in parallel, and `make` only
+  does with an explicit `-j`, but **`task` parallelises its `deps` by default
+  too**. Aurora is not faster than either: on pure scheduling overhead it is
+  ~3x `make -j` and ~1.6x `task`. The argument is the default and the bound, not
+  throughput.
 - **`${var.name}` interpolation in commands**, with a hard error on unknown
   variables (both commands and executor configs).
 - **Executors**: `local` (native shell), `docker`, and **WASM plugins**

@@ -30,6 +30,12 @@ beam "check" {
   depends_on = ["clippy", "test"]
 }
 
+beam "bench" {
+  description = "Benchmark aurora against make, just and task"
+  depends_on  = ["build"]
+  run { commands = ["./benchmarks/run.sh", "./benchmarks/cache-correctness.sh"] }
+}
+
 beam "install" {
   description = "Install the aurora binary globally from source"
   depends_on = ["check"]
