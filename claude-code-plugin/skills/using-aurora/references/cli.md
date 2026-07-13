@@ -15,7 +15,7 @@ Aurora reads the `Beamfile` in the current directory.
 - `[ARG]...`: positional arguments for the invoked `BEAM`, readable in its `run.commands` as `${arg.1}`, `${arg.2}`,
   ... (1-indexed) and `${args}` (the whole tail, joined by single spaces). Aurora's own flags are recognised anywhere
   on the line (before or after the beam), up to a `--`; everything after `--` is taken as positional arguments, so an
-  argument that begins with `-` must go after `--` (`aurora test -- --nocapture -p aurora-core`). Arguments reach the
+  argument that begins with `-` must go after `--` (`aurora test -- --nocapture -p aurora-runner-core`). Arguments reach the
   invoked beam only (a dependency never receives them), and a missing `${arg.N}` is an error.
 
 ## Flags

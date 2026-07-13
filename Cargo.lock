@@ -141,16 +141,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora"
+name = "aurora-runner"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-core",
- "aurora-executor-api",
- "aurora-executor-docker",
- "aurora-executor-local",
- "aurora-tui",
+ "aurora-runner-core",
+ "aurora-runner-executor-api",
+ "aurora-runner-executor-docker",
+ "aurora-runner-executor-local",
+ "aurora-runner-tui",
  "clap",
  "dirs",
  "extism",
@@ -161,13 +161,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora-core"
+name = "aurora-runner-core"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-executor-api",
- "aurora-executor-local",
+ "aurora-runner-executor-api",
+ "aurora-runner-executor-local",
  "glob",
  "pest",
  "pest_derive",
@@ -181,7 +181,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora-executor-api"
+name = "aurora-runner-executor-api"
 version = "0.8.0"
 dependencies = [
  "anyhow",
@@ -192,36 +192,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora-executor-docker"
+name = "aurora-runner-executor-docker"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-executor-api",
+ "aurora-runner-executor-api",
  "serde_json",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
-name = "aurora-executor-local"
+name = "aurora-runner-executor-local"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-executor-api",
+ "aurora-runner-executor-api",
  "libc",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
-name = "aurora-tui"
+name = "aurora-runner-tui"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "arboard",
- "aurora-core",
+ "aurora-runner-core",
  "crossterm",
  "ratatui",
  "tokio",

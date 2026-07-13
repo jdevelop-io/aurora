@@ -1,7 +1,20 @@
 [package]
-name = "aurora"
+name = "aurora-runner"
+description = "A parallel task runner and build tool: Beamfile DSL, DAG scheduling, input-hash caching and a live TUI."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[lib]
+name = "aurora"
+path = "src/lib.rs"
 
 [[bin]]
 name = "aurora"
@@ -11,11 +24,11 @@ path = "src/main.rs"
 anyhow = { workspace = true }
 tokio = { workspace = true }
 clap = { version = "4", features = ["derive"] }
-aurora-core = { path = "../aurora-core" }
-aurora-tui = { path = "../aurora-tui" }
-aurora-executor-api = { path = "../aurora-executor-api" }
-aurora-executor-local = { path = "../aurora-executor-local" }
-aurora-executor-docker = { path = "../aurora-executor-docker" }
+aurora-runner-core = { workspace = true }
+aurora-runner-tui = { workspace = true }
+aurora-runner-executor-api = { workspace = true }
+aurora-runner-executor-local = { workspace = true }
+aurora-runner-executor-docker = { workspace = true }
 extism = "1"
 dirs = "5"
 strsim = "0.11"

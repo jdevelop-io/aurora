@@ -46,8 +46,12 @@ Avoid `sed -i` here: on macOS/BSD `-i` consumes the next flag as a backup
 suffix (so `sed -i -E` silently disables extended regexps and breaks `+`/`\1`),
 which does not fail loudly and can corrupt the bump.
 
-- `Cargo.toml`: `version = "CURRENT"` -> `version = "NEW"` (the line under
-  `[workspace.package]`).
+- `Cargo.toml`: `version = "CURRENT"` -> `version = "NEW"`, **with `replace_all`**.
+  Six occurrences must move together: the one under `[workspace.package]`, and the
+  five `aurora-runner-*` internal path dependencies under `[workspace.dependencies]`,
+  which carry a version so the crates stay publishable. Cargo rejects a path
+  dependency whose version requirement does not match the crate's own version, so a
+  partial bump fails loudly rather than silently.
 - `README.md`, `## Status` section: `Project at vCURRENT` -> `Project at vNEW`.
 - `README.md`, install example: `AURORA_VERSION=vCURRENT` -> `AURORA_VERSION=vNEW`.
 - `Cargo.lock`: not edited here; cargo resynchronizes the `aurora*` entries in
@@ -58,7 +62,7 @@ suffix-attached form that works on both GNU and BSD sed, then delete the
 backup (again with literal `CURRENT`/`NEW`, no capture groups):
 
 ```bash
-sed -i.bak 's/version = "CURRENT"/version = "NEW"/' Cargo.toml && rm -f Cargo.toml.bak
+sed -i.bak 's/version = "CURRENT"/version = "NEW"/g' Cargo.toml && rm -f Cargo.toml.bak
 sed -i.bak 's/Project at vCURRENT/Project at vNEW/' README.md && rm -f README.md.bak
 sed -i.bak 's/AURORA_VERSION=vCURRENT/AURORA_VERSION=vNEW/' README.md && rm -f README.md.bak
 ```

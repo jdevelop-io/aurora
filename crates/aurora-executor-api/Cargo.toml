@@ -1,7 +1,19 @@
 [package]
-name = "aurora-executor-api"
+name = "aurora-runner-executor-api"
+description = "Executor trait and shared I/O types: the contract between the Aurora task runner and its executors."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[lib]
+name = "aurora_executor_api"
 
 [dependencies]
 anyhow = { workspace = true }

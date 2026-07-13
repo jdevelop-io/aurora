@@ -1,12 +1,24 @@
 [package]
-name = "aurora-tui"
+name = "aurora-runner-tui"
+description = "Terminal interface (beam picker, execution view, log streaming) for the Aurora task runner."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[lib]
+name = "aurora_tui"
 
 [dependencies]
 anyhow = { workspace = true }
 ratatui = "0.29"
 crossterm = "0.28"
 tokio = { workspace = true }
-aurora-core = { path = "../aurora-core" }
+aurora-runner-core = { workspace = true }
 arboard = "3"

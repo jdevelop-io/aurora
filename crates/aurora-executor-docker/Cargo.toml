@@ -1,13 +1,25 @@
 [package]
-name = "aurora-executor-docker"
+name = "aurora-runner-executor-docker"
+description = "Docker executor for the Aurora task runner: runs beams inside a container."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[lib]
+name = "aurora_executor_docker"
 
 [dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
-aurora-executor-api = { path = "../aurora-executor-api" }
+aurora-runner-executor-api = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

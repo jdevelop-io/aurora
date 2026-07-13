@@ -53,12 +53,15 @@ The same `AURORA_INSTALL_DIR` and `AURORA_VERSION` environment variables are sup
 
 ### With cargo install
 
-Requires a stable [Rust toolchain](https://rustup.rs/). To build the binary from the
-latest source instead of downloading a prebuilt one:
+Requires a stable [Rust toolchain](https://rustup.rs/) (1.91 or later). To build the
+binary from the latest source instead of downloading a prebuilt one:
 
 ```bash
-cargo install --git https://github.com/jdevelop-io/aurora aurora
+cargo install --git https://github.com/jdevelop-io/aurora aurora-runner
 ```
+
+The crate is named `aurora-runner` because `aurora` was already taken on crates.io;
+the installed binary is still called `aurora`.
 
 The binary is placed in `~/.cargo/bin`, so make sure that directory is on your `PATH`.
 Add `--force` to update an existing install.
@@ -188,7 +191,10 @@ Done: 1 ok, 1 failed
 
 Exit code: `0` when every beam succeeds (beams marked `allow_failure` count as
 success), `1` when any beam fails, which also covers a malformed Beamfile
-(a dependency cycle or an unknown dependency) caught while building the DAG.
+(a dependency cycle, an unknown dependency, an unknown target beam or an unknown
+`--var` key), and `130` when the run is interrupted. Ctrl-C (or a `SIGTERM`)
+cancels the running beams and reaps their process subtrees rather than leaving
+them behind.
 In headless mode the target beam is taken from the `aurora { default = ... }`
 block when no beam is given; the interactive picker is only available with a
 TTY or `-i`. ANSI colour appears only when the target stream (stdout or
@@ -265,7 +271,7 @@ beam "test" {
 
 ```bash
 aurora deploy web-01                          # arg.1 = "web-01"
-aurora test -- --nocapture -p aurora-core     # args = "--nocapture -p aurora-core"
+aurora test -- --nocapture -p aurora-runner-core     # args = "--nocapture -p aurora-runner-core"
 ```
 
 Aurora's own flags are parsed before the target, so a hyphen-leading argument
