@@ -8,7 +8,7 @@ use aurora_core::ast::Beam;
 use aurora_core::events::SchedulerEvent;
 use aurora_core::scheduler::Scheduler;
 use aurora_executor_api::Executor;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -39,10 +39,12 @@ pub fn build_scheduler(
     max_parallelism: Option<usize>,
     working_dir: PathBuf,
     env: HashMap<String, String>,
+    declared_env: BTreeMap<String, String>,
     cache_enabled: bool,
 ) -> Scheduler {
     let max_parallelism = resolve_max_parallelism(max_parallelism);
-    let scheduler = Scheduler::new(beams, executors, tx, max_parallelism, working_dir, env);
+    let scheduler = Scheduler::new(beams, executors, tx, max_parallelism, working_dir, env)
+        .with_declared_env(declared_env);
     if cache_enabled {
         scheduler
     } else {

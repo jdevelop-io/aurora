@@ -1,4 +1,5 @@
-use aurora_core::cache::BeamCache;
+use aurora_core::cache::{BeamCache, BeamDefinition};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use tempfile::tempdir;
 
@@ -200,32 +201,200 @@ fn test_hash_inputs_none_when_no_file_matches() {
     assert!(hash.is_none());
 }
 
-#[test]
-fn test_hash_with_args_empty_is_identity() {
-    assert_eq!(BeamCache::hash_with_args("abc123", &[]), "abc123");
+/// A definition running `cmd`, everything else left at its default.
+fn definition(commands: &[String]) -> BeamDefinition<'_> {
+    BeamDefinition {
+        commands,
+        ..Default::default()
+    }
 }
 
 #[test]
-fn test_hash_with_args_differs_by_arguments() {
-    let a = BeamCache::hash_with_args("abc123", &["web-01".to_string()]);
-    let b = BeamCache::hash_with_args("abc123", &["web-02".to_string()]);
-    assert_ne!(a, b, "different arguments must produce different keys");
-    assert_ne!(a, "abc123", "arguments must change the key");
+fn test_definition_hash_folds_into_the_inputs_hash() {
+    let cmds = vec!["make build".to_string()];
+    let key = BeamCache::hash_with_definition("abc123", &definition(&cmds));
+    assert_ne!(
+        key, "abc123",
+        "the definition must always take part in the key"
+    );
 }
 
 #[test]
-fn test_hash_with_args_is_stable_and_order_sensitive() {
-    let args1 = vec!["a".to_string(), "b".to_string()];
-    let args2 = vec!["a".to_string(), "b".to_string()];
+fn test_definition_hash_changes_with_the_commands() {
+    // The regression this whole key exists for: editing a command must never
+    // be served from the cache entry recorded for the previous command.
+    let v1 = vec!["echo VERSION-ONE".to_string()];
+    let v2 = vec!["echo VERSION-TWO".to_string()];
+    assert_ne!(
+        BeamCache::hash_with_definition("h", &definition(&v1)),
+        BeamCache::hash_with_definition("h", &definition(&v2)),
+        "a changed command must invalidate the entry"
+    );
+}
+
+#[test]
+fn test_definition_hash_changes_with_command_order_and_count() {
+    let one = vec!["a".to_string()];
+    let two = vec!["a".to_string(), "b".to_string()];
     let reordered = vec!["b".to_string(), "a".to_string()];
-    assert_eq!(
-        BeamCache::hash_with_args("h", &args1),
-        BeamCache::hash_with_args("h", &args2),
-        "same arguments hash the same"
+    assert_ne!(
+        BeamCache::hash_with_definition("h", &definition(&one)),
+        BeamCache::hash_with_definition("h", &definition(&two)),
+        "an added command must invalidate the entry"
     );
     assert_ne!(
-        BeamCache::hash_with_args("h", &args1),
-        BeamCache::hash_with_args("h", &reordered),
-        "argument order matters"
+        BeamCache::hash_with_definition("h", &definition(&two)),
+        BeamCache::hash_with_definition("h", &definition(&reordered)),
+        "command order matters"
     );
+}
+
+#[test]
+fn test_definition_hash_is_not_confused_by_command_concatenation() {
+    // Without a separator between commands, ["ab", "c"] and ["a", "bc"] would
+    // hash the same, so a real edit could be served from the cache.
+    let a = vec!["ab".to_string(), "c".to_string()];
+    let b = vec!["a".to_string(), "bc".to_string()];
+    assert_ne!(
+        BeamCache::hash_with_definition("h", &definition(&a)),
+        BeamCache::hash_with_definition("h", &definition(&b)),
+        "commands must be separated before hashing"
+    );
+}
+
+#[test]
+fn test_definition_hash_changes_with_the_executor() {
+    let cmds = vec!["make".to_string()];
+    let local = BeamDefinition {
+        commands: &cmds,
+        executor: None,
+        ..Default::default()
+    };
+    let docker = BeamDefinition {
+        commands: &cmds,
+        executor: Some("docker"),
+        ..Default::default()
+    };
+    assert_ne!(
+        BeamCache::hash_with_definition("h", &local),
+        BeamCache::hash_with_definition("h", &docker),
+        "the same command run through another executor is another result"
+    );
+}
+
+#[test]
+fn test_definition_hash_changes_with_the_executor_config() {
+    let cmds = vec!["make".to_string()];
+    let v1: HashMap<String, String> = [("image".to_string(), "rust:1.80".to_string())].into();
+    let v2: HashMap<String, String> = [("image".to_string(), "rust:1.90".to_string())].into();
+    let with = |cfg: &HashMap<String, String>| {
+        BeamCache::hash_with_definition(
+            "h",
+            &BeamDefinition {
+                commands: &cmds,
+                executor: Some("docker"),
+                executor_config: Some(cfg),
+                ..Default::default()
+            },
+        )
+    };
+    assert_ne!(
+        with(&v1),
+        with(&v2),
+        "another docker image is another result"
+    );
+}
+
+#[test]
+fn test_definition_hash_ignores_executor_config_map_order() {
+    // The config is a HashMap: its iteration order varies between runs. A key
+    // that flapped with it would make the cache useless.
+    let cmds = vec!["make".to_string()];
+    let cfg: HashMap<String, String> = [
+        ("image".to_string(), "rust".to_string()),
+        ("network".to_string(), "none".to_string()),
+        ("user".to_string(), "root".to_string()),
+    ]
+    .into();
+    let key = |c: &HashMap<String, String>| {
+        BeamCache::hash_with_definition(
+            "h",
+            &BeamDefinition {
+                commands: &cmds,
+                executor_config: Some(c),
+                ..Default::default()
+            },
+        )
+    };
+    let first = key(&cfg);
+    for _ in 0..8 {
+        let shuffled: HashMap<String, String> = cfg.clone().into_iter().collect();
+        assert_eq!(
+            key(&shuffled),
+            first,
+            "the key must not depend on map order"
+        );
+    }
+}
+
+#[test]
+fn test_definition_hash_changes_with_the_dir() {
+    let cmds = vec!["make".to_string()];
+    let a = BeamDefinition {
+        commands: &cmds,
+        dir: Some("services/api"),
+        ..Default::default()
+    };
+    let b = BeamDefinition {
+        commands: &cmds,
+        dir: Some("services/web"),
+        ..Default::default()
+    };
+    assert_ne!(
+        BeamCache::hash_with_definition("h", &a),
+        BeamCache::hash_with_definition("h", &b),
+        "the same command run in another directory is another result"
+    );
+}
+
+#[test]
+fn test_definition_hash_changes_with_a_declared_env_value() {
+    let cmds = vec!["echo $GIT_SHA".to_string()];
+    let v1: BTreeMap<String, String> = [("GIT_SHA".to_string(), "aaaa".to_string())].into();
+    let v2: BTreeMap<String, String> = [("GIT_SHA".to_string(), "bbbb".to_string())].into();
+    let with = |env: &BTreeMap<String, String>| {
+        BeamCache::hash_with_definition(
+            "h",
+            &BeamDefinition {
+                commands: &cmds,
+                env: Some(env),
+                ..Default::default()
+            },
+        )
+    };
+    assert_ne!(
+        with(&v1),
+        with(&v2),
+        "a declared environment value feeds the commands: it must key the cache"
+    );
+}
+
+#[test]
+fn test_definition_hash_is_stable_across_calls() {
+    let cmds = vec!["make build".to_string()];
+    let cfg: HashMap<String, String> = [("image".to_string(), "rust".to_string())].into();
+    let env: BTreeMap<String, String> = [("SHA".to_string(), "abc".to_string())].into();
+    let build = || {
+        BeamCache::hash_with_definition(
+            "inputs-hash",
+            &BeamDefinition {
+                commands: &cmds,
+                executor: Some("docker"),
+                executor_config: Some(&cfg),
+                dir: Some("api"),
+                env: Some(&env),
+            },
+        )
+    };
+    assert_eq!(build(), build(), "an unchanged definition keeps its key");
 }

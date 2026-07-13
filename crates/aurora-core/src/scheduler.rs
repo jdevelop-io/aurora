@@ -1,9 +1,9 @@
 use crate::ast::{Beam, Condition, ConditionClause, ConditionOp, Run};
-use crate::cache::BeamCache;
+use crate::cache::{BeamCache, BeamDefinition};
 use crate::dag::BeamGraph;
 use anyhow::Result;
 use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -34,6 +34,11 @@ pub struct Scheduler {
     cache_enabled: bool,
     working_dir: PathBuf,
     env: HashMap<String, String>,
+    /// The evaluated `environment {}` block as declared by the Beamfile, folded
+    /// into every beam's cache key. A subset of `env`, which also carries the
+    /// ambient allowlisted variables: those are machine context and must stay
+    /// out of the key (see [`BeamDefinition::env`]).
+    declared_env: BTreeMap<String, String>,
 }
 
 impl Scheduler {
@@ -55,7 +60,21 @@ impl Scheduler {
             cache_enabled: true,
             working_dir,
             env,
+            declared_env: BTreeMap::new(),
         }
+    }
+
+    /// Records the evaluated `environment {}` block so it takes part in every
+    /// beam's cache key.
+    ///
+    /// A declared value feeds the commands without appearing in them (a
+    /// `shell("git rev-parse HEAD")` sha, a branch name), so when it changes the
+    /// beam's result changes and its entry must not be reused. Only the
+    /// Beamfile-declared variables belong here, never the ambient allowlisted
+    /// ones (see [`BeamDefinition::env`]).
+    pub fn with_declared_env(mut self, declared_env: BTreeMap<String, String>) -> Self {
+        self.declared_env = declared_env;
+        self
     }
 
     /// Disables the cache for this run: no cache hit is honored and no result
@@ -293,6 +312,7 @@ impl Scheduler {
         let executor = self.resolve_executor(&beam);
         let task_env = TaskEnv {
             env: self.env.clone(),
+            declared_env: self.declared_env.clone(),
             tx: self.tx.clone(),
             sem: semaphore.clone(),
             cache: self.cache.clone(),
@@ -344,6 +364,7 @@ impl RunLoop {
 /// so [`run_beam_task`] takes a handful of arguments instead of a long list.
 struct TaskEnv {
     env: HashMap<String, String>,
+    declared_env: BTreeMap<String, String>,
     tx: mpsc::Sender<SchedulerEvent>,
     sem: Option<Arc<Semaphore>>,
     cache: Arc<BeamCache>,
@@ -362,6 +383,7 @@ async fn run_beam_task(
 ) -> (String, BeamOutcome) {
     let TaskEnv {
         env,
+        declared_env,
         tx,
         sem,
         cache,
@@ -496,6 +518,24 @@ async fn run_beam_task(
         return (beam.name, BeamOutcome::Ok);
     }
 
+    // The cache key answers "would running this beam produce the same result?",
+    // not merely "did its input files change?". So it covers the beam's
+    // definition as well: its resolved commands (which already carry the
+    // variables, the `--var` overrides and the positional arguments), the
+    // executor and its settings, the working directory, and the declared
+    // environment. Hashing the inputs alone would serve the previous run's
+    // result after an edit to any of these.
+    let run = beam.run.as_ref();
+    let executor_config = run.and_then(|r| r.executor.as_ref());
+    let definition_hash = BeamDefinition {
+        commands: run.map(|r| r.commands.as_slice()).unwrap_or(&[]),
+        executor: executor_config.map(|e| e.name.as_str()),
+        executor_config: executor_config.map(|e| &e.config),
+        dir: beam.dir.as_deref(),
+        env: Some(&declared_env),
+    }
+    .hash();
+
     // Cache: on a valid hit, replay the recorded output and skip. The lookup
     // hashes the inputs (reading whole files) and stats the outputs, so it runs
     // on a blocking thread rather than stalling the async runtime.
@@ -505,7 +545,7 @@ async fn run_beam_task(
             &beam.name,
             &beam.inputs,
             &beam.outputs,
-            &beam.args,
+            &definition_hash,
             &working_dir,
         )
         .await
@@ -682,21 +722,24 @@ async fn cache_lookup_blocking(
     beam_name: &str,
     inputs: &[String],
     outputs: &[String],
-    args: &[String],
+    definition_hash: &str,
     working_dir: &Path,
 ) -> CacheLookup {
     let cache = cache.clone();
     let beam_name = beam_name.to_string();
     let inputs = inputs.to_vec();
     let outputs = outputs.to_vec();
-    let args = args.to_vec();
+    let definition_hash = definition_hash.to_string();
     let working_dir = working_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {
+        // `hash_inputs_at` yields `None` when no input file matches: the beam
+        // cannot be keyed and must run. The definition alone must never key an
+        // entry, or a beam whose inputs vanished would stay cached forever.
         let hash = cache
             .hash_inputs_at(&working_dir, &inputs)
             .ok()
             .flatten()
-            .map(|h| BeamCache::hash_with_args(&h, &args));
+            .map(|h| BeamCache::key(&h, &definition_hash));
         if let Some(ref hash) = hash {
             if cache.is_valid(&beam_name, hash, &outputs, &working_dir) {
                 let (stdout, stderr) = cache.load_logs(&beam_name);

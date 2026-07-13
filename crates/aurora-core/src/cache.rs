@@ -1,5 +1,6 @@
 use anyhow::Result;
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -171,20 +172,103 @@ impl BeamCache {
         Ok(Some(format!("{:x}", hasher.finalize())))
     }
 
-    /// Folds an argument vector into an inputs hash so the invoked target
-    /// re-runs when its arguments change even though its `inputs` files did
-    /// not. An empty vector returns the hash unchanged, so every beam without
-    /// arguments (all but the invoked target) keeps its existing cache key.
-    pub fn hash_with_args(inputs_hash: &str, args: &[String]) -> String {
-        if args.is_empty() {
-            return inputs_hash.to_string();
-        }
+    /// Folds a beam's definition into the hash of its `inputs` files, yielding
+    /// the cache key.
+    ///
+    /// Hashing the inputs alone is not enough: it answers "did the data change?"
+    /// while a cache must answer "would running this beam produce the same
+    /// result?". Editing a command, swapping the docker image or moving the
+    /// beam to another directory all change the result while leaving the input
+    /// files byte-for-byte identical, and the entry recorded for the previous
+    /// definition would be served instead.
+    pub fn hash_with_definition(inputs_hash: &str, definition: &BeamDefinition) -> String {
+        Self::key(inputs_hash, &definition.hash())
+    }
+
+    /// Combines an inputs hash with an already-computed definition hash.
+    ///
+    /// The two are hashed separately because they are produced at different
+    /// times: the definition hash is pure CPU work on borrowed data, while the
+    /// inputs hash reads whole files and runs on a blocking thread.
+    pub fn key(inputs_hash: &str, definition_hash: &str) -> String {
         let mut hasher = Sha256::new();
         hasher.update(inputs_hash.as_bytes());
-        for arg in args {
+        hasher.update(b"\0");
+        hasher.update(definition_hash.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+/// Everything about a beam, beyond the content of its `inputs` files, that
+/// determines what running it produces.
+///
+/// Variables and positional arguments are deliberately absent: both are already
+/// interpolated into `commands` by the parser before the scheduler ever sees
+/// the beam, so the resolved commands capture them. Hashing them a second time
+/// would only cause spurious misses (an argument a beam never references cannot
+/// change its result).
+#[derive(Default)]
+pub struct BeamDefinition<'a> {
+    /// The beam's `run.commands`, with `${var.x}`, `${arg.N}` and `${args}`
+    /// already resolved.
+    pub commands: &'a [String],
+    /// The `run.executor` name, `None` for the default `local` executor.
+    pub executor: Option<&'a str>,
+    /// The executor block's settings (a docker image, a network...).
+    pub executor_config: Option<&'a HashMap<String, String>>,
+    /// The beam's `dir`, when it declares one.
+    pub dir: Option<&'a str>,
+    /// The evaluated `environment {}` block **as declared by the Beamfile**.
+    ///
+    /// The ambient allowlisted variables (`PATH`, `HOME`, `TERM`, `PWD`...) are
+    /// excluded on purpose: they are machine context, not part of the beam's
+    /// definition. Folding them in would make the key vary between terminals
+    /// and between machines, defeating the cache locally and ruling out the
+    /// shared cache this key is meant to grow into.
+    pub env: Option<&'a BTreeMap<String, String>>,
+}
+
+impl BeamDefinition<'_> {
+    /// Hashes the definition in a canonical order.
+    ///
+    /// Every field is length-prefixed and separated: without it, the commands
+    /// `["ab", "c"]` and `["a", "bc"]` would concatenate to the same bytes and
+    /// a genuine edit would be served from the cache.
+    pub fn hash(&self) -> String {
+        let mut hasher = Sha256::new();
+        let mut field = |label: &str, value: &str| {
+            hasher.update(label.as_bytes());
             hasher.update(b"\0");
-            hasher.update(arg.as_bytes());
+            hasher.update(value.len().to_le_bytes());
+            hasher.update(value.as_bytes());
+            hasher.update(b"\0");
+        };
+
+        for command in self.commands {
+            field("cmd", command);
         }
+        field("executor", self.executor.unwrap_or("local"));
+        field("dir", self.dir.unwrap_or(""));
+
+        // A HashMap iterates in an arbitrary, run-to-run varying order: sort the
+        // pairs so the same config always hashes the same.
+        if let Some(config) = self.executor_config {
+            let mut pairs: Vec<(&String, &String)> = config.iter().collect();
+            pairs.sort();
+            for (key, value) in pairs {
+                field("exec-cfg", key);
+                field("exec-val", value);
+            }
+        }
+
+        // A BTreeMap is already ordered, so declaration order cannot leak in.
+        if let Some(env) = self.env {
+            for (key, value) in env {
+                field("env", key);
+                field("env-val", value);
+            }
+        }
+
         format!("{:x}", hasher.finalize())
     }
 }

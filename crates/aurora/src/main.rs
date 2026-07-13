@@ -190,6 +190,12 @@ async fn main() -> Result<()> {
         None => aurora_core::env::base_env(),
     };
 
+    // The declared half of the environment takes part in every beam's cache key:
+    // a `shell(...)` value that changes (a commit sha, a branch) changes what the
+    // beams produce without changing any of their input files. The ambient half
+    // stays out of the key (see `env::declared_only`).
+    let declared_env = aurora_core::env::declared_only(beam_file.environment.as_ref(), &env);
+
     let (tx, rx) = mpsc::channel(128);
     // Exclude the virtual beam __multi__ from the displayed list / prefixes
     let beam_info: Vec<(String, Vec<String>)> = beam_file
@@ -209,6 +215,7 @@ async fn main() -> Result<()> {
         beam_file.config.as_ref().and_then(|c| c.max_parallelism),
         working_dir.clone(),
         env.clone(),
+        declared_env.clone(),
         !no_cache,
     );
 
@@ -234,6 +241,7 @@ async fn main() -> Result<()> {
         let rerun_max_par = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
         let rerun_working_dir = working_dir.clone();
         let rerun_env = env.clone();
+        let rerun_declared_env = declared_env.clone();
 
         let rerun = move |root: String,
                           pre_success: Vec<String>|
@@ -250,6 +258,7 @@ async fn main() -> Result<()> {
                 rerun_max_par,
                 rerun_working_dir.clone(),
                 rerun_env.clone(),
+                rerun_declared_env.clone(),
                 !no_cache,
             );
             tokio::runtime::Handle::current().spawn(async move {

@@ -1,6 +1,6 @@
 use crate::ast::{EnvValue, Environment};
 use anyhow::{bail, Result};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 /// Base environment variables carried over from the parent process.
@@ -106,4 +106,30 @@ pub fn evaluate(env_block: &Environment, working_dir: &Path) -> Result<HashMap<S
     }
 
     Ok(result)
+}
+
+/// Picks out of `evaluated` the variables the Beamfile's `environment {}` block
+/// actually declares, as the cache key needs them.
+///
+/// [`evaluate`] returns the declared variables merged on top of the allowlisted
+/// ambient ones, and only the declared half is part of a beam's definition. The
+/// ambient half (`PATH`, `HOME`, `TERM`, `PWD`, ...) is machine context: folding
+/// it into a cache key would make the key vary from one terminal or machine to
+/// the next, breaking the cache locally and ruling out sharing it.
+pub fn declared_only(
+    env_block: Option<&Environment>,
+    evaluated: &HashMap<String, String>,
+) -> BTreeMap<String, String> {
+    let Some(block) = env_block else {
+        return BTreeMap::new();
+    };
+    block
+        .vars
+        .iter()
+        .filter_map(|var| {
+            evaluated
+                .get(&var.name)
+                .map(|value| (var.name.clone(), value.clone()))
+        })
+        .collect()
 }
