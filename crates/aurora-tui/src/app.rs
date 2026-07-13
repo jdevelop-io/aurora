@@ -1,5 +1,6 @@
 use aurora_core::events::{BeamStatus, SchedulerEvent, SkipReason};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::time::Instant;
 
@@ -395,7 +396,9 @@ impl PickerState {
                 }
             })
             .collect();
-        results.sort_by(|a, b| b.2.cmp(&a.2));
+        // Best score first. `sort_by_key` is a stable sort, so beams that tie
+        // keep their declaration order, exactly as the previous comparator did.
+        results.sort_by_key(|(_, _, score)| Reverse(*score));
         results
     }
 
