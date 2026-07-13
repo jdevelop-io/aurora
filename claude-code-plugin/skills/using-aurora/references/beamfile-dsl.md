@@ -60,7 +60,7 @@ beam "test" {
   description   = "Run the test suite"
   depends_on    = ["build"]          # beams that must succeed first
   dir           = "crates/app"        # working directory for this beam (see below)
-  inputs        = ["src/**", "Cargo.toml"]  # cache key: glob patterns (file contents + paths)
+  inputs        = ["src/**", "Cargo.toml"]  # part of the cache key: glob patterns (file contents + paths)
   outputs       = ["target/debug/app"]      # glob patterns; must exist on disk for a cache hit
   skip_if       = "test -f .skip-tests"      # shell command; the beam is skipped when this command exits zero (succeeds)
   allow_failure = false              # when true, a failure counts as success for scheduling

@@ -22,10 +22,13 @@ called **beams** and are declared in a `Beamfile` (an HCL-inspired DSL).
   is not `allow_failure`, its entire transitive-dependent subtree is cancelled and never runs; an `allow_failure`
   beam's failure counts as success for scheduling, so its dependents still run.
 - **Caching.** A beam is skipped when the SHA-256 hash of its declared `inputs` (glob patterns; file contents and
-  paths) is unchanged AND every declared `output` still exists on disk. A beam with no `inputs`, or whose globs match
-  no file, is never cached and always runs. Positional arguments are part of the invoked target's cache key, and a
-  beam's `dir` moves where its `inputs`/`outputs` resolve. Wrong `inputs`/`outputs` mislead the cache: too few inputs
-  means stale results, missing outputs means needless reruns.
+  paths) is unchanged, its **definition** is unchanged, AND every declared `output` still exists on disk. The definition
+  covers its `run.commands` (with variables, `--var` overrides and positional arguments already interpolated), its
+  executor and that executor's settings, its `dir`, and the declared `environment {}` values: editing a command,
+  overriding a variable or bumping a docker image re-runs the beam even though its input files did not change. The
+  ambient environment (`PATH`, `TERM`, ...) is not part of the key, so it stays stable across terminals and machines. A
+  beam with no `inputs`, or whose globs match no file, is never cached and always runs. Wrong `inputs`/`outputs` still
+  mislead the cache: too few inputs means stale results, missing outputs means needless reruns.
 - **Executors** decide where commands run: `local` (the default native shell) and `docker` (inside a container via the
   Docker CLI). WASM/extism plugins discovered under `~/.aurora/plugins/*.wasm` are also registered as executors, after
   the native ones and without shadowing a built-in, so `local` and `docker` always keep their meaning. Non-local

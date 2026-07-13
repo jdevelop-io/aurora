@@ -10,7 +10,7 @@ Aurora is a task runner and build tool written in Rust, designed as an alternati
 
 - **Beamfile DSL**: declarative, HCL-inspired syntax to describe beams, variables, environment and dependencies.
 - **Parallel execution**: DAG-based scheduling (topological sort, cycle detection) backed by a tokio task pool.
-- **Caching**: SHA-256 hashing of `inputs`; a beam is skipped when its inputs are unchanged and its outputs are present.
+- **Caching**: SHA-256 hashing of a beam's `inputs` *and* of its definition (commands, variables, executor and its settings, `dir`, declared environment); a beam is skipped only when all of them are unchanged and its outputs are present.
 - **Executors**:
   - `local`: native shell execution (default),
   - `docker`: execution inside a container through the Docker CLI,
@@ -232,7 +232,7 @@ A beam can declare:
 
 - `description`: text shown in the TUI and in `--list`,
 - `depends_on`: list of prerequisite beams (the DAG),
-- `inputs` / `outputs`: files used for SHA-256 caching,
+- `inputs` / `outputs`: files used for SHA-256 caching (the beam's own definition is part of the key too, so editing a command or overriding a variable re-runs it),
 - `skip_if` or `condition { any/all }`: execution conditions,
 - `run { commands = [...] }`: commands to run, with an optional `executor` block (`local`, `docker`, plugin),
 - a beam without `run` is a pure orchestration aggregate.

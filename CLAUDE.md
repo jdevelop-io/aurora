@@ -98,10 +98,23 @@ channels.
 
 ### Caching (`cache.rs`)
 
-`BeamCache` stores one JSON entry per beam under `.aurora/cache/`, keyed by a SHA-256 hash of the beam's `inputs` (file
-contents + paths, sorted). A cache hit also requires every declared `output` to still exist on disk. On a hit, the beam
-is skipped and its cached stdout/stderr are replayed as `BeamOutput` events. Beam names are sanitized into safe file
-stems (with a hash suffix) to prevent path traversal from an untrusted Beamfile.
+`BeamCache` stores one JSON entry per beam under `.aurora/cache/`, keyed by a SHA-256 hash of two halves:
+
+1. the beam's `inputs` (file contents + paths, sorted), and
+2. its **definition** (`BeamDefinition`): the resolved `run.commands`, the executor name and its config, the `dir`, and
+   the declared `environment {}` values.
+
+The key must answer "would running this beam produce the same result?", not just "did its input files change?". Hashing
+the inputs alone served the previous run's result after a command edit, a `--var` override or a docker image bump.
+Variables and positional arguments are *not* hashed separately: the parser interpolates them into `run.commands` before
+the scheduler sees the beam, so the resolved commands already carry them. The ambient allowlisted environment (`PATH`,
+`TERM`, `PWD`, ...) is deliberately *excluded* from the key (`env::declared_only`): it is machine context, and folding it
+in would make the key vary between terminals and machines, ruling out the shared cache on the roadmap.
+
+A beam with no `inputs`, or whose globs match no file, has no key and always runs: the definition alone must never key an
+entry. A cache hit also requires every declared `output` to still exist on disk. On a hit, the beam is skipped and its
+cached stdout/stderr are replayed as `BeamOutput` events. Beam names are sanitized into safe file stems (with a hash
+suffix) to prevent path traversal from an untrusted Beamfile.
 
 ### Executors and WASM plugins
 

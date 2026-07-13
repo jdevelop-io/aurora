@@ -18,7 +18,8 @@ Already in place and differentiating against `make`/`just`/`taskfile`:
 - **Real-time TUI** (ratatui): beam picker with fuzzy search, live log
   streaming, per-beam rerun. No mainstream task runner offers this.
 - **Input-hash caching**: a beam is skipped when its declared `inputs` are
-  unchanged and its `outputs` are present.
+  unchanged, its definition (commands, variables, executor and its settings,
+  `dir`, declared environment) is unchanged, and its `outputs` are present.
 - **`${var.name}` interpolation in commands**, with a hard error on unknown
   variables (both commands and executor configs).
 - **Executors**: `local` (native shell), `docker`, and **WASM plugins**
