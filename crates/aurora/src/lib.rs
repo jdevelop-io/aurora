@@ -9,10 +9,89 @@ use aurora_core::ast::{Beam, BeamFile};
 use aurora_core::events::SchedulerEvent;
 use aurora_core::scheduler::Scheduler;
 use aurora_executor_api::Executor;
+use clap::{Arg, Command};
 use std::collections::{BTreeMap, HashMap};
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+
+/// The command-line interface. Defined here rather than in `main`, so the
+/// completion and man-page generators describe the very CLI that runs.
+pub fn cli() -> Command {
+    Command::new("aurora")
+        .version(env!("CARGO_PKG_VERSION"))
+        .about("Aurora: task runner with HCL-inspired Beamfile DSL")
+        .arg(Arg::new("beam").help("Beam to run").index(1))
+        .arg(
+            Arg::new("no-cache")
+                .long("no-cache")
+                .action(clap::ArgAction::SetTrue)
+                .help("Ignore the cache: run every beam and persist no result"),
+        )
+        .arg(
+            Arg::new("dry-run")
+                .long("dry-run")
+                .action(clap::ArgAction::SetTrue)
+                .help("Print the execution plan by dependency level, run nothing"),
+        )
+        .arg(
+            Arg::new("list")
+                .long("list")
+                .short('l')
+                .action(clap::ArgAction::SetTrue)
+                .help("List the available beams with their descriptions"),
+        )
+        .arg(
+            Arg::new("var")
+                .long("var")
+                .action(clap::ArgAction::Append)
+                .help("Override a Beamfile variable: --var key=value"),
+        )
+        .arg(
+            Arg::new("no-tui")
+                .long("no-tui")
+                .action(clap::ArgAction::SetTrue)
+                .help("Force plain output, even in a terminal"),
+        )
+        .arg(
+            Arg::new("interactive")
+                .long("interactive")
+                .short('i')
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with("no-tui")
+                .help("Force the TUI, even when output is not a terminal"),
+        )
+        .arg(
+            Arg::new("completions")
+                .long("completions")
+                .value_name("SHELL")
+                .value_parser(clap::value_parser!(clap_complete::Shell))
+                .help("Print a shell completion script to stdout"),
+        )
+        .arg(
+            Arg::new("man")
+                .long("man")
+                .action(clap::ArgAction::SetTrue)
+                .help("Print the man page (roff) to stdout"),
+        )
+        .arg(
+            Arg::new("args")
+                .help("Positional arguments for the target beam (use -- before hyphen-leading values)")
+                .index(2)
+                .num_args(0..),
+        )
+}
+
+/// Writes the completion script for `shell` to `out`.
+pub fn print_completions(shell: clap_complete::Shell, out: &mut impl Write) {
+    clap_complete::generate(shell, &mut cli(), "aurora", out);
+}
+
+/// Writes the man page, in roff, to `out`.
+pub fn print_man_page(out: &mut impl Write) -> std::io::Result<()> {
+    clap_mangen::Man::new(cli()).render(out)
+}
 
 /// Similarity above which a candidate is offered as a "did you mean". Jaro-Winkler
 /// rewards a shared prefix, which is what a typo usually preserves.

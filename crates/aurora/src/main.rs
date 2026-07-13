@@ -4,7 +4,6 @@ use aurora_core::{env::evaluate, events::SchedulerEvent, parser::parse};
 use aurora_executor_api::Executor;
 use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
-use clap::{Arg, Command};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::PathBuf;
@@ -19,54 +18,18 @@ const MULTI_BEAM: &str = "__multi__";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Command::new("aurora")
-        .version(env!("CARGO_PKG_VERSION"))
-        .about("Aurora: task runner with HCL-inspired Beamfile DSL")
-        .arg(Arg::new("beam").help("Beam to run").index(1))
-        .arg(
-            Arg::new("no-cache")
-                .long("no-cache")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("dry-run")
-                .long("dry-run")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("list")
-                .long("list")
-                .short('l')
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("var")
-                .long("var")
-                .action(clap::ArgAction::Append)
-                .help("Override variable: --var key=value"),
-        )
-        .arg(
-            Arg::new("no-tui")
-                .long("no-tui")
-                .action(clap::ArgAction::SetTrue)
-                .help("Force plain output, even in a terminal"),
-        )
-        .arg(
-            Arg::new("interactive")
-                .long("interactive")
-                .short('i')
-                .action(clap::ArgAction::SetTrue)
-                .conflicts_with("no-tui")
-                .help("Force the TUI, even when output is not a terminal"),
-        )
-        .arg(
-            Arg::new("args")
-                .help("Positional arguments for the target beam (use -- before hyphen-leading values)")
-                .index(2)
-                .num_args(0..),
-        );
+    let matches = aurora::cli().get_matches();
 
-    let matches = cli.get_matches();
+    // Pure emitters: a packager runs them from an arbitrary directory, so they
+    // must not depend on a Beamfile being present.
+    if let Some(&shell) = matches.get_one::<clap_complete::Shell>("completions") {
+        aurora::print_completions(shell, &mut std::io::stdout());
+        return Ok(());
+    }
+    if matches.get_flag("man") {
+        aurora::print_man_page(&mut std::io::stdout())?;
+        return Ok(());
+    }
 
     let beamfile_path = find_beamfile()?;
     let content = fs::read_to_string(&beamfile_path)?;

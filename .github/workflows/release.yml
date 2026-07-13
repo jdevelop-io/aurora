@@ -142,3 +142,51 @@ jobs:
             ${{ env.ASSET }}.sha256
           fail_on_unmatched_files: true
           generate_release_notes: true
+
+  # Completions and the man page are plain text and identical on every platform,
+  # and a cross-compiled binary cannot be run on the runner that built it. So the
+  # binary generates them once, natively, in its own archive.
+  assets:
+    name: Completions and man page
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked --bin aurora
+
+      - name: Generate
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          name="aurora-${REF_NAME}-completions"
+          mkdir -p "dist/${name}/completions"
+          for shell in bash zsh fish powershell elvish; do
+            ./target/release/aurora --completions "$shell" \
+              > "dist/${name}/completions/aurora.${shell}"
+          done
+          ./target/release/aurora --man > "dist/${name}/aurora.1"
+          cd dist
+          tar -czf "${name}.tar.gz" "${name}"
+          sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256"
+          echo "ASSET=dist/${name}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Publish to the release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256
+          fail_on_unmatched_files: true
+          generate_release_notes: true

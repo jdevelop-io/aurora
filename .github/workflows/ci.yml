@@ -93,6 +93,50 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # `rust-version` in Cargo.toml is a promise to users; without a job that
+      # builds on that exact toolchain, nothing stops a newer feature from
+      # quietly raising the real floor.
+      - name: Install the MSRV toolchain
+        uses: dtolnay/rust-toolchain@1.91
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+
+      - name: Check on the MSRV
+        run: cargo check --workspace --all-targets --locked
+
+  publish:
+    name: Publish dry-run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: publish
+
+      # Publishable metadata rots silently: a missing description or a path
+      # dependency without a version only fails at `cargo publish` time, i.e. on
+      # release day.
+      - name: Verify every crate is publishable
+        run: cargo publish --workspace --dry-run --locked
+
   shellcheck:
     name: Shellcheck the plugin hooks
     runs-on: ubuntu-latest

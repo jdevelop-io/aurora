@@ -89,6 +89,16 @@ install -m 0755 target/release/aurora ~/.local/bin/aurora
 aurora --version
 ```
 
+### Shell completions and man page
+
+Aurora generates them itself, so no build step is needed. Each release also ships
+them prebuilt, in the `aurora-<version>-completions.tar.gz` archive.
+
+```bash
+aurora --completions zsh > ~/.zfunc/_aurora     # bash, zsh, fish, powershell, elvish
+aurora --man > /usr/local/share/man/man1/aurora.1
+```
+
 ## Usage
 
 ```bash
