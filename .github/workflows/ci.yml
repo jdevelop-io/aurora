@@ -1,31 +1,104 @@
 name: CI
 
-# Lint the shell scripts of the Claude Code plugin. Triggered on main and on every
-# pull request that touches the hooks (or this workflow), to keep the scripts
-# healthy as the plugin evolves.
+# Runs on every push to main and every pull request, with no path filter: any
+# change can break the build, and a task runner whose own tests never run in CI
+# has no business calling itself a serious one.
 on:
   push:
     branches: [main]
-    paths:
-      - "claude-code-plugin/hooks/**"
-      - ".github/workflows/ci.yml"
   pull_request:
-    paths:
-      - "claude-code-plugin/hooks/**"
-      - ".github/workflows/ci.yml"
 
-# No write permission: the lint only needs to read the code.
+# No write permission: CI only needs to read the code.
 permissions:
   contents: read
 
+# A new push to a branch makes the previous run obsolete: cancel it rather than
+# pay for both. Never cancel on main, whose runs gate the release.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # A CI failure must be actionable: a backtrace beats "the test panicked".
+  RUST_BACKTRACE: 1
+
 jobs:
-  shellcheck:
-    name: Shellcheck the hooks
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           # The lint does not push anything: no need to keep the token in .git.
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+  clippy:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # --all-targets so the lint covers the tests too, not just the library and
+      # the binary. Warnings are errors, as in the repo's own `clippy` beam.
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One platform failing must not hide the result on the other.
+      fail-fast: false
+      matrix:
+        # Windows is deliberately absent. The local executor spawns `sh -c`
+        # unconditionally, so beams only run under a POSIX shell; the Windows
+        # runners happen to ship Git Bash, so a job here would pass and advertise
+        # a support Aurora does not have on a stock Windows machine. Add
+        # windows-latest once the executor has a native cmd/powershell path.
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      # --locked: build against the committed Cargo.lock, so CI exercises the
+      # same dependency versions a `cargo install --locked` would resolve.
+      - name: Test
+        run: cargo test --workspace --locked
+
+  shellcheck:
+    name: Shellcheck the plugin hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
           persist-credentials: false
 
       # shellcheck is preinstalled on ubuntu-latest runners.
