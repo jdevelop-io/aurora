@@ -11,9 +11,43 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
 jobs:
+  # A tag can be pushed onto any commit, including one CI never saw. Shipping
+  # binaries that were never tested is precisely what this gate prevents: no
+  # archive is built, and no release published, until the suite passes on the
+  # tagged commit itself.
+  test:
+    name: Test the tagged commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
   build:
     name: Build ${{ matrix.target }}
+    needs: test
     runs-on: ${{ matrix.os }}
     # Write permission limited to this job (release creation + asset upload).
     permissions:
