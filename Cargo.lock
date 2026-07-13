@@ -155,6 +155,7 @@ dependencies = [
  "dirs",
  "extism",
  "serde_json",
+ "strsim",
  "tempfile",
  "tokio",
 ]

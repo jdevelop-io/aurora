@@ -72,14 +72,7 @@ async fn main() -> Result<()> {
     let mut beam_file = parse(&content)?;
 
     if let Some(vars) = matches.get_many::<String>("var") {
-        for var_str in vars {
-            let (key, val) = var_str
-                .split_once('=')
-                .ok_or_else(|| anyhow::anyhow!("Invalid --var format, expected key=value"))?;
-            if let Some(v) = beam_file.variables.iter_mut().find(|v| v.name == key) {
-                v.default = val.to_string();
-            }
-        }
+        aurora::apply_var_overrides(&mut beam_file, vars)?;
     }
 
     // Resolve `var.<name>` references now that any --var override has been
@@ -96,7 +89,7 @@ async fn main() -> Result<()> {
     }
 
     if matches.get_flag("dry-run") {
-        let target = resolve_target(
+        let target = aurora::resolve_target(
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?;
@@ -111,6 +104,9 @@ async fn main() -> Result<()> {
     // (the picker is inherently interactive and does not exist outside a TTY).
     let target = if interactive {
         if let Some(beam_name) = matches.get_one::<String>("beam") {
+            // The picker can only ever yield beams that exist; an explicitly
+            // named one must be validated exactly as in headless mode.
+            aurora::ensure_beam_exists(&beam_file, beam_name)?;
             beam_name.clone()
         } else if let Some(picker_results) = aurora_tui::run_picker(
             beam_file
@@ -144,7 +140,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     } else {
-        resolve_target(
+        aurora::resolve_target(
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?
@@ -363,19 +359,4 @@ fn print_execution_plan(beam_file: &aurora_core::ast::BeamFile, target: &str) ->
         println!("  level {i}: {}", names.join(", "));
     }
     Ok(())
-}
-
-fn resolve_target(
-    beam_file: &aurora_core::ast::BeamFile,
-    explicit: Option<&str>,
-) -> Result<String> {
-    if let Some(name) = explicit {
-        return Ok(name.to_string());
-    }
-    if let Some(cfg) = &beam_file.config {
-        if let Some(default) = &cfg.default {
-            return Ok(default.clone());
-        }
-    }
-    bail!("No beam specified and no default configured in aurora {{ }}")
 }

@@ -18,6 +18,7 @@ aurora-executor-local = { path = "../aurora-executor-local" }
 aurora-executor-docker = { path = "../aurora-executor-docker" }
 extism = "1"
 dirs = "5"
+strsim = "0.11"
 async-trait = { workspace = true }
 serde_json = { workspace = true }
 
