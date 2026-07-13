@@ -141,32 +141,35 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora"
+name = "aurora-runner"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-core",
- "aurora-executor-api",
- "aurora-executor-docker",
- "aurora-executor-local",
- "aurora-tui",
+ "aurora-runner-core",
+ "aurora-runner-executor-api",
+ "aurora-runner-executor-docker",
+ "aurora-runner-executor-local",
+ "aurora-runner-tui",
  "clap",
+ "clap_complete",
+ "clap_mangen",
  "dirs",
  "extism",
  "serde_json",
+ "strsim",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
-name = "aurora-core"
+name = "aurora-runner-core"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-executor-api",
- "aurora-executor-local",
+ "aurora-runner-executor-api",
+ "aurora-runner-executor-local",
  "glob",
  "pest",
  "pest_derive",
@@ -180,7 +183,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora-executor-api"
+name = "aurora-runner-executor-api"
 version = "0.8.0"
 dependencies = [
  "anyhow",
@@ -191,36 +194,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "aurora-executor-docker"
+name = "aurora-runner-executor-docker"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-executor-api",
+ "aurora-runner-executor-api",
  "serde_json",
  "tempfile",
  "tokio",
 ]
 
 [[package]]
-name = "aurora-executor-local"
+name = "aurora-runner-executor-local"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "aurora-executor-api",
+ "aurora-runner-executor-api",
  "libc",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
-name = "aurora-tui"
+name = "aurora-runner-tui"
 version = "0.8.0"
 dependencies = [
  "anyhow",
  "arboard",
- "aurora-core",
+ "aurora-runner-core",
  "crossterm",
  "ratatui",
  "tokio",
@@ -429,6 +432,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db8b397918185f0161ff3d6fcaa9e4bfc09b8367caf6e1d4a2848e5477ed027b"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.5.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -445,6 +457,16 @@ name = "clap_lex"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
+
+[[package]]
+name = "clap_mangen"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d82842b45bf9f6a3be090dd860095ac30728042c08e0d6261ca7259b5d850f07"
+dependencies = [
+ "clap",
+ "roff",
+]
 
 [[package]]
 name = "clipboard-win"
@@ -2063,7 +2085,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -2288,6 +2310,12 @@ dependencies = [
  "rmp",
  "serde",
 ]
+
+[[package]]
+name = "roff"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323c417e1d9665a65b263ec744ba09030cfb277e9daa0b018a4ab62e57bc8189"
 
 [[package]]
 name = "rustc-demangle"
@@ -3586,7 +3614,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

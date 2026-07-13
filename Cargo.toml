@@ -12,8 +12,26 @@ members = [
 [workspace.package]
 version = "0.8.0"
 edition = "2021"
+# Floor imposed by the wasmtime/extism chain, not by Aurora's own code.
+rust-version = "1.91"
+license = "MIT"
+repository = "https://github.com/jdevelop-io/aurora"
+homepage = "https://github.com/jdevelop-io/aurora"
+authors = ["Jean-Denis VIDOT"]
+keywords = ["task-runner", "build-tool", "make", "dag", "cli"]
+categories = ["command-line-utilities", "development-tools::build-utils"]
 
 [workspace.dependencies]
+# Published under the `aurora-runner-*` namespace: `aurora` and `aurora-core`
+# are already taken on crates.io. The binary and the Rust crate names are
+# unaffected. A path dependency needs a version to be publishable, so the
+# workspace version is repeated here and nowhere else.
+aurora-runner-core = { path = "crates/aurora-core", version = "0.8.0" }
+aurora-runner-tui = { path = "crates/aurora-tui", version = "0.8.0" }
+aurora-runner-executor-api = { path = "crates/aurora-executor-api", version = "0.8.0" }
+aurora-runner-executor-local = { path = "crates/aurora-executor-local", version = "0.8.0" }
+aurora-runner-executor-docker = { path = "crates/aurora-executor-docker", version = "0.8.0" }
+
 anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

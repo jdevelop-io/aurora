@@ -1,13 +1,25 @@
 [package]
-name = "aurora-executor-local"
+name = "aurora-runner-executor-local"
+description = "Native shell executor for the Aurora task runner."
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[lib]
+name = "aurora_executor_local"
 
 [dependencies]
 anyhow = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
-aurora-executor-api = { path = "../aurora-executor-api" }
+aurora-runner-executor-api = { workspace = true }
 
 # Killing the child's whole process group on cancellation is a POSIX
 # operation (kill(2) on a negative pgid); needed only on unix.

@@ -24,9 +24,9 @@ cargo test --workspace           # run all tests across the workspace
 Run a single crate's tests, or a single test by name:
 
 ```bash
-cargo test -p aurora-core                      # one crate
-cargo test -p aurora-core scheduler            # tests in an integration test file (tests/scheduler_test.rs)
-cargo test -p aurora-tui log_search            # filter by substring
+cargo test -p aurora-runner-core                # one crate
+cargo test -p aurora-runner-core scheduler      # tests in an integration test file (tests/scheduler_test.rs)
+cargo test -p aurora-runner-tui log_search      # filter by substring
 ```
 
 Tests live in each crate's `tests/` directory as integration tests (not `#[cfg(test)]` inline modules), so they exercise
@@ -42,10 +42,17 @@ no picker.
 
 ## Releasing
 
-The version lives once in the root `Cargo.toml` under `[workspace.package] version`; every crate inherits it via
-`version.workspace = true`. Pushing a `v*` git tag triggers `.github/workflows/release.yml`, which cross-builds binaries
-for Linux/macOS/Windows and publishes a GitHub release with SHA-256 sums. Use the `release` skill (or
+The version lives in the root `Cargo.toml` alone; every crate inherits it via `version.workspace = true`. It appears
+there six times: once under `[workspace.package]`, and once per internal `aurora-runner-*` path dependency under
+`[workspace.dependencies]` (a path dependency needs a version to be publishable). They must be bumped together, which
+is what the `release` command does. Pushing a `v*` git tag triggers `.github/workflows/release.yml`, which cross-builds
+binaries for Linux/macOS/Windows and publishes a GitHub release with SHA-256 sums. Use the `release` skill (or
 `/release <X.Y.Z|patch|minor|major>` command) to bump, validate, commit, tag, and push, rather than doing it by hand.
+
+**Crate names**: the packages are published under the `aurora-runner-*` namespace, because `aurora` and `aurora-core`
+were already taken on crates.io. The binary (`aurora`) and every Rust crate name (`aurora_core`, `aurora_tui`, ...) are
+unchanged: only the package names differ, pinned by an explicit `[lib] name`. So `use aurora_core::...` in code, but
+`cargo test -p aurora-runner-core` on the command line. The MSRV is 1.91, imposed by the wasmtime/extism chain.
 
 ## Architecture
 

@@ -4,10 +4,10 @@ use aurora_core::{env::evaluate, events::SchedulerEvent, parser::parse};
 use aurora_executor_api::Executor;
 use aurora_executor_docker::DockerExecutor;
 use aurora_executor_local::LocalExecutor;
-use clap::{Arg, Command};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -18,68 +18,25 @@ const MULTI_BEAM: &str = "__multi__";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Command::new("aurora")
-        .version(env!("CARGO_PKG_VERSION"))
-        .about("Aurora: task runner with HCL-inspired Beamfile DSL")
-        .arg(Arg::new("beam").help("Beam to run").index(1))
-        .arg(
-            Arg::new("no-cache")
-                .long("no-cache")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("dry-run")
-                .long("dry-run")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("list")
-                .long("list")
-                .short('l')
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("var")
-                .long("var")
-                .action(clap::ArgAction::Append)
-                .help("Override variable: --var key=value"),
-        )
-        .arg(
-            Arg::new("no-tui")
-                .long("no-tui")
-                .action(clap::ArgAction::SetTrue)
-                .help("Force plain output, even in a terminal"),
-        )
-        .arg(
-            Arg::new("interactive")
-                .long("interactive")
-                .short('i')
-                .action(clap::ArgAction::SetTrue)
-                .conflicts_with("no-tui")
-                .help("Force the TUI, even when output is not a terminal"),
-        )
-        .arg(
-            Arg::new("args")
-                .help("Positional arguments for the target beam (use -- before hyphen-leading values)")
-                .index(2)
-                .num_args(0..),
-        );
+    let matches = aurora::cli().get_matches();
 
-    let matches = cli.get_matches();
+    // Pure emitters: a packager runs them from an arbitrary directory, so they
+    // must not depend on a Beamfile being present.
+    if let Some(&shell) = matches.get_one::<clap_complete::Shell>("completions") {
+        aurora::print_completions(shell, &mut std::io::stdout());
+        return Ok(());
+    }
+    if matches.get_flag("man") {
+        aurora::print_man_page(&mut std::io::stdout())?;
+        return Ok(());
+    }
 
     let beamfile_path = find_beamfile()?;
     let content = fs::read_to_string(&beamfile_path)?;
     let mut beam_file = parse(&content)?;
 
     if let Some(vars) = matches.get_many::<String>("var") {
-        for var_str in vars {
-            let (key, val) = var_str
-                .split_once('=')
-                .ok_or_else(|| anyhow::anyhow!("Invalid --var format, expected key=value"))?;
-            if let Some(v) = beam_file.variables.iter_mut().find(|v| v.name == key) {
-                v.default = val.to_string();
-            }
-        }
+        aurora::apply_var_overrides(&mut beam_file, vars)?;
     }
 
     // Resolve `var.<name>` references now that any --var override has been
@@ -96,7 +53,7 @@ async fn main() -> Result<()> {
     }
 
     if matches.get_flag("dry-run") {
-        let target = resolve_target(
+        let target = aurora::resolve_target(
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?;
@@ -111,6 +68,9 @@ async fn main() -> Result<()> {
     // (the picker is inherently interactive and does not exist outside a TTY).
     let target = if interactive {
         if let Some(beam_name) = matches.get_one::<String>("beam") {
+            // The picker can only ever yield beams that exist; an explicitly
+            // named one must be validated exactly as in headless mode.
+            aurora::ensure_beam_exists(&beam_file, beam_name)?;
             beam_name.clone()
         } else if let Some(picker_results) = aurora_tui::run_picker(
             beam_file
@@ -144,7 +104,7 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     } else {
-        resolve_target(
+        aurora::resolve_target(
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?
@@ -274,7 +234,19 @@ async fn main() -> Result<()> {
 
         aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
     } else {
-        // Headless mode: no interactive cancellation, `run` manages its own channel.
+        // Headless mode: no interactive cancellation, `run` manages its own
+        // channel. Ctrl-C and SIGTERM tear the run down instead of killing
+        // Aurora outright, which would orphan the beams' process subtrees.
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let interrupted = Arc::new(AtomicBool::new(false));
+        let signalled = interrupted.clone();
+        tokio::spawn(async move {
+            aurora::wait_for_termination_signal().await;
+            signalled.store(true, Ordering::SeqCst);
+            let _ = shutdown_tx.send(());
+        });
+
+        let scheduler = scheduler.with_shutdown(shutdown_rx);
         let target_clone = target.clone();
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
@@ -309,6 +281,12 @@ async fn main() -> Result<()> {
                 false
             }
         };
+        // 128 + SIGINT(2): the shell convention for "terminated by interrupt",
+        // and distinct from the plain 1 of a beam that failed on its own.
+        if interrupted.load(Ordering::SeqCst) {
+            eprintln!("aurora: interrupted, cancelled the running beams");
+            std::process::exit(130);
+        }
         if !success || !scheduler_ok {
             std::process::exit(1);
         }
@@ -363,19 +341,4 @@ fn print_execution_plan(beam_file: &aurora_core::ast::BeamFile, target: &str) ->
         println!("  level {i}: {}", names.join(", "));
     }
     Ok(())
-}
-
-fn resolve_target(
-    beam_file: &aurora_core::ast::BeamFile,
-    explicit: Option<&str>,
-) -> Result<String> {
-    if let Some(name) = explicit {
-        return Ok(name.to_string());
-    }
-    if let Some(cfg) = &beam_file.config {
-        if let Some(default) = &cfg.default {
-            return Ok(default.clone());
-        }
-    }
-    bail!("No beam specified and no default configured in aurora {{ }}")
 }
