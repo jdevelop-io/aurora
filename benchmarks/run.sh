@@ -40,6 +40,29 @@ for tool in hyperfine just task python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "missing: $tool" >&2; exit 1; }
 done
 
+# The no-op body has to be an ABSOLUTE PATH to a real binary, and this is the
+# single most important line in the harness.
+#
+# Task embeds a Go shell interpreter (mvdan/sh) which implements `true`, `echo`
+# and `cd` as in-process builtins. Given the bare word `true`, Task forks nothing
+# at all, while Aurora, make and just each fork and exec 100 processes. Measuring
+# that would compare an in-process no-op against real process creation and call
+# it a benchmark. An absolute path forces every runner to exec.
+#
+# Task's interpreter is a legitimate design, and the "Shell builtins" scenario
+# below gives it the ground where it genuinely wins.
+NOOP=""
+for candidate in /usr/bin/true /bin/true; do
+  [ -x "$candidate" ] && NOOP="$candidate" && break
+done
+[ -n "$NOOP" ] || { echo "no absolute path to \`true\` found" >&2; exit 1; }
+
+SLEEP=""
+for candidate in /bin/sleep /usr/bin/sleep; do
+  [ -x "$candidate" ] && SLEEP="$candidate" && break
+done
+[ -n "$SLEEP" ] || { echo "no absolute path to \`sleep\` found" >&2; exit 1; }
+
 jobs="$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)"
 out="$bench/results.md"
 
@@ -88,14 +111,17 @@ scenario() {
 
 echo "Running benchmarks ($runs runs each)..."
 
-scenario "Parallel speed-up" fan-out 8 "sleep 0.5" \
+scenario "Parallel speed-up" fan-out 8 "$SLEEP 0.5" \
   "8 independent tasks of 0.5s. A runner that parallelises finishes in ~0.5s, one that does not in ~4s."
 
-scenario "Runner overhead" fan-out 100 "true" \
-  "100 independent tasks that do nothing. Nothing is measured here but the runner itself: startup, parsing, graph construction and scheduling."
+scenario "Runner overhead" fan-out 100 "$NOOP" \
+  "100 independent tasks that exec a real binary which does nothing. Nothing is measured here but the runner itself: startup, parsing, graph construction, scheduling and process creation. The body is an absolute path on purpose (see \`run.sh\`): the bare word \`true\` is an in-process builtin for Task, which would then fork nothing while the others fork a hundred times."
 
-scenario "Scheduling a chain" chain 50 "true" \
-  "A 50-task linear chain. No runner can parallelise it, so this isolates per-task scheduling cost from any parallelism gain."
+scenario "Scheduling a chain" chain 50 "$NOOP" \
+  "A 50-task linear chain. No runner can parallelise it, so this isolates per-task cost from any parallelism gain."
+
+scenario "Shell builtins" fan-out 100 "true" \
+  "The same 100 tasks, but with the bare word \`true\`. This is where Task's embedded Go shell interpreter (mvdan/sh) shines: it runs the builtin in-process and never forks, while Aurora, make and just each create 100 processes. A real Beamfile runs compilers and linters, not builtins, so this is Task's best case rather than a representative one, but it is a genuine advantage and it belongs here."
 
 echo
 echo "Wrote $out"

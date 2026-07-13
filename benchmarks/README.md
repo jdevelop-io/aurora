@@ -2,7 +2,7 @@
 
 Aurora positions itself against `make`, `just` and `taskfile`. This directory
 exists so that claim can be checked rather than believed, including when the
-answer is unflattering.
+answer is unflattering. It currently is.
 
 ## Running them
 
@@ -25,23 +25,39 @@ written, not the runners.
 The numbers in [`results.md`](results.md) were measured on one machine and are
 reproduced there with its specs. Rerun them on yours rather than trusting them.
 
+### The one trap worth knowing about
+
+The no-op body is an **absolute path** to a real binary, not the bare word
+`true`. Task embeds a Go shell interpreter (`mvdan/sh`) which runs `true`, `echo`
+and `cd` as in-process builtins: given a bare `true`, Task forks nothing at all,
+while the other three fork and exec a hundred processes. Comparing those two
+things and calling it a benchmark is exactly the kind of unexamined premise this
+directory was built to catch. The "Shell builtins" scenario keeps that case
+around explicitly, because it is a real advantage of Task's design.
+
 ## What the numbers say
 
-Measured on an Apple M5 (10 cores), 10 runs per case.
+Apple M5, 10 cores, 30 runs per case. Aurora 0.8.0.
 
 **Aurora parallelises by default, and so does Task.** On 8 independent tasks of
-0.5s: Aurora 538ms, `make -j10` 524ms, Task 552ms. `just` takes 4.1s, and so does
+0.5s: `make -j10` 524ms, Aurora 538ms, Task 547ms. `just` takes 4.1s, and so does
 `make` without `-j`. The runner that genuinely cannot run dependencies in
 parallel is `just`; `make` can, but only if the user remembers the flag; Task
-runs its `deps` concurrently out of the box, exactly like Aurora.
+runs its `deps` concurrently out of the box, exactly like Aurora. "No mainstream
+task runner offers this" was not true.
 
-**Aurora is not the fastest, and it is not close.** On 100 tasks that do nothing,
-which measures nothing but the runner itself, `make -j` takes 20ms, Task 40ms and
-Aurora 64ms. On a 50-task chain, Aurora spends ~2.6ms per task against ~0.7ms for
-Task. Aurora carries the highest scheduling overhead of the three runners that
-parallelise. On a real graph, where tasks cost hundreds of milliseconds each, tens
-of milliseconds of scheduling disappear into the noise. It is still the honest
-result, and speed is not an argument Aurora gets to make.
+**Aurora is slow at starting processes, and this is its worst result.** On 100
+independent tasks that exec a real binary: `make -j10` 18.5ms, Aurora 75.5ms,
+Task 126ms, `just` 341ms. On a 50-task chain, where nothing can be parallelised:
+make 42ms, Task 105ms, Aurora 168ms. Aurora is **4x `make`**, and on the chain it
+is beaten by Task too. On a real graph, where tasks cost hundreds of milliseconds
+each, tens of milliseconds of process creation disappear into the noise. It is
+still the honest result, and speed is not an argument Aurora gets to make today.
+
+**Where Task wins.** On the bare-builtin scenario Task takes 39ms against
+Aurora's 63ms, because its in-process interpreter never forks. Real Beamfiles run
+compilers, linters and containers, not builtins, so this is Task's best case
+rather than a representative one — but it is a genuine design advantage.
 
 **The cache is the differentiator, and it is a correctness argument, not a speed
 one.** Change a task's *command* while leaving its input files untouched:
