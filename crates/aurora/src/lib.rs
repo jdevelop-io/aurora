@@ -88,6 +88,37 @@ pub fn apply_var_overrides<'a>(
     Ok(())
 }
 
+/// Resolves once the process is asked to terminate: Ctrl-C anywhere, and also
+/// SIGTERM on Unix (what a CI runner or an orchestrator sends to stop a job).
+///
+/// A run that ignored these would be killed on the default disposition, leaving
+/// its beams' process subtrees behind; the caller uses this to tear the run down
+/// while its executors can still reap their children.
+pub async fn wait_for_termination_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        // A failure to register the SIGTERM handler must not cost us Ctrl-C.
+        match signal(SignalKind::terminate()) {
+            Ok(mut sigterm) => {
+                tokio::select! {
+                    _ = tokio::signal::ctrl_c() => {}
+                    _ = sigterm.recv() => {}
+                }
+            }
+            Err(_) => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
+}
+
 /// Resolves the effective parallelism cap for a run. An explicit value from
 /// the Beamfile's `aurora { parallelism = N }` block is honored as-is; an
 /// absent value defaults to the host's available parallelism rather than

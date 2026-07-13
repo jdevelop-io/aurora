@@ -39,6 +39,10 @@ pub struct Scheduler {
     /// ambient allowlisted variables: those are machine context and must stay
     /// out of the key (see [`BeamDefinition::env`]).
     declared_env: BTreeMap<String, String>,
+    /// Fires when the whole run must stop (Ctrl-C, SIGTERM). Distinct from the
+    /// per-beam cancellation channel: that one targets a named beam, this one
+    /// tears the run down.
+    shutdown: Option<oneshot::Receiver<()>>,
 }
 
 impl Scheduler {
@@ -61,7 +65,20 @@ impl Scheduler {
             working_dir,
             env,
             declared_env: BTreeMap::new(),
+            shutdown: None,
         }
+    }
+
+    /// Arms a shutdown signal for this run: when `shutdown` fires, every running
+    /// beam is cancelled and no further beam is spawned.
+    ///
+    /// Beams run in their own process group, so they never see the terminal's
+    /// SIGINT. Without an explicit teardown the host process would die on the
+    /// default disposition, its `Drop`-based process-group cleanup would not run,
+    /// and the commands would outlive the run that started them.
+    pub fn with_shutdown(mut self, shutdown: oneshot::Receiver<()>) -> Self {
+        self.shutdown = Some(shutdown);
+        self
     }
 
     /// Records the evaluated `environment {}` block so it takes part in every
@@ -93,11 +110,12 @@ impl Scheduler {
     }
 
     pub async fn run_cancellable(
-        self,
+        mut self,
         root: &str,
         pre_success: &[String],
         mut cancel_rx: mpsc::UnboundedReceiver<String>,
     ) -> Result<bool> {
+        let mut shutdown = self.shutdown.take();
         let deps: Vec<(String, Vec<String>)> = self
             .beams
             .values()
@@ -190,6 +208,16 @@ impl Scheduler {
                         let _ = s.send(());
                     }
                 }
+                _ = wait_for_shutdown(&mut shutdown), if !run.shutting_down => {
+                    // Tear the run down: cancel every running beam, and stop
+                    // spawning. Their dependents are cancelled as each reports
+                    // Cancelled, so nothing is left Pending. The loop exits once
+                    // the JoinSet drains.
+                    run.shutting_down = true;
+                    for (_, cancel) in run.cancels.drain() {
+                        let _ = cancel.send(());
+                    }
+                }
             }
         }
 
@@ -205,7 +233,13 @@ impl Scheduler {
     /// Spawns a beam and records its cancellation handle, task id and spawned
     /// mark in one place, so the three bookkeeping insertions cannot drift
     /// between the initial seed and the unblock path.
+    ///
+    /// A run that is shutting down spawns nothing more: the point of the
+    /// teardown is to stop starting work, not just to stop the work in flight.
     fn spawn_and_track(&self, run: &mut RunLoop, semaphore: &Option<Arc<Semaphore>>, name: &str) {
+        if run.shutting_down {
+            return;
+        }
         let (cancel_tx, id) = self.spawn_beam(&mut run.set, semaphore, name);
         run.cancels.insert(name.to_string(), cancel_tx);
         run.task_names.insert(id, name.to_string());
@@ -345,6 +379,25 @@ struct RunLoop {
     task_names: HashMap<tokio::task::Id, String>,
     /// The live beam tasks.
     set: JoinSet<(String, BeamOutcome)>,
+    /// Set once the run is tearing down, so no further beam is spawned and the
+    /// shutdown branch is not re-armed.
+    shutting_down: bool,
+}
+
+/// Awaits the run's shutdown signal, or never resolves when none is armed.
+/// `select!` polls every enabled branch, so the no-shutdown case needs a future
+/// that stays pending rather than one that completes immediately.
+async fn wait_for_shutdown(shutdown: &mut Option<oneshot::Receiver<()>>) {
+    match shutdown {
+        Some(rx) => {
+            // A dropped sender means the run can never be shut down: treat it
+            // like the absent case rather than firing a spurious teardown.
+            if rx.await.is_err() {
+                std::future::pending::<()>().await
+            }
+        }
+        None => std::future::pending::<()>().await,
+    }
 }
 
 impl RunLoop {
@@ -356,6 +409,7 @@ impl RunLoop {
             cancels: HashMap::new(),
             task_names: HashMap::new(),
             set: JoinSet::new(),
+            shutting_down: false,
         }
     }
 }

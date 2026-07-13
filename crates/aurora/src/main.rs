@@ -8,6 +8,7 @@ use clap::{Arg, Command};
 use std::fs;
 use std::io::IsTerminal;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -270,7 +271,19 @@ async fn main() -> Result<()> {
 
         aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
     } else {
-        // Headless mode: no interactive cancellation, `run` manages its own channel.
+        // Headless mode: no interactive cancellation, `run` manages its own
+        // channel. Ctrl-C and SIGTERM tear the run down instead of killing
+        // Aurora outright, which would orphan the beams' process subtrees.
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let interrupted = Arc::new(AtomicBool::new(false));
+        let signalled = interrupted.clone();
+        tokio::spawn(async move {
+            aurora::wait_for_termination_signal().await;
+            signalled.store(true, Ordering::SeqCst);
+            let _ = shutdown_tx.send(());
+        });
+
+        let scheduler = scheduler.with_shutdown(shutdown_rx);
         let target_clone = target.clone();
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
@@ -305,6 +318,12 @@ async fn main() -> Result<()> {
                 false
             }
         };
+        // 128 + SIGINT(2): the shell convention for "terminated by interrupt",
+        // and distinct from the plain 1 of a beam that failed on its own.
+        if interrupted.load(Ordering::SeqCst) {
+            eprintln!("aurora: interrupted, cancelled the running beams");
+            std::process::exit(130);
+        }
         if !success || !scheduler_ok {
             std::process::exit(1);
         }
