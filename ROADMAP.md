@@ -53,10 +53,12 @@ Expected of a tool that positions itself as modern.
   Pairs naturally with the TUI.
 - [ ] **Composition / `include`** — import other Beamfiles or shared task
   libraries. What makes `task` viable in large monorepos.
-- [ ] **Distribution and discoverability** — shell completions, a Homebrew
-  formula, a man page, and a user-facing documentation site (reference docs
-  currently live inside the Claude Code plugin skill, invisible to a normal
-  user).
+- [ ] **Distribution and discoverability** — shell completions (`--completions`),
+  a man page (`--man`) and a Homebrew formula
+  ([`jdevelop-io/homebrew-tap`](https://github.com/jdevelop-io/homebrew-tap),
+  refreshed by the release workflow) are in place. Still missing: publishing to
+  crates.io, and a user-facing documentation site (reference docs currently live
+  inside the Claude Code plugin skill, invisible to a normal user).
 
 ## Differentiators (where Aurora can lead)
 

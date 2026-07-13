@@ -22,6 +22,16 @@ Aurora is a task runner and build tool written in Rust, designed as an alternati
 The quick-install scripts below download a prebuilt binary and need no build tools.
 Docker is optional and only required at runtime for beams that use the `docker` executor.
 
+### Homebrew (macOS and Linux)
+
+```bash
+brew install jdevelop-io/tap/aurora-runner
+```
+
+The formula is `aurora-runner`, but the installed binary is `aurora`: `homebrew/core`
+already ships an unrelated `aurora` (a Beanstalkd queue console), so the shorter name
+would hand you the wrong project. Completions and the man page are installed with it.
+
 ### Quick install (Linux and macOS)
 
 Download the latest prebuilt binary for your platform and install it:
