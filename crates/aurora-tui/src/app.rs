@@ -99,14 +99,14 @@ impl BeamView {
         self.iter_log_lines()
             .take(logical_line)
             .map(|(t, _)| visual_rows(t, width))
-            .sum()
+            .fold(0u16, |acc, rows| acc.saturating_add(rows))
     }
 
     /// Total number of visual lines (after wrap) at width `width`.
     pub fn total_visual_rows(&self, width: u16) -> u16 {
         self.iter_log_lines()
             .map(|(t, _)| visual_rows(t, width))
-            .sum()
+            .fold(0u16, |acc, rows| acc.saturating_add(rows))
     }
 
     /// Index of the logical line displayed at visual offset `offset`
@@ -200,8 +200,10 @@ pub fn wrap_log_line(text: &str, width: u16) -> Vec<&str> {
 }
 
 /// Number of visual lines a logical line occupies at width `width`.
+/// Saturates at `u16::MAX` so a pathologically long single line cannot wrap
+/// the count.
 pub fn visual_rows(text: &str, width: u16) -> u16 {
-    wrap_log_line(text, width).len() as u16
+    wrap_log_line(text, width).len().min(u16::MAX as usize) as u16
 }
 
 // ── LogKind ──────────────────────────────────────────────────────

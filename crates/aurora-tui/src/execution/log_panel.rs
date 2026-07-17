@@ -54,7 +54,7 @@ pub fn render_log_panel(
         }
     }
 
-    let total_visual = lines.len() as u16;
+    let total_visual = lines.len().min(u16::MAX as usize) as u16;
     let inner_height = area.height.saturating_sub(2);
 
     let auto_indicator = if log_state.scroll_locked {
