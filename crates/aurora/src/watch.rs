@@ -6,11 +6,14 @@
 //! to watch, [`classify_path`] filters raw events, [`debounce_loop`] coalesces
 //! them, and only [`Watcher`] wires those onto real `notify` events.
 
+use anyhow::Result;
 use aurora_core::ast::Beam;
 use aurora_core::dag::BeamGraph;
 use aurora_core::events::WatchTrigger;
+use notify::{RecursiveMode, Watcher as NotifyWatcher};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -218,4 +221,100 @@ pub fn detect_output_input_overlap(beams: &[Beam], closure: &HashSet<String>) ->
         }
     }
     warnings
+}
+
+/// A live filesystem watch. Holds the `notify` watcher (whose `Drop`
+/// unregisters every root) and the debounce task handle. Dropping it stops
+/// delivering triggers: `notify` unregisters, its event thread stops sending,
+/// the debounce task sees its channel close and returns.
+pub struct Watcher {
+    _notify: notify::RecommendedWatcher,
+    debounce: tokio::task::JoinHandle<()>,
+}
+
+impl Drop for Watcher {
+    fn drop(&mut self) {
+        self.debounce.abort();
+    }
+}
+
+impl Watcher {
+    /// Registers `set`'s roots (recursively) and the Beamfile's directory
+    /// (non-recursively, to catch atomic write-then-rename saves), spawns the
+    /// debounce task, and returns the guard together with the trigger receiver.
+    ///
+    /// A root that fails to register (for example the inotify watch limit) is
+    /// logged to stderr and skipped rather than failing the whole watch. When
+    /// no root at all could be registered but the Beamfile's directory did, the
+    /// watch still runs (Beamfile-only), consistent with the no-inputs case.
+    pub fn start(
+        set: WatchSet,
+        quiet: Duration,
+    ) -> Result<(Watcher, mpsc::Receiver<WatchTrigger>)> {
+        let (raw_tx, raw_rx) = mpsc::unbounded_channel::<bool>();
+        let (trig_tx, trig_rx) = mpsc::channel::<WatchTrigger>(8);
+        let debounce = tokio::spawn(debounce_loop(raw_rx, trig_tx, quiet));
+
+        let set = Arc::new(set);
+        let event_set = set.clone();
+        let mut notify_watcher =
+            notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                let Ok(event) = res else {
+                    return;
+                };
+                for path in &event.paths {
+                    if let Some(is_beamfile) = classify_path(path, &event_set) {
+                        // Unbounded: the notify thread must never block. The
+                        // debounce task drains and coalesces downstream.
+                        let _ = raw_tx.send(is_beamfile);
+                    }
+                }
+            })?;
+
+        // The Beamfile's directory, watched non-recursively, catches editors
+        // that save by writing a temp file and renaming it over the Beamfile.
+        let mut registered: Vec<PathBuf> = Vec::new();
+        if let Some(parent) = set.beamfile.parent() {
+            register_root(
+                &mut notify_watcher,
+                parent,
+                RecursiveMode::NonRecursive,
+                &mut registered,
+            );
+        }
+        for root in &set.roots {
+            register_root(
+                &mut notify_watcher,
+                root,
+                RecursiveMode::Recursive,
+                &mut registered,
+            );
+        }
+
+        Ok((
+            Watcher {
+                _notify: notify_watcher,
+                debounce,
+            },
+            trig_rx,
+        ))
+    }
+}
+
+/// Registers one root with `notify`, skipping paths already covered (an exact
+/// duplicate would make `notify` error) and logging a failure without aborting.
+fn register_root(
+    watcher: &mut notify::RecommendedWatcher,
+    path: &Path,
+    mode: RecursiveMode,
+    registered: &mut Vec<PathBuf>,
+) {
+    let path = path.to_path_buf();
+    if registered.contains(&path) {
+        return;
+    }
+    match watcher.watch(&path, mode) {
+        Ok(()) => registered.push(path),
+        Err(e) => eprintln!("aurora: cannot watch {}: {e}", path.display()),
+    }
 }
