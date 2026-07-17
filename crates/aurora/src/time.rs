@@ -29,12 +29,22 @@ mod tests {
         assert!(stamp.ends_with('Z'), "expected a Z suffix, got {stamp}");
         let parsed: Timestamp = stamp.parse().expect("must parse back as a Timestamp");
         // Rounded to milliseconds: no sub-millisecond digits remain.
-        assert_eq!(parsed.subsec_nanosecond() % 1_000_000, 0, "not millisecond-rounded: {stamp}");
+        assert_eq!(
+            parsed.subsec_nanosecond() % 1_000_000,
+            0,
+            "not millisecond-rounded: {stamp}"
+        );
         // The fraction is always exactly three digits: jiff's default `Display`
         // trims trailing zeros, which the parse-back above cannot detect, so
         // assert the width directly on the rendered string.
-        let dot = stamp.find('.').expect("expected a fractional part, got {stamp}");
+        let dot = stamp
+            .find('.')
+            .expect("expected a fractional part, got {stamp}");
         let fraction = &stamp[dot + 1..stamp.len() - 1];
-        assert_eq!(fraction.len(), 3, "expected three fractional digits, got {stamp}");
+        assert_eq!(
+            fraction.len(),
+            3,
+            "expected three fractional digits, got {stamp}"
+        );
     }
 }
