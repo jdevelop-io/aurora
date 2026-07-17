@@ -6,6 +6,9 @@
 //! to watch, [`classify_path`] filters raw events, [`debounce_loop`] coalesces
 //! them, and only [`Watcher`] wires those onto real `notify` events.
 
+use aurora_core::ast::Beam;
+use aurora_core::dag::BeamGraph;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -30,4 +33,100 @@ pub fn glob_root(pattern: &str) -> PathBuf {
         root.push(component);
     }
     root
+}
+
+/// What to watch for a given target: the directory roots to register
+/// recursively with `notify`, the absolute glob patterns used to keep only
+/// relevant events, the Beamfile path (always watched), and whether any beam in
+/// the closure declared usable inputs. When `has_inputs` is false the caller
+/// warns and watches the Beamfile alone.
+pub struct WatchSet {
+    pub roots: Vec<PathBuf>,
+    pub patterns: Vec<glob::Pattern>,
+    pub beamfile: PathBuf,
+    pub has_inputs: bool,
+}
+
+/// The set of beam names in `target`'s transitive closure (the target plus all
+/// its transitive dependencies). Falls back to every beam if the graph cannot
+/// be built (a cycle): the scheduler will surface that error itself, and an
+/// over-broad watch set is harmless.
+pub fn closure_of(beams: &[Beam], target: &str) -> HashSet<String> {
+    let deps: Vec<(String, Vec<String>)> = beams
+        .iter()
+        .map(|b| (b.name.clone(), b.depends_on.clone()))
+        .collect();
+    match BeamGraph::from_deps(deps) {
+        Ok(graph) => graph.transitive_deps(target).into_iter().collect(),
+        Err(_) => beams.iter().map(|b| b.name.clone()).collect(),
+    }
+}
+
+/// True when a pattern would resolve outside the Beamfile directory: an absolute
+/// path (which `join` lets replace the base) or one with a `..` component. Such
+/// a pattern is skipped, mirroring the cache's `escapes_base_dir` guard: a
+/// Beamfile is untrusted and must not make the watcher register roots outside
+/// its own tree.
+fn escapes_base_dir(pattern: &str) -> bool {
+    let candidate = Path::new(pattern);
+    candidate.is_absolute()
+        || candidate
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+}
+
+/// The nearest existing ancestor directory of `path` (including `path` itself).
+/// Returns `None` when no ancestor exists on disk. Used so a literal-file root
+/// (or a glob root whose leaf is not yet created) still registers on its parent
+/// directory, which catches the file being created or atomically replaced.
+fn nearest_existing_dir(path: &Path) -> Option<PathBuf> {
+    let mut current = path;
+    loop {
+        if current.is_dir() {
+            return Some(current.to_path_buf());
+        }
+        current = current.parent()?;
+    }
+}
+
+/// Computes the [`WatchSet`] for `target`'s closure. Roots are deduplicated; a
+/// pattern whose root has no existing ancestor directory contributes no root but
+/// still contributes its filter pattern, so it starts matching once the tree
+/// appears (after a Beamfile change recomputes the set).
+pub fn build_watch_set(
+    beams: &[Beam],
+    closure: &HashSet<String>,
+    working_dir: &Path,
+    beamfile: &Path,
+) -> WatchSet {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    let mut patterns: Vec<glob::Pattern> = Vec::new();
+
+    for b in beams.iter().filter(|b| closure.contains(&b.name)) {
+        let effective_dir = match &b.dir {
+            Some(dir) => working_dir.join(dir),
+            None => working_dir.to_path_buf(),
+        };
+        for pattern in &b.inputs {
+            if escapes_base_dir(pattern) {
+                continue;
+            }
+            let absolute = effective_dir.join(pattern);
+            if let Ok(compiled) = glob::Pattern::new(&absolute.to_string_lossy()) {
+                patterns.push(compiled);
+            }
+            if let Some(dir) = nearest_existing_dir(&effective_dir.join(glob_root(pattern))) {
+                if !roots.contains(&dir) {
+                    roots.push(dir);
+                }
+            }
+        }
+    }
+
+    WatchSet {
+        has_inputs: !patterns.is_empty(),
+        roots,
+        patterns,
+        beamfile: beamfile.to_path_buf(),
+    }
 }
