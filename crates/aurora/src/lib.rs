@@ -16,7 +16,7 @@ use aurora_executor_api::Executor;
 use clap::{Arg, Command};
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -254,4 +254,54 @@ pub fn build_scheduler(
     } else {
         scheduler.without_cache()
     }
+}
+
+/// The per-cycle run data produced by re-parsing a Beamfile: the beams (with
+/// variables and arguments already interpolated into their commands), the full
+/// evaluated environment, the declared subset that feeds cache keys, and the
+/// configured parallelism cap. Returned by [`resolve_run_inputs`] and consumed
+/// by the watch supervisor loops when the Beamfile changes.
+pub struct RunInputs {
+    pub beams: Vec<Beam>,
+    pub env: HashMap<String, String>,
+    pub declared_env: BTreeMap<String, String>,
+    pub max_parallelism: Option<usize>,
+}
+
+/// Re-reads and re-parses the Beamfile at `beamfile_path` into a [`RunInputs`],
+/// applying `--var` overrides, resolving `var.*` references and positional
+/// arguments for `target`, then evaluating the `environment {}` block (falling
+/// back to the allowlisted base environment when none is declared).
+///
+/// This is the reload path: it composes the same steps `main` runs at startup,
+/// so a Beamfile edited while watching is picked up identically to a fresh run.
+/// Any failure (parse error, unknown variable, environment `shell(...)` failure)
+/// is returned as `Err`; the caller keeps the previous definition and keeps
+/// watching rather than aborting.
+pub fn resolve_run_inputs(
+    beamfile_path: &Path,
+    working_dir: &Path,
+    var_overrides: &[String],
+    target: &str,
+    args: &[String],
+) -> Result<RunInputs> {
+    let content = std::fs::read_to_string(beamfile_path)?;
+    let mut beam_file = aurora_core::parser::parse(&content)?;
+    apply_var_overrides(&mut beam_file, var_overrides.iter())?;
+    aurora_core::parser::resolve_variables(&mut beam_file)?;
+    aurora_core::parser::resolve_arguments(&mut beam_file, target, args)?;
+
+    let env = match &beam_file.environment {
+        Some(env_block) => aurora_core::env::evaluate(env_block, working_dir)?,
+        None => aurora_core::env::base_env(),
+    };
+    let declared_env = aurora_core::env::declared_only(beam_file.environment.as_ref(), &env);
+    let max_parallelism = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
+
+    Ok(RunInputs {
+        beams: beam_file.beams,
+        env,
+        declared_env,
+        max_parallelism,
+    })
 }
