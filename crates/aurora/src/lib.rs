@@ -67,6 +67,14 @@ pub fn cli() -> Command {
                 .help("Force the TUI, even when output is not a terminal"),
         )
         .arg(
+            Arg::new("watch")
+                .long("watch")
+                .short('w')
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with_all(["json", "list", "dry-run"])
+                .help("Re-run the target and its dependents when their inputs change"),
+        )
+        .arg(
             Arg::new("json")
                 .long("json")
                 .action(clap::ArgAction::SetTrue)
