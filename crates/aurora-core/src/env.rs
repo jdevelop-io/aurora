@@ -53,7 +53,12 @@ const ENV_ALLOWLIST: &[&str] = &[
 /// `std::env::vars()`, so the allowlist is applied even when a Beamfile
 /// declares no `environment { }` block.
 pub fn base_env() -> HashMap<String, String> {
-    std::env::vars()
+    // `std::env::vars()` panics while iterating if any ambient key or value is
+    // not valid UTF-8, even one we would filter out. Iterate over the OS-string
+    // form and skip entries that are not representable as UTF-8, so a single
+    // latin-1 or binary-valued variable on the machine cannot crash Aurora.
+    std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
         .filter(|(k, _)| ENV_ALLOWLIST.contains(&k.as_str()) || k.starts_with("LC_"))
         .collect()
 }

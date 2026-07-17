@@ -28,6 +28,27 @@ fn base_env_filters_secrets_but_keeps_allowlisted_and_locale() {
     std::env::remove_var("LC_TEST_LOCALE");
 }
 
+/// A non-UTF-8 variable in the ambient environment must not crash Aurora.
+/// `std::env::vars()` panics while iterating over such a variable, even one
+/// that would be filtered out; `base_env` must tolerate it.
+#[cfg(unix)]
+#[test]
+fn base_env_survives_non_utf8_ambient_var() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+
+    let bad = OsStr::from_bytes(&[b'a', 0xff, b'b']);
+    std::env::set_var("AURORA_TEST_NON_UTF8", bad);
+
+    // Must not panic even though the value is not valid UTF-8.
+    let env = base_env();
+
+    // Not allowlisted, so it must not be carried over either.
+    assert!(!env.contains_key("AURORA_TEST_NON_UTF8"));
+
+    std::env::remove_var("AURORA_TEST_NON_UTF8");
+}
+
 /// An empty `environment {}` block still applies the allowlist: it never
 /// leaks the full process environment.
 #[test]
