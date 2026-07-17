@@ -113,6 +113,7 @@ pub async fn run_execution_tui(
                         apply_watch_trigger(
                             trigger,
                             &target,
+                            &start_watch,
                             &reload,
                             &rerun,
                             &mut exec,
@@ -120,6 +121,8 @@ pub async fn run_execution_tui(
                             &mut search,
                             &mut rx,
                             &mut cancel_tx,
+                            &mut watch_guard,
+                            &mut watch_trigger_rx,
                             &mut watch_error,
                         );
                     }
@@ -127,23 +130,30 @@ pub async fn run_execution_tui(
 
                 // Drain coalesced watch triggers. A trigger during a run is held
                 // and applied at AllDone; a trigger while idle is applied now.
-                if let Some(trig_rx) = watch_trigger_rx.as_mut() {
-                    while let Ok(trigger) = trig_rx.try_recv() {
-                        let run_in_progress = exec.done.is_none();
-                        if watch.on_trigger(trigger, run_in_progress) {
-                            apply_watch_trigger(
-                                trigger,
-                                &target,
-                                &reload,
-                                &rerun,
-                                &mut exec,
-                                &mut log_state,
-                                &mut search,
-                                &mut rx,
-                                &mut cancel_tx,
-                                &mut watch_error,
-                            );
-                        }
+                // Each try_recv takes a short borrow that ends before
+                // apply_watch_trigger, so it can re-arm the trigger receiver.
+                while let Some(trig_rx) = watch_trigger_rx.as_mut() {
+                    let trigger = match trig_rx.try_recv() {
+                        Ok(trigger) => trigger,
+                        Err(_) => break,
+                    };
+                    let run_in_progress = exec.done.is_none();
+                    if watch.on_trigger(trigger, run_in_progress) {
+                        apply_watch_trigger(
+                            trigger,
+                            &target,
+                            &start_watch,
+                            &reload,
+                            &rerun,
+                            &mut exec,
+                            &mut log_state,
+                            &mut search,
+                            &mut rx,
+                            &mut cancel_tx,
+                            &mut watch_guard,
+                            &mut watch_trigger_rx,
+                            &mut watch_error,
+                        );
                     }
                 }
 
@@ -545,6 +555,7 @@ fn handle_execution_key(
 fn apply_watch_trigger(
     trigger: WatchTrigger,
     target: &str,
+    start_watch: &impl Fn(String) -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>)>,
     reload: &impl Fn() -> anyhow::Result<(
         Vec<(String, Vec<String>)>,
         mpsc::Receiver<SchedulerEvent>,
@@ -562,6 +573,8 @@ fn apply_watch_trigger(
     search: &mut LogSearch,
     rx: &mut mpsc::Receiver<SchedulerEvent>,
     cancel_tx: &mut mpsc::UnboundedSender<String>,
+    watch_guard: &mut Option<Box<dyn Send>>,
+    watch_trigger_rx: &mut Option<mpsc::Receiver<WatchTrigger>>,
     watch_error: &mut Option<String>,
 ) {
     if trigger.beamfile_changed {
@@ -572,7 +585,18 @@ fn apply_watch_trigger(
                 search.clear();
                 *rx = new_rx;
                 *cancel_tx = new_cancel;
-                *watch_error = None;
+                // Re-arm the watcher on the rebuilt closure: a Beamfile edit can
+                // add or rename input globs, and the previous watcher still
+                // watches the old set. Mirror the headless loop, which re-arms on
+                // a Beamfile change. Keep the previous watcher if re-arming fails.
+                match start_watch(target.to_string()) {
+                    Ok((guard, new_trig_rx)) => {
+                        *watch_guard = Some(guard);
+                        *watch_trigger_rx = Some(new_trig_rx);
+                        *watch_error = None;
+                    }
+                    Err(e) => *watch_error = Some(e.to_string()),
+                }
             }
             Err(e) => *watch_error = Some(e.to_string()),
         }
