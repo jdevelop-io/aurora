@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
 
     let json = matches.get_flag("json");
 
-    let beamfile_path = match find_beamfile() {
+    let beamfile_path = match find_beamfile(json) {
         Ok(path) => path,
         Err(e) => fail_prerun(json, "beamfile", &e),
     };
@@ -275,6 +275,18 @@ async fn main() -> Result<()> {
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
+        // run_started.beams is the target's dependency closure, not every declared
+        // beam. Fall back to the full list if the graph cannot be built (a cycle):
+        // the scheduler then surfaces that error as an event.
+        let json_beams: Vec<String> = if json {
+            aurora_core::dag::BeamGraph::from_deps(beam_info.clone())
+                .ok()
+                .and_then(|graph| graph.execution_levels(&target).ok())
+                .map(|levels| levels.into_iter().flatten().collect())
+                .unwrap_or_else(|| beam_names.clone())
+        } else {
+            beam_names.clone()
+        };
         // Color decided per stream: stdout and stderr can be redirected
         // independently (e.g. `aurora --no-tui 2>err.log` in a terminal).
         let out_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
@@ -285,7 +297,7 @@ async fn main() -> Result<()> {
         let mut reporter: Box<dyn Reporter> = if json {
             Box::new(aurora::json::JsonReporter::new(
                 target.clone(),
-                beam_names.clone(),
+                json_beams,
                 &mut stdout,
             ))
         } else {
@@ -298,7 +310,6 @@ async fn main() -> Result<()> {
             ))
         };
         let success = reporter.run(rx).await?;
-        drop(reporter);
 
         // The scheduler can fail before emitting AllDone (DAG construction error:
         // cycle, unknown dependency). We join its task to propagate
@@ -327,7 +338,9 @@ async fn main() -> Result<()> {
         // 128 + SIGINT(2): the shell convention for "terminated by interrupt",
         // and distinct from the plain 1 of a beam that failed on its own.
         if interrupted.load(Ordering::SeqCst) {
-            eprintln!("aurora: interrupted, cancelled the running beams");
+            if !json {
+                eprintln!("aurora: interrupted, cancelled the running beams");
+            }
             std::process::exit(130);
         }
         if !success || !scheduler_ok {
@@ -359,7 +372,7 @@ fn fail_prerun(json: bool, kind: &str, err: &anyhow::Error) -> ! {
     std::process::exit(1);
 }
 
-fn find_beamfile() -> Result<PathBuf> {
+fn find_beamfile(json: bool) -> Result<PathBuf> {
     let start = std::env::current_dir()?;
     let mut dir = start.clone();
     loop {
@@ -367,8 +380,9 @@ fn find_beamfile() -> Result<PathBuf> {
         if candidate.exists() {
             // A Beamfile runs arbitrary commands. When it is picked up from an
             // ancestor directory (not the one Aurora was launched in), warn:
-            // the user may not expect that ancestor's beams to execute.
-            if dir != start {
+            // the user may not expect that ancestor's beams to execute. Under
+            // `--json` stdout is the sole output contract, so stay silent.
+            if dir != start && !json {
                 eprintln!(
                     "aurora: using Beamfile from a parent directory: {}",
                     candidate.display()

@@ -114,14 +114,19 @@ impl<'a, W: Write> JsonReporter<'a, W> {
     /// Serializes one event as a single line and flushes immediately: unbuffered
     /// streaming is the point in CI.
     fn emit(&mut self, event: &WireEvent) -> std::io::Result<()> {
-        let mut line = serde_json::to_string(&Wire {
-            schema: SCHEMA,
-            event,
-        })?;
-        line.push('\n');
-        self.out.write_all(line.as_bytes())?;
-        self.out.flush()
+        write_line(self.out, event)
     }
+}
+
+/// Serializes one event as a single NDJSON line and flushes immediately.
+fn write_line(out: &mut impl std::io::Write, event: &WireEvent) -> std::io::Result<()> {
+    let mut line = serde_json::to_string(&Wire {
+        schema: SCHEMA,
+        event,
+    })?;
+    line.push('\n');
+    out.write_all(line.as_bytes())?;
+    out.flush()
 }
 
 /// Wraps an event with the schema field without threading `schema` through
@@ -199,11 +204,5 @@ pub fn write_error(out: &mut impl Write, kind: &str, message: &str) -> std::io::
         kind: kind.to_string(),
         message: message.to_string(),
     };
-    let mut line = serde_json::to_string(&Wire {
-        schema: SCHEMA,
-        event: &event,
-    })?;
-    line.push('\n');
-    out.write_all(line.as_bytes())?;
-    out.flush()
+    write_line(out, &event)
 }

@@ -147,3 +147,40 @@ beam "ok" { run { commands = ["echo hi"] } }
     assert_eq!(value["schema"], 1);
     assert_eq!(value["kind"], "beamfile");
 }
+
+#[test]
+fn run_started_reports_only_the_dependency_closure() {
+    let beamfile = r#"
+beam "target" { depends_on = ["dep"] run { commands = ["echo t"] } }
+beam "dep" { run { commands = ["echo d"] } }
+beam "unrelated" { run { commands = ["echo u"] } }
+"#;
+    let dir = fixture_dir(beamfile);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["target", "--json"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let first = stdout.lines().next().expect("a run_started line");
+    let value: serde_json::Value = serde_json::from_str(first).unwrap();
+    assert_eq!(value["event"], "run_started");
+    let beams: Vec<String> = value["beams"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b.as_str().unwrap().to_string())
+        .collect();
+    assert!(
+        beams.contains(&"target".to_string()),
+        "closure has the target: {beams:?}"
+    );
+    assert!(
+        beams.contains(&"dep".to_string()),
+        "closure has the dependency: {beams:?}"
+    );
+    assert!(
+        !beams.contains(&"unrelated".to_string()),
+        "closure excludes unrelated beams: {beams:?}"
+    );
+}

@@ -254,9 +254,12 @@ nothing else is written to stdout as raw text. The event types are:
 `at` is an RFC 3339 UTC timestamp with millisecond precision, for example
 `2026-07-17T10:00:00.120Z`.
 
-A pre-run failure emits `run_started` followed by an `error` event on stdout
-and exits `1`; the stream does **not** end with a `run_completed` in that
-case, so a consumer must not assume every run closes with one.
+A pre-run failure emits an `error` event on stdout and exits `1`. Depending on
+when the failure is detected, this `error` may appear on its own (a parse
+error, an unknown target, a bad `--var` key, a failing `environment {}`
+block) or after a `run_started` (a dependency cycle, detected once the run
+has begun). In neither case is it followed by a `run_completed`, so a
+consumer must not assume every run closes with one.
 
 ```bash
 aurora check --json | jq -r 'select(.event=="beam_completed") | "\(.beam) \(.status)"'
