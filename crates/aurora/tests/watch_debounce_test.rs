@@ -13,6 +13,7 @@ async fn coalesces_a_burst_into_one_trigger() {
     raw_tx.send(false).unwrap();
     raw_tx.send(false).unwrap();
     raw_tx.send(false).unwrap();
+    tokio::task::yield_now().await;
 
     // Before the quiet period elapses: nothing yet.
     tokio::time::advance(Duration::from_millis(100)).await;
@@ -47,6 +48,7 @@ async fn beamfile_change_is_ored_across_the_burst() {
 
     raw_tx.send(false).unwrap(); // an input
     raw_tx.send(true).unwrap(); // the Beamfile
+    tokio::task::yield_now().await;
     tokio::time::advance(Duration::from_millis(250)).await;
     tokio::task::yield_now().await;
 
@@ -66,6 +68,7 @@ async fn a_late_signal_extends_the_quiet_period() {
     tokio::spawn(debounce_loop(raw_rx, trig_tx, Duration::from_millis(250)));
 
     raw_tx.send(false).unwrap();
+    tokio::task::yield_now().await;
     tokio::time::advance(Duration::from_millis(200)).await; // not yet quiet
     raw_tx.send(false).unwrap(); // resets the timer
     tokio::time::advance(Duration::from_millis(200)).await;
