@@ -223,6 +223,34 @@ pub fn detect_output_input_overlap(beams: &[Beam], closure: &HashSet<String>) ->
     warnings
 }
 
+/// Decides what `notify` registrations a watch set needs, resolving the overlap
+/// between the recursive roots and the Beamfile's (non-recursive) parent. The
+/// recursive intent always wins: the parent is registered non-recursively only
+/// when it is not already covered by a recursive root (equal to it or nested
+/// under it), so a root that coincides with the Beamfile's directory is watched
+/// recursively rather than being downgraded to non-recursive.
+///
+/// Returns `(recursive_roots, non_recursive)`; both are deduplicated and every
+/// path appears in at most one list.
+fn plan_registrations(
+    roots: &[PathBuf],
+    beamfile_parent: Option<&Path>,
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut recursive: Vec<PathBuf> = Vec::new();
+    for root in roots {
+        if !recursive.contains(root) {
+            recursive.push(root.clone());
+        }
+    }
+    let non_recursive = match beamfile_parent {
+        Some(parent) if !recursive.iter().any(|root| parent.starts_with(root)) => {
+            vec![parent.to_path_buf()]
+        }
+        _ => Vec::new(),
+    };
+    (recursive, non_recursive)
+}
+
 /// A live filesystem watch. Holds the `notify` watcher (whose `Drop`
 /// unregisters every root) and the debounce task handle. Dropping it stops
 /// delivering triggers: `notify` unregisters, its event thread stops sending,
@@ -272,23 +300,14 @@ impl Watcher {
             })?;
 
         // The Beamfile's directory, watched non-recursively, catches editors
-        // that save by writing a temp file and renaming it over the Beamfile.
-        let mut registered: Vec<PathBuf> = Vec::new();
-        if let Some(parent) = set.beamfile.parent() {
-            register_root(
-                &mut notify_watcher,
-                parent,
-                RecursiveMode::NonRecursive,
-                &mut registered,
-            );
+        // that save by writing a temp file and renaming it over the Beamfile,
+        // unless a recursive root already covers it (see `plan_registrations`).
+        let (recursive, non_recursive) = plan_registrations(&set.roots, set.beamfile.parent());
+        for root in &recursive {
+            register_root(&mut notify_watcher, root, RecursiveMode::Recursive);
         }
-        for root in &set.roots {
-            register_root(
-                &mut notify_watcher,
-                root,
-                RecursiveMode::Recursive,
-                &mut registered,
-            );
+        for dir in &non_recursive {
+            register_root(&mut notify_watcher, dir, RecursiveMode::NonRecursive);
         }
 
         Ok((
@@ -301,20 +320,54 @@ impl Watcher {
     }
 }
 
-/// Registers one root with `notify`, skipping paths already covered (an exact
-/// duplicate would make `notify` error) and logging a failure without aborting.
-fn register_root(
-    watcher: &mut notify::RecommendedWatcher,
-    path: &Path,
-    mode: RecursiveMode,
-    registered: &mut Vec<PathBuf>,
-) {
-    let path = path.to_path_buf();
-    if registered.contains(&path) {
-        return;
+/// Registers one path with `notify`, logging a failure without aborting the
+/// whole watch (for example an inotify watch-limit error on one root).
+fn register_root(watcher: &mut notify::RecommendedWatcher, path: &Path, mode: RecursiveMode) {
+    if let Err(e) = watcher.watch(path, mode) {
+        eprintln!("aurora: cannot watch {}: {e}", path.display());
     }
-    match watcher.watch(&path, mode) {
-        Ok(()) => registered.push(path),
-        Err(e) => eprintln!("aurora: cannot watch {}: {e}", path.display()),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plan_registrations;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn parent_equal_to_a_root_is_watched_recursively_not_downgraded() {
+        let root = PathBuf::from("/project");
+        let (recursive, non_recursive) =
+            plan_registrations(&[root.clone()], Some(Path::new("/project")));
+        assert_eq!(recursive, vec![root]);
+        assert!(
+            non_recursive.is_empty(),
+            "a root equal to the Beamfile parent must stay recursive, not add a non-recursive watch"
+        );
+    }
+
+    #[test]
+    fn parent_nested_under_a_root_needs_no_separate_watch() {
+        let root = PathBuf::from("/project");
+        let (_, non_recursive) = plan_registrations(&[root], Some(Path::new("/project/sub")));
+        assert!(
+            non_recursive.is_empty(),
+            "a recursive root already covers a nested parent"
+        );
+    }
+
+    #[test]
+    fn distinct_parent_and_root_are_both_registered() {
+        let root = PathBuf::from("/project/src");
+        let (recursive, non_recursive) =
+            plan_registrations(&[root.clone()], Some(Path::new("/project")));
+        assert_eq!(recursive, vec![root]);
+        assert_eq!(non_recursive, vec![PathBuf::from("/project")]);
+    }
+
+    #[test]
+    fn roots_are_deduplicated() {
+        let root = PathBuf::from("/project/src");
+        let (recursive, _) = plan_registrations(&[root.clone(), root.clone()], None);
+        assert_eq!(recursive, vec![root], "duplicate roots collapse to one");
     }
 }
