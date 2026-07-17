@@ -7,6 +7,51 @@ use std::io::Write;
 use aurora_core::events::{BeamStatus, SchedulerEvent, SkipReason};
 use tokio::sync::mpsc;
 
+use crate::reporter::Reporter;
+use async_trait::async_trait;
+
+/// Human-oriented text renderer: prefixed per-beam lines then an ASCII recap.
+pub struct HeadlessReporter<'a, O: std::io::Write, E: std::io::Write> {
+    beam_names: Vec<String>,
+    out_color: bool,
+    err_color: bool,
+    out: &'a mut O,
+    err: &'a mut E,
+}
+
+impl<'a, O: std::io::Write, E: std::io::Write> HeadlessReporter<'a, O, E> {
+    pub fn new(
+        beam_names: Vec<String>,
+        out_color: bool,
+        err_color: bool,
+        out: &'a mut O,
+        err: &'a mut E,
+    ) -> Self {
+        Self {
+            beam_names,
+            out_color,
+            err_color,
+            out,
+            err,
+        }
+    }
+}
+
+#[async_trait]
+impl<O: std::io::Write + Send, E: std::io::Write + Send> Reporter for HeadlessReporter<'_, O, E> {
+    async fn run(&mut self, rx: mpsc::Receiver<SchedulerEvent>) -> std::io::Result<bool> {
+        render_headless(
+            &self.beam_names,
+            self.out_color,
+            self.err_color,
+            rx,
+            self.out,
+            self.err,
+        )
+        .await
+    }
+}
+
 /// Wraps `text` in an ANSI color code when `use_color` is true.
 fn paint(text: &str, code: &str, use_color: bool) -> String {
     if use_color {
@@ -70,7 +115,7 @@ fn recap_line(name: &str, status: &BeamStatus, width: usize, use_color: bool) ->
 /// Color is decided per target output stream (`out_color` for stdout,
 /// `err_color` for stderr) rather than globally: a `2>file` redirection must not
 /// inherit the color decided for stdout (and vice versa).
-pub async fn run_headless(
+async fn render_headless(
     beam_names: &[String],
     out_color: bool,
     err_color: bool,

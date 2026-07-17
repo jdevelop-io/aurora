@@ -73,6 +73,9 @@ Expected of a tool that positions itself as modern.
   refreshed by the release workflow) are in place. Still missing: publishing to
   crates.io, and a user-facing documentation site (reference docs currently live
   inside the Claude Code plugin skill, invisible to a normal user).
+- [x] **Machine-readable output (`--json`)**: a streamed NDJSON event feed on
+  stdout for CI (lifecycle events, per-beam output and status, and pre-run
+  errors), versioned by a `schema` field.
 
 ## Differentiators (where Aurora can lead)
 

@@ -31,17 +31,32 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let beamfile_path = find_beamfile()?;
-    let content = fs::read_to_string(&beamfile_path)?;
-    let mut beam_file = parse(&content)?;
+    let json = matches.get_flag("json");
+
+    let beamfile_path = match find_beamfile(json) {
+        Ok(path) => path,
+        Err(e) => fail_prerun(json, "beamfile", &e),
+    };
+    let content = match fs::read_to_string(&beamfile_path) {
+        Ok(c) => c,
+        Err(e) => fail_prerun(json, "beamfile", &anyhow::Error::from(e)),
+    };
+    let mut beam_file = match parse(&content) {
+        Ok(bf) => bf,
+        Err(e) => fail_prerun(json, "beamfile", &e),
+    };
 
     if let Some(vars) = matches.get_many::<String>("var") {
-        aurora::apply_var_overrides(&mut beam_file, vars)?;
+        if let Err(e) = aurora::apply_var_overrides(&mut beam_file, vars) {
+            fail_prerun(json, "variable", &e);
+        }
     }
 
     // Resolve `var.<name>` references now that any --var override has been
     // applied, so the overrides actually take effect.
-    aurora_core::parser::resolve_variables(&mut beam_file)?;
+    if let Err(e) = aurora_core::parser::resolve_variables(&mut beam_file) {
+        fail_prerun(json, "variable", &e);
+    }
 
     if matches.get_flag("list") {
         println!("Available beams:");
@@ -61,8 +76,9 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let interactive = matches.get_flag("interactive")
-        || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui"));
+    let interactive = !json
+        && (matches.get_flag("interactive")
+            || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui")));
 
     // Target resolution: picker in interactive mode, `default` beam in headless mode
     // (the picker is inherently interactive and does not exist outside a TTY).
@@ -104,10 +120,13 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     } else {
-        aurora::resolve_target(
+        match aurora::resolve_target(
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
-        )?
+        ) {
+            Ok(target) => target,
+            Err(e) => fail_prerun(json, "target", &e),
+        }
     };
 
     // Positional arguments belong to the explicitly invoked target. Resolve
@@ -117,7 +136,9 @@ async fn main() -> Result<()> {
         .get_many::<String>("args")
         .map(|values| values.cloned().collect())
         .unwrap_or_default();
-    aurora_core::parser::resolve_arguments(&mut beam_file, &target, &args)?;
+    if let Err(e) = aurora_core::parser::resolve_arguments(&mut beam_file, &target, &args) {
+        fail_prerun(json, "argument", &e);
+    }
 
     // Register each executor under the name it reports, so the registry key and
     // Executor::name() cannot drift apart.
@@ -146,7 +167,10 @@ async fn main() -> Result<()> {
     // environment, never to the full process environment: a Beamfile is
     // untrusted and must not inherit ambient secrets (CI tokens, AWS_*, ...).
     let env = match &beam_file.environment {
-        Some(env_block) => evaluate(env_block, &working_dir)?,
+        Some(env_block) => match evaluate(env_block, &working_dir) {
+            Ok(env) => env,
+            Err(e) => fail_prerun(json, "beamfile", &e),
+        },
         None => aurora_core::env::base_env(),
     };
 
@@ -251,21 +275,41 @@ async fn main() -> Result<()> {
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
+        // run_started.beams is the target's dependency closure, not every declared
+        // beam. Fall back to the full list if the graph cannot be built (a cycle):
+        // the scheduler then surfaces that error as an event.
+        let json_beams: Vec<String> = if json {
+            aurora_core::dag::BeamGraph::from_deps(beam_info.clone())
+                .ok()
+                .and_then(|graph| graph.execution_levels(&target).ok())
+                .map(|levels| levels.into_iter().flatten().collect())
+                .unwrap_or_else(|| beam_names.clone())
+        } else {
+            beam_names.clone()
+        };
         // Color decided per stream: stdout and stderr can be redirected
         // independently (e.g. `aurora --no-tui 2>err.log` in a terminal).
         let out_color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         let err_color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         let mut stdout = std::io::stdout();
         let mut stderr = std::io::stderr();
-        let success = headless::run_headless(
-            &beam_names,
-            out_color,
-            err_color,
-            rx,
-            &mut stdout,
-            &mut stderr,
-        )
-        .await?;
+        use aurora::reporter::Reporter;
+        let mut reporter: Box<dyn Reporter> = if json {
+            Box::new(aurora::json::JsonReporter::new(
+                target.clone(),
+                json_beams,
+                &mut stdout,
+            ))
+        } else {
+            Box::new(headless::HeadlessReporter::new(
+                beam_names.clone(),
+                out_color,
+                err_color,
+                &mut stdout,
+                &mut stderr,
+            ))
+        };
+        let success = reporter.run(rx).await?;
 
         // The scheduler can fail before emitting AllDone (DAG construction error:
         // cycle, unknown dependency). We join its task to propagate
@@ -273,18 +317,30 @@ async fn main() -> Result<()> {
         let scheduler_ok = match handle.await {
             Ok(Ok(ok)) => ok,
             Ok(Err(e)) => {
-                eprintln!("Scheduler error: {}", e);
+                if json {
+                    let mut stdout = std::io::stdout();
+                    let _ = aurora::json::write_error(&mut stdout, "beamfile", &e.to_string());
+                } else {
+                    eprintln!("Scheduler error: {}", e);
+                }
                 false
             }
             Err(e) => {
-                eprintln!("Scheduler task panicked: {}", e);
+                if json {
+                    let mut stdout = std::io::stdout();
+                    let _ = aurora::json::write_error(&mut stdout, "internal", &e.to_string());
+                } else {
+                    eprintln!("Scheduler task panicked: {}", e);
+                }
                 false
             }
         };
         // 128 + SIGINT(2): the shell convention for "terminated by interrupt",
         // and distinct from the plain 1 of a beam that failed on its own.
         if interrupted.load(Ordering::SeqCst) {
-            eprintln!("aurora: interrupted, cancelled the running beams");
+            if !json {
+                eprintln!("aurora: interrupted, cancelled the running beams");
+            }
             std::process::exit(130);
         }
         if !success || !scheduler_ok {
@@ -295,7 +351,28 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn find_beamfile() -> Result<PathBuf> {
+/// Reports a failure that happens before any beam runs (Beamfile parsing,
+/// `--var` overrides, target/argument resolution) and exits the process.
+///
+/// Under `--json` this must be the sole output: an `error` event on stdout,
+/// nothing on stderr, so a consumer parsing NDJSON never has to also watch
+/// stderr for a pre-run failure. Outside `--json`, behavior is unchanged:
+/// the message goes to stderr, exactly as the former `anyhow` bail did.
+fn fail_prerun(json: bool, kind: &str, err: &anyhow::Error) -> ! {
+    if json {
+        let mut stdout = std::io::stdout();
+        let _ = aurora::json::write_error(&mut stdout, kind, &err.to_string());
+    } else {
+        // Matches the format the default `Result<(), E: Debug>` process
+        // termination used before this function took over: `{err:?}`, not
+        // `{err}`, so a wrapped `anyhow::Error` still prints its full
+        // "Caused by:" chain (e.g. the pest parse error location).
+        eprintln!("Error: {err:?}");
+    }
+    std::process::exit(1);
+}
+
+fn find_beamfile(json: bool) -> Result<PathBuf> {
     let start = std::env::current_dir()?;
     let mut dir = start.clone();
     loop {
@@ -303,8 +380,9 @@ fn find_beamfile() -> Result<PathBuf> {
         if candidate.exists() {
             // A Beamfile runs arbitrary commands. When it is picked up from an
             // ancestor directory (not the one Aurora was launched in), warn:
-            // the user may not expect that ancestor's beams to execute.
-            if dir != start {
+            // the user may not expect that ancestor's beams to execute. Under
+            // `--json` stdout is the sole output contract, so stay silent.
+            if dir != start && !json {
                 eprintln!(
                     "aurora: using Beamfile from a parent directory: {}",
                     candidate.display()

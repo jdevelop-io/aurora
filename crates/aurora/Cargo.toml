@@ -33,7 +33,9 @@ extism = "1"
 dirs = "5"
 strsim = "0.11"
 async-trait = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+jiff = "0.1"
 clap_complete = "4.6.7"
 clap_mangen = "0.3.0"
 

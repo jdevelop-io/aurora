@@ -2,7 +2,10 @@
 //! that are testable independently of the TUI (headless mode).
 
 pub mod headless;
+pub mod json;
 pub mod plugins;
+pub mod reporter;
+pub mod time;
 
 use anyhow::{bail, Result};
 use aurora_core::ast::{Beam, BeamFile};
@@ -61,6 +64,13 @@ pub fn cli() -> Command {
                 .action(clap::ArgAction::SetTrue)
                 .conflicts_with("no-tui")
                 .help("Force the TUI, even when output is not a terminal"),
+        )
+        .arg(
+            Arg::new("json")
+                .long("json")
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with_all(["interactive", "list", "dry-run"])
+                .help("Stream the run as newline-delimited JSON events on stdout"),
         )
         .arg(
             Arg::new("completions")
