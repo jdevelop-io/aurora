@@ -199,6 +199,12 @@ async fn main() -> Result<()> {
         .collect();
 
     let no_cache = matches.get_flag("no-cache");
+    let watch = matches.get_flag("watch");
+    let max_parallelism = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
+    let var_overrides: Vec<String> = matches
+        .get_many::<String>("var")
+        .map(|values| values.cloned().collect())
+        .unwrap_or_default();
 
     let beams = beam_file.beams.clone();
     let scheduler = aurora::build_scheduler(
@@ -267,6 +273,140 @@ async fn main() -> Result<()> {
 
         aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
     } else {
+        if watch {
+            use std::sync::atomic::{AtomicBool, Ordering};
+
+            let mut beams = beam_file.beams.clone();
+            let mut env = env;
+            let mut declared_env = declared_env;
+            let mut max_parallelism = max_parallelism;
+
+            let mut closure = aurora::watch::closure_of(&beams, &target);
+            let set =
+                aurora::watch::build_watch_set(&beams, &closure, &working_dir, &beamfile_path);
+            if !set.has_inputs {
+                eprintln!(
+                    "aurora: no beam in '{target}' declares inputs; watching the Beamfile only"
+                );
+            }
+            for warning in aurora::watch::detect_output_input_overlap(&beams, &closure) {
+                eprintln!("aurora: {warning}");
+            }
+            let (mut _watcher, mut trig_rx) =
+                aurora::watch::Watcher::start(set, aurora::watch::DEBOUNCE)?;
+
+            loop {
+                // ---- one cycle: identical to a single headless run ----
+                let beam_info: Vec<(String, Vec<String>)> = beams
+                    .iter()
+                    .map(|b| (b.name.clone(), b.depends_on.clone()))
+                    .collect();
+                let beam_names: Vec<String> =
+                    beam_info.iter().map(|(name, _)| name.clone()).collect();
+
+                let (tx, rx) = mpsc::channel(128);
+                let scheduler = aurora::build_scheduler(
+                    beams.clone(),
+                    executors.clone(),
+                    tx,
+                    max_parallelism,
+                    working_dir.clone(),
+                    env.clone(),
+                    declared_env.clone(),
+                    !no_cache,
+                );
+
+                // A per-cycle shutdown so Ctrl-C during a run cancels the beams.
+                let (sd_tx, sd_rx) = tokio::sync::oneshot::channel();
+                let interrupted = Arc::new(AtomicBool::new(false));
+                let signalled = interrupted.clone();
+                let sig = tokio::spawn(async move {
+                    aurora::wait_for_termination_signal().await;
+                    signalled.store(true, Ordering::SeqCst);
+                    let _ = sd_tx.send(());
+                });
+
+                let scheduler = scheduler.with_shutdown(sd_rx);
+                let target_clone = target.clone();
+                let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
+
+                let out_color =
+                    std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+                let err_color =
+                    std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+                let mut stdout = std::io::stdout();
+                let mut stderr = std::io::stderr();
+                {
+                    use aurora::reporter::Reporter;
+                    let mut reporter = headless::HeadlessReporter::new(
+                        beam_names.clone(),
+                        out_color,
+                        err_color,
+                        &mut stdout,
+                        &mut stderr,
+                    );
+                    let _ = reporter.run(rx).await?;
+                }
+                let _ = handle.await;
+
+                // Ctrl-C during the run: the beams were cancelled, now leave.
+                if interrupted.load(Ordering::SeqCst) {
+                    break;
+                }
+                // Stop the per-cycle signal listener so the wait phase below
+                // gets the next Ctrl-C instead of this now-stale handler.
+                sig.abort();
+
+                eprintln!("aurora: watching for changes (Ctrl-C to stop)");
+
+                // ---- wait for a change or Ctrl-C ----
+                let trigger = tokio::select! {
+                    _ = aurora::wait_for_termination_signal() => None,
+                    trig = trig_rx.recv() => trig,
+                };
+                let Some(trigger) = trigger else {
+                    break; // Ctrl-C while waiting, or the watcher went away.
+                };
+
+                if trigger.beamfile_changed {
+                    match aurora::resolve_run_inputs(
+                        &beamfile_path,
+                        &working_dir,
+                        &var_overrides,
+                        &target,
+                        &args,
+                    ) {
+                        Ok(loaded) => {
+                            beams = loaded.beams;
+                            env = loaded.env;
+                            declared_env = loaded.declared_env;
+                            max_parallelism = loaded.max_parallelism;
+                            closure = aurora::watch::closure_of(&beams, &target);
+                            let set = aurora::watch::build_watch_set(
+                                &beams,
+                                &closure,
+                                &working_dir,
+                                &beamfile_path,
+                            );
+                            let (w, rx) =
+                                aurora::watch::Watcher::start(set, aurora::watch::DEBOUNCE)?;
+                            _watcher = w;
+                            trig_rx = rx;
+                        }
+                        Err(e) => {
+                            eprintln!("aurora: {e:#}; keeping the previous Beamfile");
+                        }
+                    }
+                }
+
+                // Separate consecutive cycles with a blank line.
+                println!();
+            }
+
+            // In watch mode the interruption is the normal way out.
+            return Ok(());
+        }
+
         // Headless mode: no interactive cancellation, `run` manages its own
         // channel. Ctrl-C and SIGTERM tear the run down instead of killing
         // Aurora outright, which would orphan the beams' process subtrees.
