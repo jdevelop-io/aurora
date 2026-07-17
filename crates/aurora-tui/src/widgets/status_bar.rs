@@ -42,6 +42,7 @@ const DONE_FULL: &[(&str, &str)] = &[
     ("y", "copy"),
     ("r", "rerun"),
     ("d", "deps"),
+    ("w", "watch"),
     ("?", "help"),
     ("q", "quit"),
 ];
@@ -241,7 +242,8 @@ fn breakdown_spans(b: &StatusBreakdown) -> (Vec<Span<'static>>, usize) {
 }
 
 /// Footer line 1: status + global count + breakdown by status + proportional
-/// progress bar.
+/// progress bar + an optional discreet watch label on the right.
+#[allow(clippy::too_many_arguments)]
 pub fn render_progress_line(
     f: &mut Frame,
     area: Rect,
@@ -249,17 +251,23 @@ pub fn render_progress_line(
     done_count: usize,
     total: usize,
     breakdown: &StatusBreakdown,
+    watch_label: Option<&str>,
 ) {
     let (symbol, word, color) = semantic(done);
     let left = format!(" {} {}   ", symbol, word);
     let mut spans = vec![Span::styled(left.clone(), Style::default().fg(color))];
 
+    // Reserve room for the watch label on the right so the bar, which is
+    // otherwise sized to fill the rest of the line, does not push it off
+    // screen.
+    let label_w = watch_label.map_or(0, |l| l.chars().count() + 2);
+
     if total > 0 {
         let count = format!("{}/{} ", done_count, total);
         let (detail, detail_w) = breakdown_spans(breakdown);
         // Remaining width for the bar: total width - left - count -
-        // breakdown - brackets - right margin.
-        let used = left.chars().count() + count.chars().count() + detail_w + 3;
+        // breakdown - brackets - right margin - watch label.
+        let used = left.chars().count() + count.chars().count() + detail_w + 3 + label_w;
         let bar_w = (area.width as usize).saturating_sub(used);
         spans.push(Span::styled(count, Style::default().fg(LABEL)));
         spans.extend(detail);
@@ -269,6 +277,11 @@ pub fn render_progress_line(
             spans.push(Span::styled("░".repeat(empty), Style::default().fg(SEP)));
             spans.push(Span::styled("]", Style::default().fg(SEP)));
         }
+    }
+
+    if let Some(label) = watch_label {
+        spans.push(Span::styled("  ", Style::default()));
+        spans.push(Span::styled(label.to_string(), Style::default().fg(SEP)));
     }
 
     f.render_widget(Paragraph::new(Line::from(spans)), area);

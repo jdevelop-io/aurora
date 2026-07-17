@@ -6,9 +6,10 @@ pub mod widgets;
 
 use anyhow::Result;
 use app::{
-    ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction, PickerState,
+    ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction,
+    PickerState, WatchUiState,
 };
-use aurora_core::events::{BeamStatus, SchedulerEvent};
+use aurora_core::events::{BeamStatus, SchedulerEvent, WatchTrigger};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -37,8 +38,11 @@ pub fn install_terminal_panic_hook() {
     }));
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
+    target: String,
+    watch_preset: bool,
     mut rx: mpsc::Receiver<SchedulerEvent>,
     mut cancel_tx: mpsc::UnboundedSender<String>,
     rerun: impl Fn(
@@ -48,6 +52,12 @@ pub async fn run_execution_tui(
         mpsc::Receiver<SchedulerEvent>,
         mpsc::UnboundedSender<String>,
     ),
+    start_watch: impl Fn(String) -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>)>,
+    reload: impl Fn() -> anyhow::Result<(
+        Vec<(String, Vec<String>)>,
+        mpsc::Receiver<SchedulerEvent>,
+        mpsc::UnboundedSender<String>,
+    )>,
 ) -> Result<()> {
     tokio::task::block_in_place(move || {
         install_terminal_panic_hook();
@@ -62,6 +72,23 @@ pub async fn run_execution_tui(
         let mut search = LogSearch::new();
         let mut show_help = false;
         let mut tick: u64 = 0;
+
+        let mut watch = WatchUiState::default();
+        let mut watch_guard: Option<Box<dyn Send>> = None;
+        let mut watch_trigger_rx: Option<mpsc::Receiver<WatchTrigger>> = None;
+        let mut watch_error: Option<String> = None;
+
+        // `-w` presets watch active at launch.
+        if watch_preset {
+            match start_watch(target.clone()) {
+                Ok((guard, trig_rx)) => {
+                    watch_guard = Some(guard);
+                    watch_trigger_rx = Some(trig_rx);
+                    watch.arm();
+                }
+                Err(e) => watch_error = Some(e.to_string()),
+            }
+        }
 
         let result = (|| -> Result<()> {
             loop {
@@ -78,6 +105,45 @@ pub async fn run_execution_tui(
                             log_state.scroll_locked = false;
                         }
                         break;
+                    }
+                }
+
+                if exec.done.is_some() {
+                    if let Some(trigger) = watch.take_pending() {
+                        apply_watch_trigger(
+                            trigger,
+                            &target,
+                            &reload,
+                            &rerun,
+                            &mut exec,
+                            &mut log_state,
+                            &mut search,
+                            &mut rx,
+                            &mut cancel_tx,
+                            &mut watch_error,
+                        );
+                    }
+                }
+
+                // Drain coalesced watch triggers. A trigger during a run is held
+                // and applied at AllDone; a trigger while idle is applied now.
+                if let Some(trig_rx) = watch_trigger_rx.as_mut() {
+                    while let Ok(trigger) = trig_rx.try_recv() {
+                        let run_in_progress = exec.done.is_none();
+                        if watch.on_trigger(trigger, run_in_progress) {
+                            apply_watch_trigger(
+                                trigger,
+                                &target,
+                                &reload,
+                                &rerun,
+                                &mut exec,
+                                &mut log_state,
+                                &mut search,
+                                &mut rx,
+                                &mut cancel_tx,
+                                &mut watch_error,
+                            );
+                        }
                     }
                 }
 
@@ -98,8 +164,26 @@ pub async fn run_execution_tui(
                 // Auto-scroll if not locked
                 log_state.auto_scroll(total_visual, log_h);
 
+                // A watch error takes priority for one render, then clears: it
+                // must not linger silently once shown.
+                let watch_error_label = watch_error.take().map(|e| format!("watch error: {e}"));
+                let watch_label = watch_error_label.as_deref().or_else(|| {
+                    crate::widgets::status_bar::watch_status_label(
+                        watch.armed,
+                        watch.pending.is_some(),
+                    )
+                });
+
                 terminal.draw(|f| {
-                    split_layout::render_execution(f, &exec, &log_state, &search, tick, show_help);
+                    split_layout::render_execution(
+                        f,
+                        &exec,
+                        &log_state,
+                        &search,
+                        tick,
+                        show_help,
+                        watch_label,
+                    );
                 })?;
                 tick += 1;
 
@@ -201,9 +285,23 @@ pub async fn run_execution_tui(
                                 rx = new_rx;
                                 cancel_tx = new_cancel;
                             }
-                            // TODO(task 11): wire the watch toggle into the render loop
-                            // (arm/disarm WatchUiState, start/stop the notify watcher).
-                            ExecKeyOutcome::ToggleWatch => {}
+                            ExecKeyOutcome::ToggleWatch => {
+                                if watch.armed {
+                                    watch.disarm();
+                                    watch_guard = None;
+                                    watch_trigger_rx = None;
+                                } else {
+                                    match start_watch(target.clone()) {
+                                        Ok((guard, trig_rx)) => {
+                                            watch_guard = Some(guard);
+                                            watch_trigger_rx = Some(trig_rx);
+                                            watch.arm();
+                                            watch_error = None;
+                                        }
+                                        Err(e) => watch_error = Some(e.to_string()),
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -437,6 +535,56 @@ fn handle_execution_key(
         _ => {}
     }
     ExecKeyOutcome::Continue
+}
+
+/// Applies a watch trigger to the runner state. A Beamfile change goes through
+/// `reload` (rebuild the beam list and swap channels; on error keep the current
+/// state and show the message). An inputs change re-runs the target with an
+/// empty `pre_success`, resetting every beam so the cache re-checks each one.
+#[allow(clippy::too_many_arguments)]
+fn apply_watch_trigger(
+    trigger: WatchTrigger,
+    target: &str,
+    reload: &impl Fn() -> anyhow::Result<(
+        Vec<(String, Vec<String>)>,
+        mpsc::Receiver<SchedulerEvent>,
+        mpsc::UnboundedSender<String>,
+    )>,
+    rerun: &impl Fn(
+        String,
+        Vec<String>,
+    ) -> (
+        mpsc::Receiver<SchedulerEvent>,
+        mpsc::UnboundedSender<String>,
+    ),
+    exec: &mut ExecutionState,
+    log_state: &mut LogViewState,
+    search: &mut LogSearch,
+    rx: &mut mpsc::Receiver<SchedulerEvent>,
+    cancel_tx: &mut mpsc::UnboundedSender<String>,
+    watch_error: &mut Option<String>,
+) {
+    if trigger.beamfile_changed {
+        match reload() {
+            Ok((beam_info, new_rx, new_cancel)) => {
+                *exec = ExecutionState::new(beam_info);
+                *log_state = LogViewState::new(0);
+                search.clear();
+                *rx = new_rx;
+                *cancel_tx = new_cancel;
+                *watch_error = None;
+            }
+            Err(e) => *watch_error = Some(e.to_string()),
+        }
+    } else {
+        let all = exec.all_beam_names();
+        exec.reset_for_rerun(&all);
+        *log_state = LogViewState::new(exec.selected);
+        search.clear();
+        let (new_rx, new_cancel) = rerun(target.to_string(), vec![]);
+        *rx = new_rx;
+        *cancel_tx = new_cancel;
+    }
 }
 
 fn refresh_search(

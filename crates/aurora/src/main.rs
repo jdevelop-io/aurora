@@ -271,7 +271,85 @@ async fn main() -> Result<()> {
             (rx, cancel_tx)
         };
 
-        aurora_tui::run_execution_tui(beam_info, rx, cancel_tx, rerun).await?;
+        let sw_beams = beam_file
+            .beams
+            .iter()
+            .filter(|b| b.name != MULTI_BEAM)
+            .cloned()
+            .collect::<Vec<_>>();
+        let sw_working_dir = working_dir.clone();
+        let sw_beamfile = beamfile_path.clone();
+        let start_watch = move |tgt: String| -> anyhow::Result<(
+            Box<dyn Send>,
+            mpsc::Receiver<aurora_core::events::WatchTrigger>,
+        )> {
+            let closure = aurora::watch::closure_of(&sw_beams, &tgt);
+            let set =
+                aurora::watch::build_watch_set(&sw_beams, &closure, &sw_working_dir, &sw_beamfile);
+            let (watcher, rx) = aurora::watch::Watcher::start(set, aurora::watch::DEBOUNCE)?;
+            Ok((Box::new(watcher) as Box<dyn Send>, rx))
+        };
+
+        let rl_executors = executors.clone();
+        let rl_working_dir = working_dir.clone();
+        let rl_beamfile = beamfile_path.clone();
+        let rl_target = target.clone();
+        let rl_args = args.clone();
+        let rl_var_overrides = var_overrides.clone();
+        let rl_no_cache = no_cache;
+        #[allow(clippy::type_complexity)]
+        let reload = move || -> anyhow::Result<(
+            Vec<(String, Vec<String>)>,
+            mpsc::Receiver<SchedulerEvent>,
+            mpsc::UnboundedSender<String>,
+        )> {
+            let loaded = aurora::resolve_run_inputs(
+                &rl_beamfile,
+                &rl_working_dir,
+                &rl_var_overrides,
+                &rl_target,
+                &rl_args,
+            )?;
+            let beam_info: Vec<(String, Vec<String>)> = loaded
+                .beams
+                .iter()
+                .map(|b| (b.name.clone(), b.depends_on.clone()))
+                .collect();
+            let (tx, rx) = mpsc::channel(128);
+            let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
+            let scheduler = aurora::build_scheduler(
+                loaded.beams.clone(),
+                rl_executors.clone(),
+                tx,
+                loaded.max_parallelism,
+                rl_working_dir.clone(),
+                loaded.env.clone(),
+                loaded.declared_env.clone(),
+                !rl_no_cache,
+            );
+            let target_for_run = rl_target.clone();
+            tokio::runtime::Handle::current().spawn(async move {
+                if let Err(e) = scheduler
+                    .run_cancellable(&target_for_run, &[], cancel_rx)
+                    .await
+                {
+                    eprintln!("Scheduler error: {}", e);
+                }
+            });
+            Ok((beam_info, rx, cancel_tx))
+        };
+
+        aurora_tui::run_execution_tui(
+            beam_info,
+            target.clone(),
+            watch,
+            rx,
+            cancel_tx,
+            rerun,
+            start_watch,
+            reload,
+        )
+        .await?;
     } else {
         if watch {
             use std::sync::atomic::{AtomicBool, Ordering};

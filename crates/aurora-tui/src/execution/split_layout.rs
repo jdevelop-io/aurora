@@ -57,6 +57,7 @@ pub fn execution_layout(area: Rect, show_deps: bool) -> ExecutionLayout {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_execution(
     f: &mut Frame,
     exec: &ExecutionState,
@@ -64,6 +65,7 @@ pub fn render_execution(
     search: &LogSearch,
     tick: u64,
     show_help: bool,
+    watch_label: Option<&str>,
 ) {
     let area = f.area();
     let beams_focused = exec.focus == FocusPanel::Beams;
@@ -98,7 +100,13 @@ pub fn render_execution(
 
     // Line 1: always the status + the bar (stays visible even while searching).
     crate::widgets::status_bar::render_progress_line(
-        f, footer[0], exec.done, done_count, total, &breakdown,
+        f,
+        footer[0],
+        exec.done,
+        done_count,
+        total,
+        &breakdown,
+        watch_label,
     );
 
     // Line 2: beam filter prompt, or log search prompt, or hints.
