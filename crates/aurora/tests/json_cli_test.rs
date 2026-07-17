@@ -10,6 +10,83 @@ fn fixture_dir(beamfile: &str) -> TempDir {
     dir
 }
 
+const BEAMFILE: &str = r#"
+aurora { version = "1"  default = "ok" }
+beam "ok"   { run { commands = ["echo hello"] } }
+beam "boom" { run { commands = ["exit 3;"] } }
+"#;
+
+/// Parses every non-empty stdout line as JSON, panicking on the first that is not.
+fn parse_lines(stdout: &str) -> Vec<serde_json::Value> {
+    stdout
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("not JSON: {l}\n{e}")))
+        .collect()
+}
+
+#[test]
+fn passing_run_is_all_json_on_stdout_and_stderr_is_empty() {
+    let dir = fixture_dir(BEAMFILE);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["ok", "--json"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "exit: {:?}", output.status.code());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.is_empty(),
+        "stderr must be empty in --json mode:\n{stderr}"
+    );
+
+    let lines = parse_lines(&stdout);
+    assert_eq!(lines.first().unwrap()["event"], "run_started");
+    assert_eq!(lines.last().unwrap()["event"], "run_completed");
+    assert_eq!(lines.last().unwrap()["success"], true);
+    // The command output is carried as a beam_output event, not raw text.
+    assert!(
+        lines
+            .iter()
+            .any(|l| l["event"] == "beam_output" && l["line"] == "hello"),
+        "command output present as an event:\n{stdout}"
+    );
+}
+
+#[test]
+fn failing_beam_reports_failed_status_and_exits_one() {
+    let dir = fixture_dir(BEAMFILE);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["boom", "--json"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines = parse_lines(&stdout);
+    let completed = lines
+        .iter()
+        .find(|l| l["event"] == "beam_completed" && l["beam"] == "boom")
+        .unwrap();
+    assert_eq!(completed["status"], "failed");
+    assert_eq!(completed["exit_code"], 3);
+    assert_eq!(lines.last().unwrap()["success"], false);
+}
+
+#[test]
+fn json_conflicts_with_interactive() {
+    let dir = fixture_dir(BEAMFILE);
+    let output = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["ok", "--json", "-i"])
+        .current_dir(dir.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "clap must reject --json with -i");
+}
+
 #[test]
 fn cyclic_beamfile_emits_error_event_on_stdout() {
     let beamfile = r#"
