@@ -47,6 +47,17 @@ pub fn parse(input: &str) -> Result<BeamFile> {
         }
     }
 
+    // Reject duplicate beam names up front. Downstream the beams are keyed by
+    // name (the scheduler's map, the graph's index), so a duplicate silently
+    // drops the earlier definition and merges its edges; surfacing it here
+    // turns a copy-paste mistake into a clear error instead.
+    let mut seen = HashSet::new();
+    for beam in &beam_file.beams {
+        if !seen.insert(beam.name.as_str()) {
+            bail!("duplicate beam name '{}'", beam.name);
+        }
+    }
+
     Ok(beam_file)
 }
 
