@@ -293,6 +293,17 @@ pub fn render_hints(f: &mut Frame, area: Rect, hints: &[(&str, &str)]) {
     f.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
+/// The status-bar watch indicator, or `None` when watch is off. "watching" when
+/// armed and idle; the longer form when a change was seen but the current run
+/// has not finished yet.
+pub fn watch_status_label(armed: bool, pending: bool) -> Option<&'static str> {
+    match (armed, pending) {
+        (false, _) => None,
+        (true, false) => Some("watching"),
+        (true, true) => Some("change detected, waiting for run to finish"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -389,5 +400,20 @@ mod tests {
         assert_eq!(b.cancelled, 2);
         // Running and Pending are not finished: 1 + 1 + 2 = 4.
         assert_eq!(b.done_count(), 4);
+    }
+}
+
+#[cfg(test)]
+mod watch_label_tests {
+    use super::watch_status_label;
+
+    #[test]
+    fn label_reflects_watch_state() {
+        assert_eq!(watch_status_label(false, false), None);
+        assert_eq!(watch_status_label(true, false), Some("watching"));
+        assert_eq!(
+            watch_status_label(true, true),
+            Some("change detected, waiting for run to finish")
+        );
     }
 }

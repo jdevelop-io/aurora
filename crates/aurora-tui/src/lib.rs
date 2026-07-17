@@ -201,6 +201,9 @@ pub async fn run_execution_tui(
                                 rx = new_rx;
                                 cancel_tx = new_cancel;
                             }
+                            // TODO(task 11): wire the watch toggle into the render loop
+                            // (arm/disarm WatchUiState, start/stop the notify watcher).
+                            ExecKeyOutcome::ToggleWatch => {}
                         }
                     }
                 }
@@ -270,6 +273,7 @@ enum ExecKeyOutcome {
         root: String,
         pre_success: Vec<String>,
     },
+    ToggleWatch,
 }
 
 /// Log panel metrics needed to drive scrolling: total visual height of the
@@ -429,6 +433,7 @@ fn handle_execution_key(
                 return ExecKeyOutcome::Rerun { root, pre_success };
             }
         }
+        KeyCode::Char('w') => return ExecKeyOutcome::ToggleWatch,
         _ => {}
     }
     ExecKeyOutcome::Continue
@@ -573,5 +578,12 @@ mod tests {
         assert_eq!(out, ExecKeyOutcome::Continue);
         assert_eq!(exec.focus, FocusPanel::Logs, "Tab switches focus");
         assert!(!exec.show_deps, "Tab does not touch the dependencies");
+    }
+
+    #[test]
+    fn w_toggles_watch() {
+        let (mut exec, mut ls, mut s, mut help) = fixture();
+        let out = press(KeyCode::Char('w'), &mut exec, &mut ls, &mut s, &mut help);
+        assert_eq!(out, ExecKeyOutcome::ToggleWatch);
     }
 }

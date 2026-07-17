@@ -1,4 +1,4 @@
-use aurora_core::events::{BeamStatus, SchedulerEvent, SkipReason};
+use aurora_core::events::{BeamStatus, SchedulerEvent, SkipReason, WatchTrigger};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::cmp::Reverse;
 use std::collections::HashSet;
@@ -516,6 +516,48 @@ impl PickerState {
     }
 }
 
+// ── WatchUiState ─────────────────────────────────────────────────
+
+/// The execution TUI's watch state (the part that is pure and testable). The
+/// live `notify` watcher and its trigger receiver are held by the render loop,
+/// not here. `pending` holds a trigger that arrived while a run was still in
+/// progress: it is applied at `AllDone`, implementing "finish, then re-run".
+#[derive(Debug, Default)]
+pub struct WatchUiState {
+    pub armed: bool,
+    pub pending: Option<WatchTrigger>,
+}
+
+impl WatchUiState {
+    pub fn arm(&mut self) {
+        self.armed = true;
+    }
+
+    /// Disarms and discards any pending trigger: turning the watch off must not
+    /// leave a queued re-run that would fire later.
+    pub fn disarm(&mut self) {
+        self.armed = false;
+        self.pending = None;
+    }
+
+    /// Records a trigger. Returns `true` when it can be applied immediately (no
+    /// run in progress); otherwise it is held as `pending` for `AllDone` and
+    /// `false` is returned.
+    pub fn on_trigger(&mut self, trigger: WatchTrigger, run_in_progress: bool) -> bool {
+        if run_in_progress {
+            self.pending = Some(trigger);
+            false
+        } else {
+            true
+        }
+    }
+
+    /// Consumes and returns the pending trigger, if any.
+    pub fn take_pending(&mut self) -> Option<WatchTrigger> {
+        self.pending.take()
+    }
+}
+
 // ── ExecutionState ───────────────────────────────────────────────
 
 pub struct ExecutionState {
@@ -545,6 +587,13 @@ impl ExecutionState {
             beam_filter: String::new(),
             filter_input: false,
         }
+    }
+
+    /// Every beam's name in declaration order. Used by a watch re-run, which
+    /// resets all beams so the cache re-checks each one (no past success is
+    /// assumed on an inputs change).
+    pub fn all_beam_names(&self) -> Vec<String> {
+        self.beams.iter().map(|b| b.name.clone()).collect()
     }
 
     /// Indices of the beams matching the current filter, in execution
@@ -836,5 +885,76 @@ impl LogViewState {
         if !self.scroll_locked {
             self.scroll = Self::max_scroll(total_visual, height);
         }
+    }
+}
+
+#[cfg(test)]
+mod watch_state_tests {
+    use super::*;
+    use aurora_core::events::WatchTrigger;
+
+    #[test]
+    fn arm_then_disarm_clears_pending() {
+        let mut w = WatchUiState::default();
+        assert!(!w.armed);
+        w.arm();
+        assert!(w.armed);
+        // A trigger seen during a run is held pending.
+        assert!(!w.on_trigger(
+            WatchTrigger {
+                beamfile_changed: false
+            },
+            true
+        ));
+        assert!(w.pending.is_some());
+        // Disarming discards the pending trigger.
+        w.disarm();
+        assert!(!w.armed);
+        assert!(w.pending.is_none());
+    }
+
+    #[test]
+    fn trigger_when_idle_applies_immediately() {
+        let mut w = WatchUiState::default();
+        w.arm();
+        // run_in_progress = false -> apply now, nothing held.
+        assert!(w.on_trigger(
+            WatchTrigger {
+                beamfile_changed: true
+            },
+            false
+        ));
+        assert!(w.pending.is_none());
+    }
+
+    #[test]
+    fn take_pending_consumes_the_held_trigger() {
+        let mut w = WatchUiState::default();
+        w.arm();
+        w.on_trigger(
+            WatchTrigger {
+                beamfile_changed: true,
+            },
+            true,
+        );
+        assert_eq!(
+            w.take_pending(),
+            Some(WatchTrigger {
+                beamfile_changed: true
+            })
+        );
+        assert_eq!(w.take_pending(), None, "consumed once");
+    }
+
+    #[test]
+    fn all_beam_names_lists_every_beam() {
+        let exec = ExecutionState::new(vec![
+            ("build".to_string(), vec!["lint".to_string()]),
+            ("lint".to_string(), vec![]),
+        ]);
+        assert_eq!(
+            exec.all_beam_names(),
+            vec!["build".to_string(), "lint".to_string()]
+        );
     }
 }
