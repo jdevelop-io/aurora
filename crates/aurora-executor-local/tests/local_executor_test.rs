@@ -63,9 +63,7 @@ async fn test_execute_failing_command() {
 async fn test_invalid_utf8_does_not_truncate_output() {
     let executor = LocalExecutor::new();
     let input = ExecutionInput {
-        commands: vec![
-            "printf 'before\\n'; printf '\\375\\376\\n'; printf 'after\\n'".to_string(),
-        ],
+        commands: vec!["printf 'before\\n'; printf '\\375\\376\\n'; printf 'after\\n'".to_string()],
         env: base_env(),
         working_dir: std::env::current_dir().unwrap(),
         config: serde_json::json!({}),
