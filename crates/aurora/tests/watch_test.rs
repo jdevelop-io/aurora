@@ -118,3 +118,29 @@ fn watch_set_skips_escaping_patterns_and_flags_no_inputs() {
         "no declared inputs anywhere in the closure"
     );
 }
+
+use aurora::watch::classify_path;
+
+#[test]
+fn classify_path_distinguishes_beamfile_inputs_and_noise() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("src")).unwrap();
+
+    let beams = vec![beam("build", &["src/**/*.rs"], None, &[])];
+    let closure = closure_of(&beams, "build");
+    let set = build_watch_set(&beams, &closure, root, &root.join("Beamfile"));
+
+    // The Beamfile itself
+    assert_eq!(classify_path(&root.join("Beamfile"), &set), Some(true));
+    // A matching input
+    assert_eq!(classify_path(&root.join("src/main.rs"), &set), Some(false));
+    assert_eq!(classify_path(&root.join("src/a/b.rs"), &set), Some(false));
+    // Noise under a watched root that no glob matches
+    assert_eq!(classify_path(&root.join("src/.gitignore"), &set), None);
+    // Cache writes are always ignored
+    assert_eq!(
+        classify_path(&root.join(".aurora/cache/build.json"), &set),
+        None
+    );
+}

@@ -130,3 +130,20 @@ pub fn build_watch_set(
         beamfile: beamfile.to_path_buf(),
     }
 }
+
+/// Classifies a raw `notify` path against the watch set. Returns `Some(true)`
+/// when it is the Beamfile, `Some(false)` when it matches an input glob, and
+/// `None` otherwise. Paths under `.aurora/` (the cache) never match: a beam's
+/// own cache write must not re-trigger the watch.
+pub fn classify_path(path: &Path, set: &WatchSet) -> Option<bool> {
+    if path.components().any(|c| c.as_os_str() == ".aurora") {
+        return None;
+    }
+    if path == set.beamfile {
+        return Some(true);
+    }
+    if set.patterns.iter().any(|p| p.matches_path(path)) {
+        return Some(false);
+    }
+    None
+}
