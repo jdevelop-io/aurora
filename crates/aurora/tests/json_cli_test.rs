@@ -1,5 +1,6 @@
 use std::fs;
-use std::process::Command;
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 /// Creates a temporary working directory holding a Beamfile. The returned
@@ -74,6 +75,43 @@ fn failing_beam_reports_failed_status_and_exits_one() {
     assert_eq!(completed["status"], "failed");
     assert_eq!(completed["exit_code"], 3);
     assert_eq!(lines.last().unwrap()["success"], false);
+}
+
+#[test]
+fn broken_pipe_on_stdout_keeps_stderr_clean_and_exits_zero() {
+    // A noisy beam so aurora blocks writing once the pipe buffer fills, then
+    // hits a broken pipe when the reader closes after one line.
+    let beamfile = r#"beam "noisy" { run { commands = ["seq 1 100000"] } }"#;
+    let dir = fixture_dir(beamfile);
+    let mut child = Command::new(env!("CARGO_BIN_EXE_aurora"))
+        .args(["noisy", "--json"])
+        .current_dir(dir.path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    // Read a single line, then drop the reader to close the read end. Any
+    // further write by aurora now hits a broken pipe.
+    {
+        let stdout = child.stdout.take().unwrap();
+        let mut reader = BufReader::new(stdout);
+        let mut line = String::new();
+        reader.read_line(&mut line).unwrap();
+        assert!(!line.trim().is_empty(), "expected at least one JSON line");
+    }
+
+    let output = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.is_empty(),
+        "a closed consumer must not pollute stderr:\n{stderr}"
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "a consumer closing stdout early is not an error"
+    );
 }
 
 #[test]

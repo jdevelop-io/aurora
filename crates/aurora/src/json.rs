@@ -138,6 +138,19 @@ struct Wire<'a> {
     event: &'a WireEvent,
 }
 
+/// A broken pipe means the consumer closed stdout (the common `... | head`
+/// pattern): a normal, expected end of the stream, not a failure. Returns
+/// `Ok(true)` to stop emitting cleanly, propagates any other I/O error, and
+/// returns `Ok(false)` to keep going. Reporting it as an error would print a
+/// non-JSON line to stderr and exit non-zero, breaking the `--json` contract.
+fn stop_on_broken_pipe(result: std::io::Result<()>) -> std::io::Result<bool> {
+    match result {
+        Ok(()) => Ok(false),
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => Ok(true),
+        Err(e) => Err(e),
+    }
+}
+
 #[async_trait]
 impl<W: Write + Send> Reporter for JsonReporter<'_, W> {
     async fn run(&mut self, mut rx: mpsc::Receiver<SchedulerEvent>) -> std::io::Result<bool> {
@@ -149,15 +162,17 @@ impl<W: Write + Send> Reporter for JsonReporter<'_, W> {
             beams: self.beams.clone(),
             at: now_iso8601(),
         };
-        self.emit(&run_started)?;
+        if stop_on_broken_pipe(self.emit(&run_started))? {
+            return Ok(overall);
+        }
 
         while let Some(event) = rx.recv().await {
-            match event {
+            let stop = match event {
                 SchedulerEvent::BeamStarted { name } => {
-                    self.emit(&WireEvent::BeamStarted {
+                    stop_on_broken_pipe(self.emit(&WireEvent::BeamStarted {
                         beam: name,
                         at: now_iso8601(),
-                    })?;
+                    }))?
                 }
                 SchedulerEvent::BeamOutput {
                     name,
@@ -165,31 +180,34 @@ impl<W: Write + Send> Reporter for JsonReporter<'_, W> {
                     is_stderr,
                 } => {
                     let stream = if is_stderr { "stderr" } else { "stdout" };
-                    self.emit(&WireEvent::BeamOutput {
+                    stop_on_broken_pipe(self.emit(&WireEvent::BeamOutput {
                         beam: name,
                         stream,
                         line,
-                    })?;
+                    }))?
                 }
                 SchedulerEvent::BeamCompleted { name, status } => {
                     let (status, duration_ms) = map_status(status);
-                    self.emit(&WireEvent::BeamCompleted {
+                    stop_on_broken_pipe(self.emit(&WireEvent::BeamCompleted {
                         beam: name,
                         status,
                         duration_ms,
                         at: now_iso8601(),
-                    })?;
+                    }))?
                 }
                 SchedulerEvent::AllDone { success } => {
                     overall = success;
                     let elapsed: Duration = started.elapsed();
-                    self.emit(&WireEvent::RunCompleted {
+                    let _ = stop_on_broken_pipe(self.emit(&WireEvent::RunCompleted {
                         success,
                         duration_ms: elapsed.as_millis(),
                         at: now_iso8601(),
-                    })?;
+                    }))?;
                     break;
                 }
+            };
+            if stop {
+                return Ok(overall);
             }
         }
 
