@@ -8,9 +8,11 @@
 
 use aurora_core::ast::Beam;
 use aurora_core::dag::BeamGraph;
+use aurora_core::events::WatchTrigger;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tokio::sync::mpsc;
 
 /// Quiet period after the last relevant change before a [`WatchTrigger`] is
 /// emitted. Matches the debounce cargo-watch/watchexec use: long enough to
@@ -146,4 +148,46 @@ pub fn classify_path(path: &Path, set: &WatchSet) -> Option<bool> {
         return Some(false);
     }
     None
+}
+
+/// Coalesces relevant change signals into one [`WatchTrigger`] per quiet
+/// period. Each item on `raw_rx` is a relevant change (`true` when it was the
+/// Beamfile). After the first signal, the loop keeps resetting a `quiet` timer
+/// on every further signal; when the timer finally fires it emits a single
+/// trigger whose `beamfile_changed` is the OR over the whole burst, then waits
+/// for the next burst. Returns when `raw_rx` closes (the [`Watcher`] dropped),
+/// flushing a pending burst first so no change is lost on teardown.
+pub async fn debounce_loop(
+    mut raw_rx: mpsc::UnboundedReceiver<bool>,
+    trigger_tx: mpsc::Sender<WatchTrigger>,
+    quiet: Duration,
+) {
+    loop {
+        // Block until the first signal of a new burst; channel closed => stop.
+        let Some(first) = raw_rx.recv().await else {
+            return;
+        };
+        let mut beamfile_changed = first;
+
+        loop {
+            tokio::select! {
+                signal = raw_rx.recv() => match signal {
+                    Some(is_beamfile) => beamfile_changed |= is_beamfile,
+                    None => {
+                        // Closed mid-burst: flush what we have, then stop.
+                        let _ = trigger_tx
+                            .send(WatchTrigger { beamfile_changed })
+                            .await;
+                        return;
+                    }
+                },
+                _ = tokio::time::sleep(quiet) => {
+                    let _ = trigger_tx
+                        .send(WatchTrigger { beamfile_changed })
+                        .await;
+                    break;
+                }
+            }
+        }
+    }
 }
