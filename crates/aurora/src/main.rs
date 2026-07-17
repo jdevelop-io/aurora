@@ -31,17 +31,32 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let beamfile_path = find_beamfile()?;
-    let content = fs::read_to_string(&beamfile_path)?;
-    let mut beam_file = parse(&content)?;
+    let json = matches.get_flag("json");
+
+    let beamfile_path = match find_beamfile() {
+        Ok(path) => path,
+        Err(e) => fail_prerun(json, "beamfile", &e),
+    };
+    let content = match fs::read_to_string(&beamfile_path) {
+        Ok(c) => c,
+        Err(e) => fail_prerun(json, "beamfile", &anyhow::Error::from(e)),
+    };
+    let mut beam_file = match parse(&content) {
+        Ok(bf) => bf,
+        Err(e) => fail_prerun(json, "beamfile", &e),
+    };
 
     if let Some(vars) = matches.get_many::<String>("var") {
-        aurora::apply_var_overrides(&mut beam_file, vars)?;
+        if let Err(e) = aurora::apply_var_overrides(&mut beam_file, vars) {
+            fail_prerun(json, "variable", &e);
+        }
     }
 
     // Resolve `var.<name>` references now that any --var override has been
     // applied, so the overrides actually take effect.
-    aurora_core::parser::resolve_variables(&mut beam_file)?;
+    if let Err(e) = aurora_core::parser::resolve_variables(&mut beam_file) {
+        fail_prerun(json, "variable", &e);
+    }
 
     if matches.get_flag("list") {
         println!("Available beams:");
@@ -61,7 +76,6 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let json = matches.get_flag("json");
     let interactive = !json
         && (matches.get_flag("interactive")
             || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui")));
@@ -106,10 +120,13 @@ async fn main() -> Result<()> {
             return Ok(());
         }
     } else {
-        aurora::resolve_target(
+        match aurora::resolve_target(
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
-        )?
+        ) {
+            Ok(target) => target,
+            Err(e) => fail_prerun(json, "target", &e),
+        }
     };
 
     // Positional arguments belong to the explicitly invoked target. Resolve
@@ -119,7 +136,9 @@ async fn main() -> Result<()> {
         .get_many::<String>("args")
         .map(|values| values.cloned().collect())
         .unwrap_or_default();
-    aurora_core::parser::resolve_arguments(&mut beam_file, &target, &args)?;
+    if let Err(e) = aurora_core::parser::resolve_arguments(&mut beam_file, &target, &args) {
+        fail_prerun(json, "argument", &e);
+    }
 
     // Register each executor under the name it reports, so the registry key and
     // Executor::name() cannot drift apart.
@@ -148,7 +167,10 @@ async fn main() -> Result<()> {
     // environment, never to the full process environment: a Beamfile is
     // untrusted and must not inherit ambient secrets (CI tokens, AWS_*, ...).
     let env = match &beam_file.environment {
-        Some(env_block) => evaluate(env_block, &working_dir)?,
+        Some(env_block) => match evaluate(env_block, &working_dir) {
+            Ok(env) => env,
+            Err(e) => fail_prerun(json, "beamfile", &e),
+        },
         None => aurora_core::env::base_env(),
     };
 
@@ -284,11 +306,21 @@ async fn main() -> Result<()> {
         let scheduler_ok = match handle.await {
             Ok(Ok(ok)) => ok,
             Ok(Err(e)) => {
-                eprintln!("Scheduler error: {}", e);
+                if json {
+                    let mut stdout = std::io::stdout();
+                    let _ = aurora::json::write_error(&mut stdout, "beamfile", &e.to_string());
+                } else {
+                    eprintln!("Scheduler error: {}", e);
+                }
                 false
             }
             Err(e) => {
-                eprintln!("Scheduler task panicked: {}", e);
+                if json {
+                    let mut stdout = std::io::stdout();
+                    let _ = aurora::json::write_error(&mut stdout, "internal", &e.to_string());
+                } else {
+                    eprintln!("Scheduler task panicked: {}", e);
+                }
                 false
             }
         };
@@ -304,6 +336,27 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Reports a failure that happens before any beam runs (Beamfile parsing,
+/// `--var` overrides, target/argument resolution) and exits the process.
+///
+/// Under `--json` this must be the sole output: an `error` event on stdout,
+/// nothing on stderr, so a consumer parsing NDJSON never has to also watch
+/// stderr for a pre-run failure. Outside `--json`, behavior is unchanged:
+/// the message goes to stderr, exactly as the former `anyhow` bail did.
+fn fail_prerun(json: bool, kind: &str, err: &anyhow::Error) -> ! {
+    if json {
+        let mut stdout = std::io::stdout();
+        let _ = aurora::json::write_error(&mut stdout, kind, &err.to_string());
+    } else {
+        // Matches the format the default `Result<(), E: Debug>` process
+        // termination used before this function took over: `{err:?}`, not
+        // `{err}`, so a wrapped `anyhow::Error` still prints its full
+        // "Caused by:" chain (e.g. the pest parse error location).
+        eprintln!("Error: {err:?}");
+    }
+    std::process::exit(1);
 }
 
 fn find_beamfile() -> Result<PathBuf> {
