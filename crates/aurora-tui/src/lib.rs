@@ -21,6 +21,22 @@ use std::io;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+/// Installs a panic hook that restores the terminal (leaves raw mode and the
+/// alternate screen) before delegating to the previously installed hook.
+///
+/// Without it, a panic while the TUI holds the terminal unwinds past the
+/// normal restore path and leaves the user's shell in raw mode inside the
+/// alternate screen, with the panic message invisible or mangled. Chaining to
+/// the previous hook keeps the panic message printing.
+pub fn install_terminal_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+        previous(info);
+    }));
+}
+
 pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
     mut rx: mpsc::Receiver<SchedulerEvent>,
@@ -34,6 +50,7 @@ pub async fn run_execution_tui(
     ),
 ) -> Result<()> {
     tokio::task::block_in_place(move || {
+        install_terminal_panic_hook();
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
@@ -200,6 +217,7 @@ pub fn run_picker(
     beam_info: Vec<(String, Option<String>, Vec<String>)>,
 ) -> Result<Option<Vec<String>>> {
     tokio::task::block_in_place(|| {
+        install_terminal_panic_hook();
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
