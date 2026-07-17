@@ -93,6 +93,26 @@ impl Drop for ContainerCleanup {
     }
 }
 
+/// Lexically collapses `.` and `..` components of an absolute path without
+/// touching the filesystem, mirroring how Docker cleans a bind-mount host
+/// path before resolving it. A leading `..` is clamped at the root (as `/..`
+/// resolves to `/`). Returns `None` for relative paths, where `..` cannot be
+/// resolved lexically and the raw textual comparison is left to stand.
+fn lexical_normalize(path: &str) -> Option<String> {
+    let rest = path.strip_prefix('/')?;
+    let mut components: Vec<&str> = Vec::new();
+    for part in rest.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                components.pop();
+            }
+            other => components.push(other),
+        }
+    }
+    Some(format!("/{}", components.join("/")))
+}
+
 /// Rejects volume mounts that would allow a container escape
 /// (Docker socket -> daemon control, host root or system paths).
 ///
@@ -133,7 +153,13 @@ fn validate_volume(spec: &str) -> Result<()> {
             .map(|c| c.to_string_lossy().trim_end_matches('/').to_string())
     };
 
+    // Canonicalization only works for paths that already exist. A `..`
+    // traversal through a non-existent prefix (e.g. `/nope/../../var/run`)
+    // cannot be canonicalized, yet Docker collapses `..` lexically host-side
+    // and reaches the real target. We therefore also compare a lexically
+    // cleaned form, computed without touching the filesystem.
     let candidates: Vec<String> = std::iter::once(normalized.to_string())
+        .chain(lexical_normalize(normalized))
         .chain(canonicalize(host_path))
         .collect();
 

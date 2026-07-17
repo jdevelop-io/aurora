@@ -108,6 +108,30 @@ async fn test_symlink_to_forbidden_path_is_rejected() {
     assert!(result.is_err(), "symlink to /etc accepted");
 }
 
+// Does NOT require Docker: a `..` traversal through a non-existent prefix
+// cannot be canonicalized and does not textually match the blocklist, yet
+// Docker collapses the `..` host-side at mount time and reaches the real
+// target. The forbidden path must still be rejected.
+#[tokio::test]
+async fn test_dotdot_traversal_to_forbidden_path_is_rejected() {
+    let executor = DockerExecutor::new();
+    for vol in [
+        "/nonexistent_abc/../../var/run/docker.sock:/inside.sock",
+        "/nope/../etc:/host:rw",
+        "/a/b/../../proc:/proc",
+    ] {
+        let input = ExecutionInput {
+            commands: vec!["echo nope".to_string()],
+            env: HashMap::new(),
+            working_dir: std::env::current_dir().unwrap(),
+            config: serde_json::json!({ "image": "alpine:3.19", "volumes": vol }),
+            output_tx: None,
+        };
+        let result = executor.execute(input).await;
+        assert!(result.is_err(), "dotdot traversal accepted: {vol}");
+    }
+}
+
 // Does NOT require Docker: an image field starting with '-' would be parsed
 // as a `docker run` flag (e.g. --privileged), bypassing volume validation.
 #[tokio::test]
