@@ -1,4 +1,5 @@
-use aurora::headless::run_headless;
+use aurora::headless::HeadlessReporter;
+use aurora::reporter::Reporter;
 use aurora_core::scheduler::{BeamStatus, SchedulerEvent, SkipReason};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -52,7 +53,8 @@ async fn streams_prefixed_output_routes_stderr_and_builds_recap() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let success = run_headless(&beams, false, false, rx, &mut out, &mut err)
+    let success = HeadlessReporter::new(beams, false, false, &mut out, &mut err)
+        .run(rx)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -94,7 +96,8 @@ async fn allow_failure_counts_as_ok_and_overall_can_be_true() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    let success = run_headless(&beams, false, false, rx, &mut out, &mut err)
+    let success = HeadlessReporter::new(beams, false, false, &mut out, &mut err)
+        .run(rx)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -131,7 +134,8 @@ async fn skipped_and_cancelled_markers_and_color_toggle() {
 
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
-    run_headless(&beams, true, true, rx, &mut out, &mut err)
+    HeadlessReporter::new(beams, true, true, &mut out, &mut err)
+        .run(rx)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();
@@ -175,7 +179,8 @@ async fn stderr_color_gated_independently_of_stdout() {
     let mut out: Vec<u8> = Vec::new();
     let mut err: Vec<u8> = Vec::new();
     // stdout without color, stderr with color: the two streams are gated independently
-    run_headless(&beams, false, true, rx, &mut out, &mut err)
+    HeadlessReporter::new(beams, false, true, &mut out, &mut err)
+        .run(rx)
         .await
         .unwrap();
     let out = String::from_utf8(out).unwrap();

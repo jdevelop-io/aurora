@@ -3,6 +3,7 @@
 
 pub mod headless;
 pub mod plugins;
+pub mod reporter;
 pub mod time;
 
 use anyhow::{bail, Result};

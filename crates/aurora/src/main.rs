@@ -257,15 +257,15 @@ async fn main() -> Result<()> {
         let err_color = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
         let mut stdout = std::io::stdout();
         let mut stderr = std::io::stderr();
-        let success = headless::run_headless(
-            &beam_names,
+        use aurora::reporter::Reporter;
+        let mut reporter = headless::HeadlessReporter::new(
+            beam_names,
             out_color,
             err_color,
-            rx,
             &mut stdout,
             &mut stderr,
-        )
-        .await?;
+        );
+        let success = reporter.run(rx).await?;
 
         // The scheduler can fail before emitting AllDone (DAG construction error:
         // cycle, unknown dependency). We join its task to propagate
