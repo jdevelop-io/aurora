@@ -118,6 +118,7 @@ aurora --list          # list all available beams
 aurora --dry-run       # show which beams would run, without running them
 aurora --no-cache      # ignore the cache
 aurora --var key=val   # override a Beamfile variable
+aurora --json          # stream NDJSON events on stdout instead of plain logs
 ```
 
 With no argument, the `default` beam declared in the `aurora {}` block is used.
@@ -220,6 +221,46 @@ block when no beam is given; the interactive picker is only available with a
 TTY or `-i`. ANSI colour appears only when the target stream (stdout or
 stderr) is itself a terminal and `NO_COLOR` is unset, so redirecting one
 stream does not pollute it with colour codes.
+
+#### Machine-readable output (`--json`)
+
+`--json` replaces the plain prefixed logs with newline-delimited JSON
+(NDJSON) on stdout: one JSON object per line, each carrying `"schema": 1` so
+the format can evolve without breaking consumers. No colour is ever emitted
+in this mode. `--json` forces non-interactive mode and conflicts with
+`-i`/`--interactive`, `--list` and `--dry-run`. Exit codes are unchanged
+(`0` success, `1` failure, `130` on interrupt).
+
+Every command's stdout/stderr output is carried as `beam_output` events;
+nothing else is written to stdout as raw text. The event types are:
+
+- `run_started`: `target`, `beams` (the resolved dependency closure), `at`.
+- `beam_started`: `beam`, `at`.
+- `beam_output`: `beam`, `stream` (`stdout` or `stderr`), `line`.
+- `beam_completed`: `beam`, `status`, fields specific to that status, `at`,
+  and `duration_ms` when the beam actually ran. `status` is one of:
+  - `success`: plus `cached` (bool); `duration_ms` is present only when the
+    beam actually ran (absent when `cached` is `true`).
+  - `skipped`: plus `reason` (`cached`, `skip_if` or `condition_not_met`);
+    no `duration_ms`.
+  - `failed` / `failed_allowed`: plus `exit_code` and `duration_ms`.
+  - `cancelled`: no extra fields and no `duration_ms`.
+- `run_completed`: `success`, `duration_ms`, `at`.
+- `error`: `kind` (`beamfile`, `variable`, `target`, `argument` or
+  `internal`) and `message`, emitted for a pre-run failure (an invalid
+  Beamfile, a dependency cycle, an unknown target, an unknown `--var` key, or
+  a failing `environment {}` block).
+
+`at` is an RFC 3339 UTC timestamp with millisecond precision, for example
+`2026-07-17T10:00:00.120Z`.
+
+A pre-run failure emits `run_started` followed by an `error` event on stdout
+and exits `1`; the stream does **not** end with a `run_completed` in that
+case, so a consumer must not assume every run closes with one.
+
+```bash
+aurora check --json | jq -r 'select(.event=="beam_completed") | "\(.beam) \(.status)"'
+```
 
 ## The Beamfile
 
