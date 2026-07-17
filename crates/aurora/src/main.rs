@@ -283,6 +283,11 @@ async fn main() -> Result<()> {
             Box<dyn Send>,
             mpsc::Receiver<aurora_core::events::WatchTrigger>,
         )> {
+            if tgt == MULTI_BEAM {
+                anyhow::bail!(
+                    "watch is not available for a multi-beam selection; run a single beam to watch it"
+                );
+            }
             let closure = aurora::watch::closure_of(&sw_beams, &tgt);
             let set =
                 aurora::watch::build_watch_set(&sw_beams, &closure, &sw_working_dir, &sw_beamfile);
