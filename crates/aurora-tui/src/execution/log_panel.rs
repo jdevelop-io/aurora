@@ -111,21 +111,40 @@ pub fn render_log_panel(
     }
 }
 
-/// Byte ranges of the occurrences of `needle_lower` (already lowercase) in
-/// `haystack`, case-insensitive. If lowercasing changes the byte length
-/// (rare Unicode cases), highlights the whole line as a safety fallback.
+/// Byte ranges (into `haystack`) of the case-insensitive occurrences of
+/// `needle_lower` (already lowercase).
+///
+/// Lowercasing can change byte lengths (`K` U+212A -> `k`, `İ` -> `i̇`), and
+/// even when the total length is preserved the internal offsets shift, so a
+/// range computed on the lowercased text is not valid on the original.
+/// We therefore lowercase char by char while recording, for each lowered
+/// byte, the start offset of the original char it came from; matches found in
+/// the lowered text then map back to original char boundaries.
 fn match_ranges(haystack: &str, needle_lower: &str) -> Vec<(usize, usize)> {
-    let hay_lower = haystack.to_lowercase();
-    if hay_lower.len() != haystack.len() {
-        return if hay_lower.contains(needle_lower) {
-            vec![(0, haystack.len())]
-        } else {
-            vec![]
-        };
+    if needle_lower.is_empty() {
+        return vec![];
     }
-    hay_lower
+
+    let mut lower = String::with_capacity(haystack.len());
+    // `lower_to_orig[i]` is the byte offset in `haystack` of the original char
+    // that produced lowered byte `i`; the final entry maps the end of the
+    // lowered text to the end of the original.
+    let mut lower_to_orig = Vec::with_capacity(haystack.len() + 1);
+    let mut encode = [0u8; 4];
+    for (orig_off, ch) in haystack.char_indices() {
+        for lc in ch.to_lowercase() {
+            let encoded = lc.encode_utf8(&mut encode);
+            for _ in 0..encoded.len() {
+                lower_to_orig.push(orig_off);
+            }
+            lower.push_str(encoded);
+        }
+    }
+    lower_to_orig.push(haystack.len());
+
+    lower
         .match_indices(needle_lower)
-        .map(|(start, m)| (start, start + m.len()))
+        .map(|(start, m)| (lower_to_orig[start], lower_to_orig[start + m.len()]))
         .collect()
 }
 
