@@ -81,6 +81,18 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
         if let Some(dir) = &mut beam.dir {
             *dir = interpolate_command(dir, &vars, &beam_name)?;
         }
+        // Gates run through the shell like `run.commands`, so they take the
+        // same `${var.x}` interpolation: otherwise a parameterized gate keeps
+        // its literal token, becomes a bad substitution, and silently stops
+        // gating.
+        if let Some(skip_if) = &mut beam.skip_if {
+            *skip_if = interpolate_command(skip_if, &vars, &beam_name)?;
+        }
+        if let Some(condition) = &mut beam.condition {
+            for ConditionClause::Shell(clause) in &mut condition.clauses {
+                *clause = interpolate_command(clause, &vars, &beam_name)?;
+            }
+        }
         if let Some(run) = &mut beam.run {
             for cmd in &mut run.commands {
                 *cmd = interpolate_command(cmd, &vars, &beam_name)?;
@@ -175,6 +187,17 @@ pub fn resolve_arguments(beam_file: &mut BeamFile, target: &str, args: &[String]
     for beam in &mut beam_file.beams {
         let beam_name = beam.name.clone();
         if beam_name == target {
+            if let Some(dir) = &mut beam.dir {
+                *dir = interpolate_arguments(dir, args, &beam_name)?;
+            }
+            if let Some(skip_if) = &mut beam.skip_if {
+                *skip_if = interpolate_arguments(skip_if, args, &beam_name)?;
+            }
+            if let Some(condition) = &mut beam.condition {
+                for ConditionClause::Shell(clause) in &mut condition.clauses {
+                    *clause = interpolate_arguments(clause, args, &beam_name)?;
+                }
+            }
             if let Some(run) = &mut beam.run {
                 for cmd in &mut run.commands {
                     *cmd = interpolate_arguments(cmd, args, &beam_name)?;
@@ -182,6 +205,19 @@ pub fn resolve_arguments(beam_file: &mut BeamFile, target: &str, args: &[String]
             }
             beam.args = args.to_vec();
         } else if run_closure.contains(&beam_name) {
+            // Arguments are target-only, so a dependency referencing them
+            // anywhere it runs a shell (gates, dir, commands) is a mistake.
+            if let Some(dir) = &beam.dir {
+                reject_arguments(dir, &beam_name)?;
+            }
+            if let Some(skip_if) = &beam.skip_if {
+                reject_arguments(skip_if, &beam_name)?;
+            }
+            if let Some(condition) = &beam.condition {
+                for ConditionClause::Shell(clause) in &condition.clauses {
+                    reject_arguments(clause, &beam_name)?;
+                }
+            }
             if let Some(run) = &beam.run {
                 for cmd in &run.commands {
                     reject_arguments(cmd, &beam_name)?;
