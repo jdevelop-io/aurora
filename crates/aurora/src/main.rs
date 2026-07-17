@@ -61,8 +61,10 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let interactive = matches.get_flag("interactive")
-        || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui"));
+    let json = matches.get_flag("json");
+    let interactive = !json
+        && (matches.get_flag("interactive")
+            || (std::io::stdout().is_terminal() && !matches.get_flag("no-tui")));
 
     // Target resolution: picker in interactive mode, `default` beam in headless mode
     // (the picker is inherently interactive and does not exist outside a TTY).
@@ -258,14 +260,23 @@ async fn main() -> Result<()> {
         let mut stdout = std::io::stdout();
         let mut stderr = std::io::stderr();
         use aurora::reporter::Reporter;
-        let mut reporter = headless::HeadlessReporter::new(
-            beam_names,
-            out_color,
-            err_color,
-            &mut stdout,
-            &mut stderr,
-        );
+        let mut reporter: Box<dyn Reporter> = if json {
+            Box::new(aurora::json::JsonReporter::new(
+                target.clone(),
+                beam_names.clone(),
+                &mut stdout,
+            ))
+        } else {
+            Box::new(headless::HeadlessReporter::new(
+                beam_names.clone(),
+                out_color,
+                err_color,
+                &mut stdout,
+                &mut stderr,
+            ))
+        };
         let success = reporter.run(rx).await?;
+        drop(reporter);
 
         // The scheduler can fail before emitting AllDone (DAG construction error:
         // cycle, unknown dependency). We join its task to propagate

@@ -66,6 +66,13 @@ pub fn cli() -> Command {
                 .help("Force the TUI, even when output is not a terminal"),
         )
         .arg(
+            Arg::new("json")
+                .long("json")
+                .action(clap::ArgAction::SetTrue)
+                .conflicts_with_all(["interactive", "list", "dry-run"])
+                .help("Stream the run as newline-delimited JSON events on stdout"),
+        )
+        .arg(
             Arg::new("completions")
                 .long("completions")
                 .value_name("SHELL")
