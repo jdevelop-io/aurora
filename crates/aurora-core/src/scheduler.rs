@@ -566,7 +566,29 @@ async fn run_beam_task(
 
     // Gating: skip when `skip_if` succeeds, then when `condition` is
     // not met. Either way the beam counts as a success for scheduling.
-    if let Some(reason) = gate_skip_reason(&beam, &working_dir, &env).await {
+    //
+    // The gate commands run on the local host and can block arbitrarily
+    // (`skip_if = "curl ..."`), so the evaluation is raced against
+    // cancellation: otherwise a cancelled beam would stay parked here and the
+    // whole run could not drain until the gate exited on its own.
+    let gate = tokio::select! {
+        reason = gate_skip_reason(&beam, &working_dir, &env) => reason,
+        _ = &mut cancel_rx => {
+            let _ = tx
+                .send(SchedulerEvent::BeamCompleted {
+                    name: beam.name.clone(),
+                    status: BeamStatus::Cancelled,
+                })
+                .await;
+            let outcome = if beam.allow_failure {
+                BeamOutcome::Ok
+            } else {
+                BeamOutcome::Cancelled
+            };
+            return (beam.name, outcome);
+        }
+    };
+    if let Some(reason) = gate {
         let _ = tx
             .send(SchedulerEvent::BeamCompleted {
                 name: beam.name.clone(),
@@ -712,6 +734,9 @@ async fn run_gate_command(cmd: &str, working_dir: &Path, env: &HashMap<String, S
     tokio::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
+        // Killed when the future is dropped, so a gate raced against
+        // cancellation does not leave an orphan `sh` running.
+        .kill_on_drop(true)
         .current_dir(working_dir)
         .env_clear()
         .envs(env)
