@@ -419,7 +419,7 @@ async fn main() -> Result<()> {
                     std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
                 let mut stdout = std::io::stdout();
                 let mut stderr = std::io::stderr();
-                {
+                let stdout_closed = {
                     use aurora::reporter::Reporter;
                     let mut reporter = headless::HeadlessReporter::new(
                         beam_names.clone(),
@@ -428,9 +428,13 @@ async fn main() -> Result<()> {
                         &mut stdout,
                         &mut stderr,
                     );
-                    let _ = reporter.run(rx).await?;
-                }
+                    reporter.run(rx).await.is_err()
+                };
                 let _ = handle.await;
+                if stdout_closed {
+                    // The stdout consumer went away: leave watch mode cleanly.
+                    break;
+                }
 
                 // Ctrl-C during the run: the beams were cancelled, now leave.
                 if interrupted.load(Ordering::SeqCst) {
@@ -471,10 +475,15 @@ async fn main() -> Result<()> {
                                 &working_dir,
                                 &beamfile_path,
                             );
-                            let (w, rx) =
-                                aurora::watch::Watcher::start(set, aurora::watch::DEBOUNCE)?;
-                            _watcher = w;
-                            trig_rx = rx;
+                            match aurora::watch::Watcher::start(set, aurora::watch::DEBOUNCE) {
+                                Ok((w, rx)) => {
+                                    _watcher = w;
+                                    trig_rx = rx;
+                                }
+                                Err(e) => eprintln!(
+                                    "aurora: cannot restart the watcher: {e:#}; keeping the previous watch set"
+                                ),
+                            }
                         }
                         Err(e) => {
                             eprintln!("aurora: {e:#}; keeping the previous Beamfile");
