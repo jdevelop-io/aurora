@@ -396,7 +396,12 @@ async fn wait_for_shutdown(shutdown: &mut Option<oneshot::Receiver<()>>) {
         Some(rx) => {
             // A dropped sender means the run can never be shut down: treat it
             // like the absent case rather than firing a spurious teardown.
+            // Clear the receiver so the next call takes the `None` branch: this
+            // future is rebuilt on every loop iteration, and re-polling an
+            // already-completed oneshot receiver panics with "called after
+            // complete".
             if rx.await.is_err() {
+                *shutdown = None;
                 std::future::pending::<()>().await
             }
         }

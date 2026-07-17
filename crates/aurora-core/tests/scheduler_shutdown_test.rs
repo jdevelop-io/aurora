@@ -133,6 +133,51 @@ async fn shutdown_spawns_no_further_beam() {
     }
 }
 
+/// Arming a shutdown then dropping the sender without sending means the run
+/// can never be shut down. The scheduler must treat it like the absent case
+/// and run to completion, not panic by re-polling a completed receiver.
+#[tokio::test]
+async fn dropped_shutdown_sender_does_not_panic() {
+    let (tx, _rx) = mpsc::channel(256);
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+    // Two beams (sequential) so the scheduler's loop iterates more than once,
+    // which is what re-polls the shutdown receiver.
+    let beams = vec![
+        beam("first", vec![], vec!["echo first".to_string()]),
+        beam(
+            "second",
+            vec!["first".to_string()],
+            vec!["echo second".to_string()],
+        ),
+    ];
+
+    let scheduler = Scheduler::new(
+        beams,
+        executors(),
+        tx,
+        None,
+        std::env::temp_dir(),
+        HashMap::new(),
+    )
+    .without_cache()
+    .with_shutdown(shutdown_rx);
+
+    // Drop the sender without sending: the receiver resolves with an error.
+    drop(shutdown_tx);
+
+    let handle = tokio::spawn(async move { scheduler.run("second", &[]).await });
+
+    let result = tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .expect("the run must finish");
+
+    let success = result
+        .expect("the scheduler must not panic when the shutdown sender is dropped")
+        .unwrap();
+    assert!(success, "a run with no shutdown must succeed");
+}
+
 /// An `allow_failure` beam running at shutdown is cancelled and counts as Ok
 /// for scheduling, but the torn-down run must still report failure: it did
 /// not complete, and its downstream beam never ran.
