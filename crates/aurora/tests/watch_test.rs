@@ -144,3 +144,25 @@ fn classify_path_distinguishes_beamfile_inputs_and_noise() {
         None
     );
 }
+
+#[test]
+fn cache_writes_are_excluded_even_when_a_broad_glob_would_match() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join(".aurora/cache")).unwrap();
+
+    // A deliberately broad input that WOULD match a cache write if the
+    // `.aurora` exclusion were absent or checked after the pattern match.
+    let beams = vec![beam("build", &["**/*.json"], None, &[])];
+    let closure = closure_of(&beams, "build");
+    let set = build_watch_set(&beams, &closure, root, &root.join("Beamfile"));
+
+    // Sanity: the broad glob really does match a normal json file, so the
+    // exclusion below is load-bearing, not vacuous.
+    assert_eq!(classify_path(&root.join("config.json"), &set), Some(false));
+    // The cache write is still excluded despite matching the glob.
+    assert_eq!(
+        classify_path(&root.join(".aurora/cache/build.json"), &set),
+        None
+    );
+}
