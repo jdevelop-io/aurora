@@ -41,6 +41,10 @@ pub trait Executor: Send + Sync {
 
 /// Reads a stream line by line, forwarding each line to `output_tx` (when set)
 /// and collecting them for the final [`ExecutionOutput`].
+///
+/// Lines are read as raw bytes and decoded lossily (invalid UTF-8 becomes the
+/// replacement character), so a non-UTF-8 byte neither truncates the stream
+/// nor leaves the pipe undrained (which would kill the child with SIGPIPE).
 async fn collect_stream<R>(
     reader: R,
     is_stderr: bool,
@@ -49,9 +53,25 @@ async fn collect_stream<R>(
 where
     R: AsyncRead + Unpin,
 {
-    let mut lines = BufReader::new(reader).lines();
+    let mut buf = BufReader::new(reader);
     let mut collected = vec![];
-    while let Ok(Some(line)) = lines.next_line().await {
+    let mut bytes = Vec::new();
+    loop {
+        bytes.clear();
+        match buf.read_until(b'\n', &mut bytes).await {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+        // Strip the trailing newline (and a preceding carriage return) so the
+        // decoded line matches the previous line-based behaviour.
+        if bytes.last() == Some(&b'\n') {
+            bytes.pop();
+            if bytes.last() == Some(&b'\r') {
+                bytes.pop();
+            }
+        }
+        let line = String::from_utf8_lossy(&bytes).into_owned();
         if let Some(ref tx) = output_tx {
             let _ = tx.send((line.clone(), is_stderr)).await;
         }

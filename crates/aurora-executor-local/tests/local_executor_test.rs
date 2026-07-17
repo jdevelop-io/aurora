@@ -57,6 +57,52 @@ async fn test_execute_failing_command() {
     assert_ne!(output.exit_code, 0);
 }
 
+// A non-UTF-8 byte in the output must not terminate the stream: output
+// emitted after the invalid byte must still be captured.
+#[tokio::test]
+async fn test_invalid_utf8_does_not_truncate_output() {
+    let executor = LocalExecutor::new();
+    let input = ExecutionInput {
+        commands: vec![
+            "printf 'before\\n'; printf '\\375\\376\\n'; printf 'after\\n'".to_string(),
+        ],
+        env: base_env(),
+        working_dir: std::env::current_dir().unwrap(),
+        config: serde_json::json!({}),
+        output_tx: None,
+    };
+    let output = executor.execute(input).await.unwrap();
+    assert_eq!(output.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("before"), "missing 'before': {stdout:?}");
+    assert!(
+        stdout.contains("after"),
+        "output truncated after invalid byte: {stdout:?}"
+    );
+}
+
+// A non-UTF-8 byte followed by a large amount of output must not leave the
+// pipe undrained: the child must not be killed by SIGPIPE, and a command
+// that would exit 0 must still report exit 0.
+#[tokio::test]
+async fn test_invalid_utf8_does_not_kill_child() {
+    let executor = LocalExecutor::new();
+    let input = ExecutionInput {
+        commands: vec!["printf '\\375\\n'; seq 1 100000; echo all-done".to_string()],
+        env: base_env(),
+        working_dir: std::env::current_dir().unwrap(),
+        config: serde_json::json!({}),
+        output_tx: None,
+    };
+    let output = executor.execute(input).await.unwrap();
+    assert_eq!(output.exit_code, 0, "child killed by SIGPIPE");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("all-done"),
+        "output truncated before completion"
+    );
+}
+
 #[tokio::test]
 async fn test_env_vars_passed() {
     let executor = LocalExecutor::new();
