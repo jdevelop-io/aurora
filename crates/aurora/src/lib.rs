@@ -6,6 +6,7 @@ pub mod json;
 pub mod plugins;
 pub mod reporter;
 pub mod time;
+pub mod watch;
 
 use anyhow::{bail, Result};
 use aurora_core::ast::{Beam, BeamFile};

@@ -46,3 +46,13 @@ pub enum SchedulerEvent {
         success: bool,
     },
 }
+
+/// Emitted by the watcher once a quiet period has elapsed after one or more
+/// relevant filesystem changes. Coalesces a whole burst of events into a single
+/// re-run request. `beamfile_changed` is the OR over the burst: it is true when
+/// any change in the window touched the Beamfile, so the supervisor knows it
+/// must re-parse before the next cycle rather than only re-running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WatchTrigger {
+    pub beamfile_changed: bool,
+}
