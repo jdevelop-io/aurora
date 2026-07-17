@@ -337,7 +337,7 @@ mod tests {
     fn parent_equal_to_a_root_is_watched_recursively_not_downgraded() {
         let root = PathBuf::from("/project");
         let (recursive, non_recursive) =
-            plan_registrations(&[root.clone()], Some(Path::new("/project")));
+            plan_registrations(std::slice::from_ref(&root), Some(Path::new("/project")));
         assert_eq!(recursive, vec![root]);
         assert!(
             non_recursive.is_empty(),
@@ -359,7 +359,7 @@ mod tests {
     fn distinct_parent_and_root_are_both_registered() {
         let root = PathBuf::from("/project/src");
         let (recursive, non_recursive) =
-            plan_registrations(&[root.clone()], Some(Path::new("/project")));
+            plan_registrations(std::slice::from_ref(&root), Some(Path::new("/project")));
         assert_eq!(recursive, vec![root]);
         assert_eq!(non_recursive, vec![PathBuf::from("/project")]);
     }
