@@ -265,6 +265,26 @@ consumer must not assume every run closes with one.
 aurora check --json | jq -r 'select(.event=="beam_completed") | "\(.beam) \(.status)"'
 ```
 
+### Watch mode
+
+Run a beam and re-run it whenever its inputs change:
+
+```bash
+aurora build --watch     # or -w
+```
+
+Aurora watches the `inputs` globs of the target's dependency closure plus the
+Beamfile itself. On a change it runs a fresh cycle; the cache skips every beam
+whose inputs and definition are unchanged. Editing the Beamfile re-parses and
+re-runs. When no beam in the closure declares `inputs`, Aurora warns and watches
+the Beamfile only.
+
+Watch mode works headless and in the TUI. In the TUI, press `w` to toggle
+watching on the current target; `-w` presets it on at launch. Leaving watch mode
+(Ctrl-C headless, `q` in the TUI) exits with code 0: the interruption is the
+normal way out, not a failure. Beam failures during cycles do not change the
+exit code. `--watch` cannot be combined with `--json`, `--list`, or `--dry-run`.
+
 ## The Beamfile
 
 Minimal example (the one Aurora uses to build itself):

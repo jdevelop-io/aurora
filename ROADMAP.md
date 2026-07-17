@@ -63,7 +63,7 @@ These close the gap with `just`/`taskfile` for everyday authoring.
 
 Expected of a tool that positions itself as modern.
 
-- [ ] **`--watch` mode** — re-run a beam (and dependents) on input changes.
+- [x] **`--watch` mode** — re-run a beam (and dependents) on input changes.
   Pairs naturally with the TUI.
 - [ ] **Composition / `include`** — import other Beamfiles or shared task
   libraries. What makes `task` viable in large monorepos.
