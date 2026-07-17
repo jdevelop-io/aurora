@@ -191,3 +191,31 @@ pub async fn debounce_loop(
         }
     }
 }
+
+/// Static detection of an output-to-input loop: a beam whose `outputs` match an
+/// `inputs` glob of the closure would re-trigger the watch after every run.
+/// Returns one warning per offending output. This is a heuristic (patterns are
+/// matched relative to the Beamfile directory, ignoring per-beam `dir`), so it
+/// only warns; the overlap can be intentional and the cache usually stabilizes
+/// the loop on the second cycle.
+pub fn detect_output_input_overlap(beams: &[Beam], closure: &HashSet<String>) -> Vec<String> {
+    let patterns: Vec<glob::Pattern> = beams
+        .iter()
+        .filter(|b| closure.contains(&b.name))
+        .flat_map(|b| b.inputs.iter())
+        .filter_map(|p| glob::Pattern::new(p).ok())
+        .collect();
+
+    let mut warnings = Vec::new();
+    for b in beams.iter().filter(|b| closure.contains(&b.name)) {
+        for output in &b.outputs {
+            if patterns.iter().any(|p| p.matches(output)) {
+                warnings.push(format!(
+                    "beam '{}' output '{}' matches a watched input; the watch may re-trigger itself",
+                    b.name, output
+                ));
+            }
+        }
+    }
+    warnings
+}

@@ -166,3 +166,32 @@ fn cache_writes_are_excluded_even_when_a_broad_glob_would_match() {
         None
     );
 }
+
+use aurora::watch::detect_output_input_overlap;
+
+fn beam_io(name: &str, inputs: &[&str], outputs: &[&str]) -> Beam {
+    let mut b = beam(name, inputs, None, &[]);
+    b.outputs = outputs.iter().map(|s| s.to_string()).collect();
+    b
+}
+
+#[test]
+fn overlap_detected_when_an_output_matches_an_input_glob() {
+    let beams = vec![beam_io("gen", &["src/**/*.rs"], &["src/generated.rs"])];
+    let closure = closure_of(&beams, "gen");
+    let warnings = detect_output_input_overlap(&beams, &closure);
+    assert_eq!(warnings.len(), 1, "one overlapping output");
+    assert!(
+        warnings[0].contains("gen"),
+        "names the beam: {}",
+        warnings[0]
+    );
+    assert!(warnings[0].contains("src/generated.rs"), "names the output");
+}
+
+#[test]
+fn no_overlap_when_outputs_are_disjoint() {
+    let beams = vec![beam_io("build", &["src/**/*.rs"], &["dist/app.js"])];
+    let closure = closure_of(&beams, "build");
+    assert!(detect_output_input_overlap(&beams, &closure).is_empty());
+}
