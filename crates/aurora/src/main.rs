@@ -153,7 +153,16 @@ async fn main() -> Result<()> {
 
     // Register community WASM executors discovered under ~/.aurora/plugins.
     // Native executors take precedence: a plugin cannot shadow local/docker.
-    aurora::plugins::register_plugins(&mut executors, aurora::plugins::discover_plugins());
+    // Warnings go to stderr in the default mode, but are suppressed under
+    // `--json`, which keeps stderr clean and reserves stdout for the event
+    // stream.
+    let plugin_registration =
+        aurora::plugins::register_plugins(&mut executors, aurora::plugins::discover_plugins());
+    if !json {
+        for warning in &plugin_registration.warnings {
+            eprintln!("{warning}");
+        }
+    }
 
     // `beamfile_path` always ends with the `Beamfile` component, so it has a
     // parent; fall back to the current directory rather than panic if not.

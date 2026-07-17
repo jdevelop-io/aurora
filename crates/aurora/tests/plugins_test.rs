@@ -30,7 +30,7 @@ fn register_adds_new_plugins_and_skips_builtin_collisions() {
     let mut executors: HashMap<String, Arc<dyn Executor>> = HashMap::new();
     executors.insert("local".to_string(), Arc::new(LocalExecutor::new()));
 
-    let registered = register_plugins(
+    let outcome = register_plugins(
         &mut executors,
         vec![
             ("local".to_string(), local_path),
@@ -38,9 +38,32 @@ fn register_adds_new_plugins_and_skips_builtin_collisions() {
         ],
     );
 
-    assert_eq!(registered, vec!["extra".to_string()]);
+    assert_eq!(outcome.registered, vec!["extra".to_string()]);
     assert!(executors.contains_key("extra"));
     assert_eq!(executors.len(), 2);
+}
+
+#[test]
+fn register_returns_a_warning_instead_of_printing_on_collision() {
+    // The warning must be returned, not written straight to stderr, so the
+    // caller can suppress it under `--json` (which owns stdout and keeps
+    // stderr clean).
+    let dir = tempfile::tempdir().unwrap();
+    let local_path = dir.path().join("local.wasm");
+    fs::write(&local_path, b"\0asm").unwrap();
+
+    let mut executors: HashMap<String, Arc<dyn Executor>> = HashMap::new();
+    executors.insert("local".to_string(), Arc::new(LocalExecutor::new()));
+
+    let outcome = register_plugins(&mut executors, vec![("local".to_string(), local_path)]);
+
+    assert!(outcome.registered.is_empty());
+    assert_eq!(
+        outcome.warnings.len(),
+        1,
+        "a built-in collision must produce exactly one warning"
+    );
+    assert!(outcome.warnings[0].contains("local"));
 }
 
 #[test]
@@ -51,10 +74,10 @@ fn register_skips_plugin_that_fails_to_load() {
     executors.insert("local".to_string(), Arc::new(LocalExecutor::new()));
 
     let missing = std::path::PathBuf::from("/definitely/not/here/ghost.wasm");
-    let registered = register_plugins(&mut executors, vec![("ghost".to_string(), missing)]);
+    let outcome = register_plugins(&mut executors, vec![("ghost".to_string(), missing)]);
 
     assert!(
-        registered.is_empty(),
+        outcome.registered.is_empty(),
         "an unloadable plugin is not registered"
     );
     assert!(!executors.contains_key("ghost"));

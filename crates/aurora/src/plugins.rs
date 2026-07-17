@@ -91,22 +91,31 @@ pub fn discover_plugins_in(dir: &Path) -> Vec<(String, PathBuf)> {
         .collect()
 }
 
+/// Outcome of [`register_plugins`]: the names actually registered, and any
+/// warnings produced. Warnings are returned rather than printed so the caller
+/// decides where they go (stderr in the default mode, suppressed under
+/// `--json`, which owns stdout and keeps stderr clean).
+pub struct PluginRegistration {
+    pub registered: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
 /// Registers each discovered plugin into `executors`. A native (built-in)
 /// executor always wins: a plugin whose name is already taken is skipped with
-/// an stderr warning, and so is a plugin that fails to load. Returns the names
-/// actually registered.
+/// a warning, and so is a plugin that fails to load.
 pub fn register_plugins(
     executors: &mut HashMap<String, Arc<dyn Executor>>,
     discovered: Vec<(String, PathBuf)>,
-) -> Vec<String> {
+) -> PluginRegistration {
     let mut registered = Vec::new();
+    let mut warnings = Vec::new();
     for (name, path) in discovered {
         if executors.contains_key(&name) {
-            eprintln!(
+            warnings.push(format!(
                 "aurora: ignoring plugin '{}' ({}): a built-in executor already uses that name",
                 name,
                 path.display()
-            );
+            ));
             continue;
         }
         match WasmExecutor::load(name.clone(), path.clone()) {
@@ -114,13 +123,16 @@ pub fn register_plugins(
                 executors.insert(name.clone(), Arc::new(executor) as Arc<dyn Executor>);
                 registered.push(name);
             }
-            Err(e) => eprintln!(
+            Err(e) => warnings.push(format!(
                 "aurora: skipping plugin '{}' ({}): {}",
                 name,
                 path.display(),
                 e
-            ),
+            )),
         }
     }
-    registered
+    PluginRegistration {
+        registered,
+        warnings,
+    }
 }
