@@ -2,6 +2,7 @@
 //! that are testable independently of the TUI (headless mode).
 
 pub mod headless;
+pub mod json;
 pub mod plugins;
 pub mod reporter;
 pub mod time;

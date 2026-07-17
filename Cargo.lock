@@ -157,6 +157,7 @@ dependencies = [
  "dirs",
  "extism",
  "jiff",
+ "serde",
  "serde_json",
  "strsim",
  "tempfile",
