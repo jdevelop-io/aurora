@@ -210,10 +210,14 @@ impl Scheduler {
                 }
                 _ = wait_for_shutdown(&mut shutdown), if !run.shutting_down => {
                     // Tear the run down: cancel every running beam, and stop
-                    // spawning. Their dependents are cancelled as each reports
-                    // Cancelled, so nothing is left Pending. The loop exits once
-                    // the JoinSet drains.
+                    // spawning. A torn-down run never completed, so it must
+                    // report failure regardless of how its in-flight beams
+                    // resolve. Without this, a running `allow_failure` beam (or
+                    // a beam that finishes in the same instant) returns Ok, its
+                    // suppressed dependents leave `overall_success` untouched,
+                    // and the aborted run would falsely report success.
                     run.shutting_down = true;
+                    overall_success = false;
                     for (_, cancel) in run.cancels.drain() {
                         let _ = cancel.send(());
                     }

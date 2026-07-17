@@ -132,3 +132,47 @@ async fn shutdown_spawns_no_further_beam() {
         }
     }
 }
+
+/// An `allow_failure` beam running at shutdown is cancelled and counts as Ok
+/// for scheduling, but the torn-down run must still report failure: it did
+/// not complete, and its downstream beam never ran.
+#[tokio::test]
+async fn shutdown_fails_the_run_even_with_an_allow_failure_beam() {
+    let (tx, _rx) = mpsc::channel(64);
+    let (shutdown_tx, shutdown_rx) = oneshot::channel();
+
+    let mut slow = beam("slow", vec![], vec!["sleep 30".to_string()]);
+    slow.allow_failure = true;
+    let after = beam(
+        "after",
+        vec!["slow".to_string()],
+        vec!["echo after".to_string()],
+    );
+
+    let scheduler = Scheduler::new(
+        vec![slow, after],
+        executors(),
+        tx,
+        None,
+        std::env::temp_dir(),
+        HashMap::new(),
+    )
+    .without_cache()
+    .with_shutdown(shutdown_rx);
+
+    let handle = tokio::spawn(async move { scheduler.run("after", &[]).await });
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    shutdown_tx.send(()).unwrap();
+
+    let success = tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .expect("the run must stop promptly on shutdown")
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        !success,
+        "a shut-down run must not report success even when the running beam tolerates failure"
+    );
+}
