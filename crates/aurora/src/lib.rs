@@ -309,6 +309,8 @@ pub struct RunInputs {
     pub env: HashMap<String, String>,
     pub declared_env: BTreeMap<String, String>,
     pub max_parallelism: Option<usize>,
+    /// Instance id of the invoked target: the scheduler root and TUI target.
+    pub target_id: String,
 }
 
 /// Re-reads and re-parses the Beamfile at `beamfile_path` into a [`RunInputs`],
@@ -346,5 +348,6 @@ pub fn resolve_run_inputs(
         env,
         declared_env,
         max_parallelism,
+        target_id: expansion.target_id,
     })
 }

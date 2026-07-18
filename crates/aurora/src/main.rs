@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
         println!("Available beams:");
         for beam in &beam_file.beams {
             let desc = beam.description.as_deref().unwrap_or("");
-            println!("  {:<20}  {}", beam.name, desc);
+            println!("  {:<28}  {}", aurora_core::expand::signature(beam), desc);
         }
         return Ok(());
     }
@@ -82,7 +82,12 @@ async fn main() -> Result<()> {
             &beam_file,
             matches.get_one::<String>("beam").map(|s| s.as_str()),
         )?;
-        print_execution_plan(&beam_file, &target)?;
+        let args: Vec<String> = matches
+            .get_many::<String>("args")
+            .map(|values| values.cloned().collect())
+            .unwrap_or_default();
+        let expansion = aurora_core::expand::expand(&beam_file, &target, &args)?;
+        print_execution_plan(&expansion)?;
         return Ok(());
     }
 
@@ -108,6 +113,26 @@ async fn main() -> Result<()> {
             if picker_results.len() == 1 {
                 picker_results.into_iter().next().unwrap()
             } else {
+                // A multi-select run cannot bind CLI arguments to each selected
+                // beam individually, so a beam with a required param has no way
+                // to receive a value here: reject it up front with the usage
+                // signature, rather than let expansion fail with a less
+                // actionable "missing required param" further down.
+                for name in &picker_results {
+                    if let Some(beam) = beam_file.beams.iter().find(|b| &b.name == name) {
+                        if aurora_core::expand::has_required_params(beam) {
+                            fail_prerun(
+                                json,
+                                "target",
+                                &anyhow::anyhow!(
+                                    "beam '{}' requires arguments: run `aurora {}`",
+                                    name,
+                                    aurora_core::expand::signature(beam)
+                                ),
+                            );
+                        }
+                    }
+                }
                 // Multi-select: virtual beam __multi__ depending on the selected beams
                 let virtual_beam = aurora_core::ast::Beam {
                     name: MULTI_BEAM.to_string(),
@@ -147,6 +172,10 @@ async fn main() -> Result<()> {
         Ok(expansion) => expansion,
         Err(e) => fail_prerun(json, "argument", &e),
     };
+    // `target` (the beam name) stays only for user-facing messages from here
+    // on; every scheduler, TUI and reporter root is the instance id.
+    let instances = expansion.instances;
+    let target_id = expansion.target_id;
 
     // Register each executor under the name it reports, so the registry key and
     // Executor::name() cannot drift apart.
@@ -201,8 +230,7 @@ async fn main() -> Result<()> {
     // The sidebar lists every declared beam (minus the virtual __multi__): it
     // doubles as a launcher, so a run of one target must still let you reach the
     // others.
-    let beam_info: Vec<(String, Vec<String>)> = expansion
-        .instances
+    let beam_info: Vec<(String, Vec<String>)> = instances
         .iter()
         .filter(|b| b.name != MULTI_BEAM)
         .map(|b| (b.name.clone(), b.dependency_names()))
@@ -213,12 +241,11 @@ async fn main() -> Result<()> {
     // __multi__ sentinel anchors the closure of a multi-select run but is
     // dropped from the set itself.
     let run_set = {
-        let all: Vec<(String, Vec<String>)> = expansion
-            .instances
+        let all: Vec<(String, Vec<String>)> = instances
             .iter()
             .map(|b| (b.name.clone(), b.dependency_names()))
             .collect();
-        aurora::run_closure_names(&all, &expansion.target_id, MULTI_BEAM)
+        aurora::run_closure_names(&all, &target_id, MULTI_BEAM)
     };
 
     let no_cache = matches.get_flag("no-cache");
@@ -229,7 +256,7 @@ async fn main() -> Result<()> {
         .map(|values| values.cloned().collect())
         .unwrap_or_default();
 
-    let beams = expansion.instances.clone();
+    let beams = instances.clone();
     let scheduler = aurora::build_scheduler(
         beams,
         executors.clone(),
@@ -243,7 +270,7 @@ async fn main() -> Result<()> {
 
     if interactive {
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
-        let target_clone = expansion.target_id.clone();
+        let target_clone = target_id.clone();
         tokio::spawn(async move {
             if let Err(e) = scheduler
                 .run_cancellable(&target_clone, &[], cancel_rx)
@@ -253,8 +280,7 @@ async fn main() -> Result<()> {
             }
         });
 
-        let rerun_beams: Vec<_> = expansion
-            .instances
+        let rerun_beams: Vec<_> = instances
             .iter()
             .filter(|b| b.name != MULTI_BEAM)
             .cloned()
@@ -294,8 +320,7 @@ async fn main() -> Result<()> {
             (rx, cancel_tx)
         };
 
-        let sw_beams = expansion
-            .instances
+        let sw_beams = instances
             .iter()
             .filter(|b| b.name != MULTI_BEAM)
             .cloned()
@@ -356,7 +381,12 @@ async fn main() -> Result<()> {
                 loaded.declared_env.clone(),
                 !rl_no_cache,
             );
-            let target_for_run = rl_target.clone();
+            // The scheduler and DAG are keyed by instance id, not the raw
+            // target name: a parameterized target must resolve its root from
+            // the freshly recomputed `target_id`, or a param beam under
+            // `--watch` would silently schedule nothing (an unknown root's
+            // transitive closure is empty).
+            let target_for_run = loaded.target_id.clone();
             tokio::runtime::Handle::current().spawn(async move {
                 if let Err(e) = scheduler
                     .run_cancellable(&target_for_run, &[], cancel_rx)
@@ -370,7 +400,7 @@ async fn main() -> Result<()> {
 
         aurora_tui::run_execution_tui(
             beam_info,
-            expansion.target_id.clone(),
+            target_id.clone(),
             run_set,
             watch,
             rx,
@@ -384,17 +414,20 @@ async fn main() -> Result<()> {
         if watch {
             use std::sync::atomic::{AtomicBool, Ordering};
 
-            let mut beams = expansion.instances.clone();
+            let mut beams = instances.clone();
             let mut env = env;
             let mut declared_env = declared_env;
             let mut max_parallelism = max_parallelism;
+            // Refreshed from `loaded.target_id` on every Beamfile reload below:
+            // the scheduler and DAG are keyed by instance id, so a stale
+            // (pre-reload) id would run against beams that no longer exist in
+            // `beams`, silently scheduling nothing for a parameterized target.
+            let mut target_id = target_id;
 
-            let mut closure = aurora::watch::closure_of(&beams, &expansion.target_id);
+            let mut closure = aurora::watch::closure_of(&beams, &target_id);
             let set =
                 aurora::watch::build_watch_set(&beams, &closure, &working_dir, &beamfile_path);
-            for warning in
-                aurora::watch::watch_warnings(&expansion.target_id, &set, &beams, &closure)
-            {
+            for warning in aurora::watch::watch_warnings(&target_id, &set, &beams, &closure) {
                 eprintln!("aurora: {warning}");
             }
             let (mut _watcher, mut trig_rx) =
@@ -432,7 +465,7 @@ async fn main() -> Result<()> {
                 });
 
                 let scheduler = scheduler.with_shutdown(sd_rx);
-                let target_clone = expansion.target_id.clone();
+                let target_clone = target_id.clone();
                 let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
                 let out_color =
@@ -490,7 +523,8 @@ async fn main() -> Result<()> {
                             env = loaded.env;
                             declared_env = loaded.declared_env;
                             max_parallelism = loaded.max_parallelism;
-                            closure = aurora::watch::closure_of(&beams, &target);
+                            target_id = loaded.target_id;
+                            closure = aurora::watch::closure_of(&beams, &target_id);
                             let set = aurora::watch::build_watch_set(
                                 &beams,
                                 &closure,
@@ -534,7 +568,7 @@ async fn main() -> Result<()> {
         });
 
         let scheduler = scheduler.with_shutdown(shutdown_rx);
-        let target_clone = expansion.target_id.clone();
+        let target_clone = target_id.clone();
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
@@ -544,7 +578,7 @@ async fn main() -> Result<()> {
         let json_beams: Vec<String> = if json {
             aurora_core::dag::BeamGraph::from_deps(beam_info.clone())
                 .ok()
-                .and_then(|graph| graph.execution_levels(&expansion.target_id).ok())
+                .and_then(|graph| graph.execution_levels(&target_id).ok())
                 .map(|levels| levels.into_iter().flatten().collect())
                 .unwrap_or_else(|| beam_names.clone())
         } else {
@@ -559,7 +593,7 @@ async fn main() -> Result<()> {
         use aurora::reporter::Reporter;
         let mut reporter: Box<dyn Reporter> = if json {
             Box::new(aurora::json::JsonReporter::new(
-                expansion.target_id.clone(),
+                target_id.clone(),
                 json_beams,
                 &mut stdout,
             ))
@@ -660,19 +694,21 @@ fn find_beamfile(json: bool) -> Result<PathBuf> {
     }
 }
 
-/// Prints, without running anything, the beams a target would execute grouped
-/// by dependency level (level 0 runs first). Building the DAG here also
-/// surfaces a malformed Beamfile (cycle, unknown dependency) during a dry run.
-fn print_execution_plan(beam_file: &aurora_core::ast::BeamFile, target: &str) -> Result<()> {
-    let deps: Vec<(String, Vec<String>)> = beam_file
-        .beams
+/// Prints, without running anything, the instances a target would execute
+/// grouped by dependency level (level 0 runs first). Instances are identified
+/// by their instance id (e.g. `deploy[env=staging,version=1.2.3]`), the
+/// identity the scheduler and cache use. Building the DAG here also surfaces a
+/// malformed Beamfile (cycle, unknown dependency) during a dry run.
+fn print_execution_plan(expansion: &aurora_core::expand::Expansion) -> Result<()> {
+    let deps: Vec<(String, Vec<String>)> = expansion
+        .instances
         .iter()
         .map(|b| (b.name.clone(), b.dependency_names()))
         .collect();
     let graph = aurora_core::dag::BeamGraph::from_deps(deps)?;
-    let levels = graph.execution_levels(target)?;
+    let levels = graph.execution_levels(&expansion.target_id)?;
 
-    println!("Execution plan for '{target}':");
+    println!("Execution plan for '{}':", expansion.target_id);
     if levels.is_empty() {
         println!("  (nothing to run)");
     }
