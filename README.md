@@ -8,9 +8,10 @@ Aurora is a task runner and build tool written in Rust, designed as an alternati
 
 ## Features
 
-- **Beamfile DSL**: declarative, HCL-inspired syntax to describe beams, variables, environment and dependencies.
+- **Beamfile DSL**: declarative, HCL-inspired syntax to describe beams, variables, params, environment and dependencies.
 - **Parallel execution**: DAG-based scheduling (topological sort, cycle detection) backed by a tokio task pool, bounded and on by default.
-- **Caching**: SHA-256 hashing of a beam's `inputs` *and* of its definition (commands, variables, executor and its settings, `dir`, declared environment); a beam is skipped only when all of them are unchanged and its outputs are present. Change a command without touching its inputs and Aurora re-runs, where `make` and `task` both hand back a stale result ([benchmarks](benchmarks/)).
+- **Parameterized beams**: a `param` turns a beam into a template; distinct CLI arguments or dependency bindings each produce their own instance, run and cached independently.
+- **Caching**: SHA-256 hashing of a beam's `inputs` *and* of its definition (commands, executor and its settings, `dir`, declared environment, param bindings); a beam is skipped only when all of them are unchanged and its outputs are present. Change a command without touching its inputs and Aurora re-runs, where `make` and `task` both hand back a stale result ([benchmarks](benchmarks/)).
 - **Executors**:
   - `local`: native shell execution (default),
   - `docker`: execution inside a container through the Docker CLI,
@@ -321,82 +322,90 @@ beam "check" {
 A beam can declare:
 
 - `description`: text shown in the TUI and in `--list`,
-- `depends_on`: list of prerequisite beams (the DAG),
-- `inputs` / `outputs`: files used for SHA-256 caching (the beam's own definition is part of the key too, so editing a command or overriding a variable re-runs it),
+- `depends_on`: list of prerequisite beams (the DAG), each either a bare beam name or an object binding the dependency's params (see below),
+- `inputs` / `outputs`: files used for SHA-256 caching (the beam's own definition, including its resolved param bindings, is part of the key too, so editing a command, overriding a variable, or invoking the beam with different param values re-runs it),
+- `param`: a declared parameter of the beam's own signature (see below),
 - `skip_if` or `condition { any/all }`: execution conditions,
 - `run { commands = [...] }`: commands to run, with an optional `executor` block (`local`, `docker`, plugin),
+- `environment {}`: a per-beam overlay of the process environment, scoped to that one beam (see below),
 - a beam without `run` is a pure orchestration aggregate.
 
-Variables are declared with `variable {}` (overridable via `--var`) and referenced with `var.name`. The `environment {}` block defines variables evaluated sequentially and available to every beam. Inside a beam's `commands`, `${var.name}` is interpolated with the variable's value (after any `--var` override); other `${...}` sequences are left for the shell.
+Aurora has three distinct configuration concepts, each with its own scope:
 
-### Positional arguments and beam-local variables
+- `variable {}` (top-level): file-wide configuration, overridable from outside the Beamfile with `--var name=value`, and referenced anywhere as `${var.name}`.
+- `param` (per beam): the beam's own signature. A param supplies a value per invocation (CLI arguments) or per dependency edge, instead of per file, and is referenced only inside that beam as `${param.name}`. See the next section.
+- `environment {}` (top-level and, optionally, per beam): the process environment made available to a beam's commands. The top-level block is evaluated once, sequentially, before any beam runs; a beam's own `environment {}` block is an overlay evaluated once per instance, and its values shadow the top-level ones for that beam only.
 
-Beyond the global `--var`, the invoked target can also receive per-invocation
-positional arguments, and any beam can declare `variable {}` blocks of its
-own that stay private to it.
+Inside a beam's `commands`, `dir`, `skip_if`, `condition` clauses and executor config, `${var.name}` is interpolated with the variable's value (after any `--var` override) and `${param.name}` with the instance's bound value; other `${...}` sequences are left for the shell. A beam's own `environment {}` values interpolate `${param.name}` the same way; they do not interpolate `${var.name}` (a literal value is used as-is, and a `shell(...)` command sees previously evaluated environment variables as real environment variables, by name, not as `${...}` tokens).
 
-Positional arguments follow the target on the command line and are
-interpolated into that target's `run.commands`:
+### Params: beam signatures, CLI arguments and instantiation
 
-- `${arg.N}`: the Nth argument, 1-indexed. Referencing an index beyond the
-  number of arguments passed is a hard error.
-- `${args}`: every argument joined by a single space; the empty string when
-  none are passed.
+A `param` turns a beam into a template: instead of one fixed unit of work, the beam becomes a signature that can be invoked, or depended on, with different values. Each distinct set of bound values produces its own **instance**, with its own identity, its own run, and its own cache entry.
 
 ```hcl
-beam "deploy" {
-  run { commands = ["deploy.sh --to ${arg.1}"] }
-}
-
-beam "test" {
-  run { commands = ["cargo test ${args}"] }
-}
-```
-
-```bash
-aurora deploy web-01                          # arg.1 = "web-01"
-aurora test -- --nocapture -p aurora-runner-core     # args = "--nocapture -p aurora-runner-core"
-```
-
-Aurora's own flags are parsed before the target, so a hyphen-leading argument
-must follow `--` (otherwise it would be read as an Aurora flag); a plain
-positional value such as `web-01` needs no `--`.
-
-Arguments reach the invoked target only:
-
-- a beam that belongs to the target's dependency graph (one that will
-  actually run as part of this invocation) and references `${arg.N}` or
-  `${args}` is a hard error, because a dependency never receives the
-  invocation's arguments; share the value through a global `variable`
-  instead;
-- an independent beam elsewhere in the Beamfile that references `${arg.N}` or
-  `${args}` is left untouched, since it is not part of the current run.
-
-A beam can also declare its own `variable {}` block, private to that beam and
-shadowing a global variable of the same name. Unlike a global variable, a
-local one is not reachable with `--var` (which targets globals only), so a
-value that must be shared down a dependency chain has to stay a global
-variable:
-
-```hcl
-variable "env" { default = "qa" }        # global: propagates to dependencies
-
 beam "build" {
-  run { commands = ["build.sh --env ${var.env}"] }
+  param "version" {}
+  inputs = ["src/**/*.rs"]
+  run { commands = ["cargo build --release"] }
 }
 
 beam "deploy" {
-  depends_on = ["build"]
-  variable "strategy" { default = "rolling" }   # local: private to deploy
-  run { commands = ["deploy.sh --env ${var.env} --to ${arg.1} --strategy ${var.strategy}"] }
+  param "version" { description = "Version to deploy" }
+  param "env"     { default = "staging" }
+
+  depends_on = [
+    { beam = "build", params = { version = "${param.version}" } }
+  ]
+
+  environment {
+    DEPLOY_TARGET = "${param.env}"
+  }
+
+  run { commands = ["./deploy.sh ${param.version}"] }
 }
 ```
 
+`param "version" {}` declares a required parameter (no `default`, so it must be bound at invocation time); `param "env" { default = "staging" }` declares an optional one. `description` is shown in `--list` and in binding-error messages, and has no other effect.
+
+**CLI arguments.** When a parameterized beam is the invoked target, its declared params are bound from the command line, positional-then-named: an argument containing `=` binds that named param directly (`env=production`), and every other argument fills the remaining unbound params in declaration order. A param left unbound after that falls back to its `default`; a required param left unbound, or a surplus positional argument, is a hard error naming the beam's signature.
+
 ```bash
-aurora deploy web-01 --var env=prod
-# build  -> build.sh --env prod
-# deploy -> deploy.sh --env prod --to web-01 --strategy rolling
+aurora deploy 1.2.3
+aurora deploy version=1.2.3 env=production
 ```
+
+Both bind `version` to `1.2.3`; the first leaves `env` at its `staging` default, the second overrides it to `production`.
+
+**Instantiation.** Binding a beam's params produces an instance, identified as `name[k=v,...]` (bindings sorted by key), or just `name` when it has no params. Two invocations with different bindings are two different instances: they run, cache and appear in the TUI independently. `--list` shows the signature, not an instance:
+
+```
+$ aurora --list
+Available beams:
+  build <version>
+  deploy <version> [env=staging]
+```
+
+`--dry-run` shows the actual instance ids that would run:
+
+```
+$ aurora --dry-run deploy 1.2.3
+Execution plan for 'deploy[env=staging,version=1.2.3]':
+  level 0: build[version=1.2.3]
+  level 1: deploy[env=staging,version=1.2.3]
+```
+
+`build[version=1.2]` and `build[version=1.3]` (from two separate invocations, or two dependents binding different values) are unrelated instances: each hashes, runs and is cached on its own.
+
+**Edge bindings.** A `depends_on` entry can be a bare string (`"fmt"`) or an object binding the dependency's params explicitly: `{ beam = "build", params = { version = "${param.version}" } }`. There is no implicit forwarding: a dependency's param is bound only by an explicit entry in that `params` map (interpolated in the parent's own bindings) or by its own `default`; anything else is a hard error at expansion time, naming the missing param and the exact object form to add.
+
+### Migrating from positional arguments and beam-local variables
+
+Two mechanisms from earlier versions of Aurora are gone:
+
+- `${arg.N}` and `${args}` (positional CLI arguments, forwarded verbatim into the invoked target's commands) are removed. Declare a `param` instead and reference `${param.name}`. A Beamfile still referencing `${arg.N}` or `${args}` fails to parse, with a migration error pointing at the offending beam.
+- a beam-local `variable {}` block (private to one beam, shadowing a global variable of the same name) is removed. Declare a `param` with a `default` instead: it plays the same role, a value private to the beam with a fallback, but is also overridable per invocation and per dependency edge, which a local variable never was. A beam still declaring its own `variable {}` block fails to parse, with a migration error.
+
+A top-level `variable {}` (overridable with `--var`) is unaffected: it keeps propagating to every beam that references it, including across dependency edges.
 
 ## Architecture
 
