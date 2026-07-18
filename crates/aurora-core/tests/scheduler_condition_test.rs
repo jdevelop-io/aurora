@@ -15,14 +15,6 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
 fn beam_with_condition(op: ConditionOp, shells: Vec<&str>) -> Beam {
     Beam {
         name: "b".to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
         condition: Some(Condition {
             op,
             clauses: shells
@@ -34,7 +26,7 @@ fn beam_with_condition(op: ConditionOp, shells: Vec<&str>) -> Beam {
             commands: vec!["echo ran".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

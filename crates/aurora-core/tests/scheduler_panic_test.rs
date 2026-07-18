@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use aurora_core::ast::{Beam, Run};
+use aurora_core::ast::{Beam, Dependency, Run};
 use aurora_core::scheduler::{BeamStatus, Scheduler, SchedulerEvent};
 use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
 use std::collections::HashMap;
@@ -24,15 +24,7 @@ impl Executor for PanickingExecutor {
 fn beam(name: &str, executor: Option<&str>, depends_on: Vec<&str>) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: depends_on.into_iter().map(String::from).collect(),
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
+        depends_on: depends_on.into_iter().map(Dependency::named).collect(),
         run: Some(Run {
             commands: vec!["echo unused".to_string()],
             executor: executor.map(|e| aurora_core::ast::ExecutorConfig {
@@ -40,7 +32,7 @@ fn beam(name: &str, executor: Option<&str>, depends_on: Vec<&str>) -> Beam {
                 config: HashMap::new(),
             }),
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

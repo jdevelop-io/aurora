@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -40,11 +41,29 @@ pub enum EnvValue {
     Shell(String),
 }
 
+/// One `depends_on` edge. The short string form parses into an entry with an
+/// empty `params` map; the bound object form (added with beam params) carries
+/// explicit bindings for the dependency's declared params.
 #[derive(Debug, Clone)]
+pub struct Dependency {
+    pub beam: String,
+    pub params: BTreeMap<String, String>,
+}
+
+impl Dependency {
+    pub fn named(beam: impl Into<String>) -> Self {
+        Self {
+            beam: beam.into(),
+            params: BTreeMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct Beam {
     pub name: String,
     pub description: Option<String>,
-    pub depends_on: Vec<String>,
+    pub depends_on: Vec<Dependency>,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
     /// Beam-local variables. Same `variable {}` syntax as the top level, but
@@ -62,6 +81,14 @@ pub struct Beam {
     pub condition: Option<Condition>,
     pub run: Option<Run>,
     pub allow_failure: bool,
+}
+
+impl Beam {
+    /// The dependency names, without bindings. Post-expansion these are
+    /// instance ids; the DAG, the watch closure and the TUI consume this.
+    pub fn dependency_names(&self) -> Vec<String> {
+        self.depends_on.iter().map(|d| d.beam.clone()).collect()
+    }
 }
 
 #[derive(Debug, Clone)]

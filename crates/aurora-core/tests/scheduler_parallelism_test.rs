@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use aurora_core::ast::{Beam, ExecutorConfig, Run};
+use aurora_core::ast::{Beam, Dependency, ExecutorConfig, Run};
 use aurora_core::scheduler::Scheduler;
 use aurora_executor_api::{ExecutionInput, ExecutionOutput, Executor};
 use aurora_executor_local::LocalExecutor;
@@ -41,15 +41,6 @@ fn fan_out_beams(n: usize) -> Vec<Beam> {
     let mut beams: Vec<Beam> = (0..n)
         .map(|i| Beam {
             name: format!("b{i}"),
-            description: None,
-            depends_on: vec![],
-            inputs: vec![],
-            outputs: vec![],
-            variables: vec![],
-            args: vec![],
-            dir: None,
-            skip_if: None,
-            condition: None,
             run: Some(Run {
                 commands: vec!["noop".to_string()],
                 executor: Some(ExecutorConfig {
@@ -57,22 +48,13 @@ fn fan_out_beams(n: usize) -> Vec<Beam> {
                     config: HashMap::new(),
                 }),
             }),
-            allow_failure: false,
+            ..Beam::default()
         })
         .collect();
     beams.push(Beam {
         name: "all".to_string(),
-        description: None,
-        depends_on: (0..n).map(|i| format!("b{i}")).collect(),
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
-        run: None,
-        allow_failure: false,
+        depends_on: (0..n).map(|i| Dependency::named(format!("b{i}"))).collect(),
+        ..Beam::default()
     });
     beams
 }

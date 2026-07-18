@@ -25,25 +25,19 @@ fn glob_root_of_a_literal_is_the_whole_path() {
 }
 
 use aurora::watch::{build_watch_set, closure_of, WatchSet};
-use aurora_core::ast::{Beam, Run};
+use aurora_core::ast::{Beam, Dependency, Run};
 
 fn beam(name: &str, inputs: &[&str], dir: Option<&str>, depends_on: &[&str]) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: depends_on.iter().map(|s| s.to_string()).collect(),
+        depends_on: depends_on.iter().copied().map(Dependency::named).collect(),
         inputs: inputs.iter().map(|s| s.to_string()).collect(),
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
         dir: dir.map(|s| s.to_string()),
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["true".into()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

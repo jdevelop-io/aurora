@@ -34,20 +34,12 @@ async fn dir_sets_command_working_directory() {
 
     let beam = Beam {
         name: "build".to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
         dir: Some("pkg".to_string()),
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["cat marker.txt".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     };
 
     let (tx, mut rx) = mpsc::channel(64);
@@ -90,20 +82,12 @@ async fn missing_dir_fails_beam_clearly() {
 
     let beam = Beam {
         name: "build".to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
         dir: Some("does-not-exist".to_string()),
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["echo hi".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     };
 
     let (tx, mut rx) = mpsc::channel(64);
@@ -153,20 +137,14 @@ async fn dir_scopes_input_hashing() {
 
     let make = || Beam {
         name: "build".to_string(),
-        description: None,
-        depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
         outputs: vec!["out.txt".to_string()],
-        variables: vec![],
-        args: vec![],
         dir: Some("pkg".to_string()),
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["echo done > out.txt".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     };
 
     // First run populates the cache (input read from pkg/in.txt, output

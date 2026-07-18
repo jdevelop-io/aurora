@@ -1,7 +1,7 @@
 //! A shutdown request (Ctrl-C, SIGTERM) must stop the whole run: every running
 //! beam is cancelled, no further beam is spawned, and the run reports failure.
 
-use aurora_core::ast::{Beam, Run};
+use aurora_core::ast::{Beam, Dependency, Run};
 use aurora_core::scheduler::{BeamStatus, Scheduler, SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
@@ -13,20 +13,12 @@ use tokio::sync::{mpsc, oneshot};
 fn beam(name: &str, depends_on: Vec<String>, commands: Vec<String>) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on,
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
+        depends_on: depends_on.into_iter().map(Dependency::named).collect(),
         run: Some(Run {
             commands,
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

@@ -1,4 +1,4 @@
-use aurora_core::ast::{Beam, Run};
+use aurora_core::ast::{Beam, Dependency, Run};
 use aurora_core::scheduler::{BeamStatus, Scheduler, SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
@@ -15,37 +15,19 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
 fn slow_beam(name: &str) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["sleep 30".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 
 fn aggregate(name: &str, deps: &[&str]) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: deps.iter().map(|s| s.to_string()).collect(),
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
-        run: None,
-        allow_failure: false,
+        depends_on: deps.iter().copied().map(Dependency::named).collect(),
+        ..Beam::default()
     }
 }
 

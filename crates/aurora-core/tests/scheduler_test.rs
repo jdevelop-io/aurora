@@ -1,4 +1,4 @@
-use aurora_core::ast::{Beam, Run};
+use aurora_core::ast::{Beam, Dependency, Run};
 use aurora_core::scheduler::{BeamStatus, Scheduler, SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
@@ -16,15 +16,7 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
 fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: deps.iter().map(|s| s.to_string()).collect(),
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
+        depends_on: deps.into_iter().map(Dependency::named).collect(),
         run: if commands.is_empty() {
             None
         } else {
@@ -33,7 +25,7 @@ fn make_beam(name: &str, deps: Vec<&str>, commands: Vec<&str>) -> Beam {
                 executor: None,
             })
         },
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

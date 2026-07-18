@@ -119,7 +119,7 @@ impl Scheduler {
         let deps: Vec<(String, Vec<String>)> = self
             .beams
             .values()
-            .map(|b| (b.name.clone(), b.depends_on.clone()))
+            .map(|b| (b.name.clone(), b.dependency_names()))
             .collect();
         let graph = BeamGraph::from_deps(deps)?;
 

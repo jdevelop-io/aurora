@@ -33,7 +33,7 @@ beam "qa" {
     let cfg = bf.config.as_ref().unwrap();
     assert_eq!(cfg.version, "1");
     assert_eq!(cfg.default.as_deref(), Some("qa"));
-    assert_eq!(bf.beams[0].depends_on, vec!["lint", "test"]);
+    assert_eq!(bf.beams[0].dependency_names(), vec!["lint", "test"]);
 }
 
 #[test]

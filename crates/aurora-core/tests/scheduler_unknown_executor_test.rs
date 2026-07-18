@@ -17,15 +17,6 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
 fn beam_with_executor(name: &str, executor_name: &str) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["echo should-not-run".to_string()],
             executor: Some(ExecutorConfig {
@@ -33,7 +24,7 @@ fn beam_with_executor(name: &str, executor_name: &str) -> Beam {
                 config: HashMap::new(),
             }),
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

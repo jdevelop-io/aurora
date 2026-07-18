@@ -1,4 +1,4 @@
-use aurora_core::ast::{Beam, Run};
+use aurora_core::ast::{Beam, Dependency, Run};
 use aurora_core::scheduler::{Scheduler, SchedulerEvent};
 use aurora_executor_api::Executor;
 use aurora_executor_local::LocalExecutor;
@@ -10,20 +10,12 @@ use tokio::sync::mpsc;
 fn beam(name: &str, deps: Vec<&str>) -> Beam {
     Beam {
         name: name.to_string(),
-        description: None,
-        depends_on: deps.iter().map(|s| s.to_string()).collect(),
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
+        depends_on: deps.into_iter().map(Dependency::named).collect(),
         run: Some(Run {
             commands: vec!["echo ok".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

@@ -20,20 +20,13 @@ fn cached_beam(dir: &std::path::Path) -> Beam {
     let out = dir.join("out.txt");
     Beam {
         name: "build".to_string(),
-        description: None,
-        depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
         outputs: vec!["out.txt".to_string()],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec![format!("echo done > {}", out.display())],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 
@@ -174,15 +167,8 @@ async fn cache_hit_replays_recorded_output() {
 
     let beam = Beam {
         name: "build".to_string(),
-        description: None,
-        depends_on: vec![],
         inputs: vec!["in.txt".to_string()],
         outputs: vec!["out.txt".to_string()],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec![
                 "echo hello-cache".to_string(),
@@ -190,7 +176,7 @@ async fn cache_hit_replays_recorded_output() {
             ],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     };
 
     // First run: executes and records stdout in the cache.

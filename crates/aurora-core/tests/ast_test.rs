@@ -5,14 +5,9 @@ fn test_beam_with_all_fields() {
     let beam = Beam {
         name: "phpstan".to_string(),
         description: Some("Static analysis".to_string()),
-        depends_on: vec!["composer".to_string()],
+        depends_on: vec![Dependency::named("composer")],
         inputs: vec!["src/**/*.php".to_string()],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
         skip_if: Some("test -z \"$CHANGED\"".to_string()),
-        condition: None,
         run: Some(Run {
             commands: vec!["phpstan analyse".to_string()],
             executor: Some(ExecutorConfig {
@@ -22,7 +17,7 @@ fn test_beam_with_all_fields() {
                     .collect(),
             }),
         }),
-        allow_failure: false,
+        ..Beam::default()
     };
     assert_eq!(beam.name, "phpstan");
     assert!(beam.skip_if.is_some());
@@ -34,16 +29,8 @@ fn test_aggregate_beam() {
     let beam = Beam {
         name: "qa".to_string(),
         description: Some("Full QA".to_string()),
-        depends_on: vec!["lint".to_string(), "test".to_string()],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
-        run: None,
-        allow_failure: false,
+        depends_on: vec![Dependency::named("lint"), Dependency::named("test")],
+        ..Beam::default()
     };
     assert!(beam.run.is_none());
     assert_eq!(beam.depends_on.len(), 2);

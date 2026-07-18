@@ -245,13 +245,13 @@ pub fn resolve_arguments(beam_file: &mut BeamFile, target: &str, args: &[String]
 /// scheduler's job. Used only to decide which beams' `${arg...}` references
 /// belong to the current run.
 fn dependency_closure(beam_file: &BeamFile, target: &str) -> HashSet<String> {
-    let deps: HashMap<&str, &[String]> = beam_file
+    let deps: HashMap<&str, Vec<String>> = beam_file
         .beams
         .iter()
-        .map(|b| (b.name.as_str(), b.depends_on.as_slice()))
+        .map(|b| (b.name.as_str(), b.dependency_names()))
         .collect();
     let mut closure = HashSet::new();
-    let mut stack: Vec<String> = deps.get(target).map(|d| d.to_vec()).unwrap_or_default();
+    let mut stack: Vec<String> = deps.get(target).cloned().unwrap_or_default();
     while let Some(name) = stack.pop() {
         if !closure.insert(name.clone()) {
             continue;
@@ -412,17 +412,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
     let name = unquote(inner.next().unwrap());
     let mut beam = Beam {
         name,
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
-        run: None,
-        allow_failure: false,
+        ..Beam::default()
     };
     for field_wrapper in inner {
         // beam_field is a wrapper rule: unwrap to get the actual field rule
@@ -435,7 +425,10 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
                 beam.description = Some(unquote(field.into_inner().next().unwrap()));
             }
             Rule::beam_depends_on => {
-                beam.depends_on = parse_string_list(field.into_inner().next().unwrap());
+                beam.depends_on = parse_string_list(field.into_inner().next().unwrap())
+                    .into_iter()
+                    .map(Dependency::named)
+                    .collect();
             }
             Rule::beam_inputs => {
                 beam.inputs = parse_string_list(field.into_inner().next().unwrap());

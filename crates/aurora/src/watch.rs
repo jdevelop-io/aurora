@@ -59,7 +59,7 @@ pub struct WatchSet {
 pub fn closure_of(beams: &[Beam], target: &str) -> HashSet<String> {
     let deps: Vec<(String, Vec<String>)> = beams
         .iter()
-        .map(|b| (b.name.clone(), b.depends_on.clone()))
+        .map(|b| (b.name.clone(), b.dependency_names()))
         .collect();
     match BeamGraph::from_deps(deps) {
         Ok(graph) => graph.transitive_deps(target).into_iter().collect(),

@@ -15,20 +15,12 @@ fn local_executors() -> HashMap<String, Arc<dyn Executor>> {
 fn beam_with_skip_if(cmd: &str) -> Beam {
     Beam {
         name: "b".to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
         skip_if: Some(cmd.to_string()),
-        condition: None,
         run: Some(Run {
             commands: vec!["echo ran".to_string()],
             executor: None,
         }),
-        allow_failure: false,
+        ..Beam::default()
     }
 }
 

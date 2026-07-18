@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
             beam_file
                 .beams
                 .iter()
-                .map(|b| (b.name.clone(), b.description.clone(), b.depends_on.clone()))
+                .map(|b| (b.name.clone(), b.description.clone(), b.dependency_names()))
                 .collect(),
         )? {
             if picker_results.len() == 1 {
@@ -112,16 +112,11 @@ async fn main() -> Result<()> {
                 let virtual_beam = aurora_core::ast::Beam {
                     name: MULTI_BEAM.to_string(),
                     description: Some("Multi-beam run".to_string()),
-                    depends_on: picker_results,
-                    inputs: vec![],
-                    outputs: vec![],
-                    variables: vec![],
-                    args: vec![],
-                    dir: None,
-                    skip_if: None,
-                    condition: None,
-                    run: None,
-                    allow_failure: false,
+                    depends_on: picker_results
+                        .into_iter()
+                        .map(aurora_core::ast::Dependency::named)
+                        .collect(),
+                    ..aurora_core::ast::Beam::default()
                 };
                 beam_file.beams.push(virtual_beam);
                 MULTI_BEAM.to_string()
@@ -207,7 +202,7 @@ async fn main() -> Result<()> {
         .beams
         .iter()
         .filter(|b| b.name != MULTI_BEAM)
-        .map(|b| (b.name.clone(), b.depends_on.clone()))
+        .map(|b| (b.name.clone(), b.dependency_names()))
         .collect();
     // The set the scheduler actually runs (the target's transitive closure).
     // The TUI scopes its progress count and breakdown to this set and dims the
@@ -218,7 +213,7 @@ async fn main() -> Result<()> {
         let all: Vec<(String, Vec<String>)> = beam_file
             .beams
             .iter()
-            .map(|b| (b.name.clone(), b.depends_on.clone()))
+            .map(|b| (b.name.clone(), b.dependency_names()))
             .collect();
         aurora::run_closure_names(&all, &target, MULTI_BEAM)
     };
@@ -344,7 +339,7 @@ async fn main() -> Result<()> {
             let beam_info: Vec<(String, Vec<String>)> = loaded
                 .beams
                 .iter()
-                .map(|b| (b.name.clone(), b.depends_on.clone()))
+                .map(|b| (b.name.clone(), b.dependency_names()))
                 .collect();
             let (tx, rx) = mpsc::channel(128);
             let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
@@ -404,7 +399,7 @@ async fn main() -> Result<()> {
                 // ---- one cycle: identical to a single headless run ----
                 let beam_info: Vec<(String, Vec<String>)> = beams
                     .iter()
-                    .map(|b| (b.name.clone(), b.depends_on.clone()))
+                    .map(|b| (b.name.clone(), b.dependency_names()))
                     .collect();
                 let beam_names: Vec<String> =
                     beam_info.iter().map(|(name, _)| name.clone()).collect();
@@ -667,7 +662,7 @@ fn print_execution_plan(beam_file: &aurora_core::ast::BeamFile, target: &str) ->
     let deps: Vec<(String, Vec<String>)> = beam_file
         .beams
         .iter()
-        .map(|b| (b.name.clone(), b.depends_on.clone()))
+        .map(|b| (b.name.clone(), b.dependency_names()))
         .collect();
     let graph = aurora_core::dag::BeamGraph::from_deps(deps)?;
     let levels = graph.execution_levels(target)?;

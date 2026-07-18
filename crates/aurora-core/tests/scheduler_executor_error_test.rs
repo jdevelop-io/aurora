@@ -36,15 +36,6 @@ async fn executor_error_is_surfaced_to_output() {
 
     let beam = Beam {
         name: "b".to_string(),
-        description: None,
-        depends_on: vec![],
-        inputs: vec![],
-        outputs: vec![],
-        variables: vec![],
-        args: vec![],
-        dir: None,
-        skip_if: None,
-        condition: None,
         run: Some(Run {
             commands: vec!["echo unused".to_string()],
             executor: Some(aurora_core::ast::ExecutorConfig {
@@ -52,7 +43,7 @@ async fn executor_error_is_surfaced_to_output() {
                 config: HashMap::new(),
             }),
         }),
-        allow_failure: false,
+        ..Beam::default()
     };
 
     let (tx, mut rx) = mpsc::channel(32);
