@@ -1,6 +1,9 @@
 /target/
 !Beamfile
 
+# Aurora's own cache directory (the repo dogfoods the tool).
+/.aurora/
+
 # Cancels the global ignore of .claude to track the project's commands/settings.
 !.claude/
 # Superpowers runtime data, excluded from version control.
