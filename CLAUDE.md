@@ -75,8 +75,8 @@ binary wires everything together.
    `ast.rs` (`BeamFile` → `AuroraConfig`, `Variable`, `Environment`, `Beam`, and a `Beam`'s own `Param` list and
    optional per-beam `Environment` overlay). `--var` overrides are applied to `Variable.default` in `main.rs` after
    parsing, then `parser::resolve_variables` interpolates `${var.x}` into every beam's `dir`, `skip_if`, `condition`,
-   `run.commands`, executor config and bound `depends_on` values (a beam's own `environment {}` values are not part
-   of this pass; see step 2).
+   `run.commands`, executor config, bound `depends_on` values and its own `environment {}` values, so `${var.x}`
+   behaves identically everywhere it can appear.
 2. **Environment** (`env.rs`): the top-level `environment {}` block is evaluated sequentially; `shell(...)` values are
    executed and each result is visible to later variables. Crucially, the process environment is **not** inherited
    wholesale: only an allowlist (`ENV_ALLOWLIST` plus `LC_*`) is propagated, because a Beamfile is treated as
@@ -94,7 +94,9 @@ binary wires everything together.
    `environment {}` overlay), and deduplicated when two edges resolve to the identical `(beam, bindings)` pair. A
    divergent chain of ever-distinct bindings is capped at `MAX_INSTANTIATION_DEPTH` (64) and turned into a clear
    error instead of unbounded growth. Every remaining beam without required params also gets a default instance, so
-   the picker sidebar can still list and launch it. From here on, the scheduler, cache and TUI operate on plain
+   the picker sidebar can still list and launch it; this default instantiation walks that beam's own `depends_on`
+   edges too, so a binding error on any beam in the Beamfile, not only the invoked target's dependency closure, is
+   reported at expansion time, before the run even starts. From here on, the scheduler, cache and TUI operate on plain
    `Beam`s keyed by their instance id, a `String` of the form `name` (no params) or `name[k=v,...]` (bindings sorted
    by key, so the id is stable and two distinct binding sets can never collapse into the same one).
 4. **DAG** (`dag.rs`): `BeamGraph` (petgraph `DiGraph`) where an edge `dep -> beam` means "dep runs first", built from

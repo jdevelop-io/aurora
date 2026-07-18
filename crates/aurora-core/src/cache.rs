@@ -202,15 +202,16 @@ impl BeamCache {
 /// Everything about a beam, beyond the content of its `inputs` files, that
 /// determines what running it produces.
 ///
-/// Variables and positional arguments are deliberately absent: both are already
-/// interpolated into `commands` by the parser before the scheduler ever sees
-/// the beam, so the resolved commands capture them. Hashing them a second time
-/// would only cause spurious misses (an argument a beam never references cannot
-/// change its result).
+/// Global variables are deliberately absent as a separate field: `${var.x}` is
+/// already interpolated into `commands` (and the other interpolatable fields)
+/// by the parser before the scheduler ever sees the beam, so the resolved
+/// commands capture them. Hashing them a second time would only cause
+/// spurious misses. Instance param bindings are the one exception: they *are*
+/// folded into the key, via the `bindings` field below.
 #[derive(Default)]
 pub struct BeamDefinition<'a> {
-    /// The beam's `run.commands`, with `${var.x}`, `${arg.N}` and `${args}`
-    /// already resolved.
+    /// The beam's `run.commands`, with `${var.x}` and `${param.x}` already
+    /// resolved.
     pub commands: &'a [String],
     /// The `run.executor` name, `None` for the default `local` executor.
     pub executor: Option<&'a str>,

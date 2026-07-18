@@ -621,10 +621,10 @@ async fn run_beam_task(
     // The cache key answers "would running this beam produce the same result?",
     // not merely "did its input files change?". So it covers the beam's
     // definition as well: its resolved commands (which already carry the
-    // variables, the `--var` overrides and the positional arguments), the
-    // executor and its settings, the working directory, and the declared
-    // environment. Hashing the inputs alone would serve the previous run's
-    // result after an edit to any of these.
+    // variables and the `--var` overrides), the executor and its settings,
+    // the working directory, the declared environment, and the instance's
+    // resolved param bindings. Hashing the inputs alone would serve the
+    // previous run's result after an edit to any of these.
     let run = beam.run.as_ref();
     let executor_config = run.and_then(|r| r.executor.as_ref());
     let definition_hash = BeamDefinition {

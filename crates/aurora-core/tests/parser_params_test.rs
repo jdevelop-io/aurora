@@ -1,3 +1,4 @@
+use aurora_core::ast::EnvValue;
 use aurora_core::parser::{parse, resolve_variables};
 
 #[test]
@@ -20,6 +21,20 @@ beam "deploy" {
     );
     assert_eq!(beam.params[1].name, "env");
     assert_eq!(beam.params[1].default.as_deref(), Some("staging"));
+}
+
+#[test]
+fn rejects_non_identifier_param_names() {
+    let input = r#"
+beam "deploy" {
+  param "a,b" {}
+}
+"#;
+    let err = parse(input).unwrap_err().to_string();
+    assert!(
+        err.contains("param name 'a,b' in beam 'deploy' is not a valid identifier"),
+        "got: {err}"
+    );
 }
 
 #[test]
@@ -122,4 +137,24 @@ beam "deploy" {
             .map(String::as_str),
         Some("stable")
     );
+}
+
+#[test]
+fn resolve_variables_interpolates_globals_into_beam_environment() {
+    let input = r#"
+variable "region" { default = "eu-west-1" }
+beam "deploy" {
+  environment {
+    REGION = "${var.region}"
+  }
+  run { commands = ["./deploy.sh"] }
+}
+"#;
+    let mut bf = parse(input).unwrap();
+    resolve_variables(&mut bf).unwrap();
+    let env = bf.beams[0].environment.as_ref().unwrap();
+    match &env.vars[0].value {
+        EnvValue::Literal(s) => assert_eq!(s, "eu-west-1"),
+        other => panic!("expected a literal value, got {other:?}"),
+    }
 }

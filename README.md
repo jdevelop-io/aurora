@@ -336,7 +336,7 @@ Aurora has three distinct configuration concepts, each with its own scope:
 - `param` (per beam): the beam's own signature. A param supplies a value per invocation (CLI arguments) or per dependency edge, instead of per file, and is referenced only inside that beam as `${param.name}`. See the next section.
 - `environment {}` (top-level and, optionally, per beam): the process environment made available to a beam's commands. The top-level block is evaluated once, sequentially, before any beam runs; a beam's own `environment {}` block is an overlay evaluated once per instance, and its values shadow the top-level ones for that beam only.
 
-Inside a beam's `commands`, `dir`, `skip_if`, `condition` clauses and executor config, `${var.name}` is interpolated with the variable's value (after any `--var` override) and `${param.name}` with the instance's bound value; other `${...}` sequences are left for the shell. A beam's own `environment {}` values interpolate `${param.name}` the same way; they do not interpolate `${var.name}` (a literal value is used as-is, and a `shell(...)` command sees previously evaluated environment variables as real environment variables, by name, not as `${...}` tokens).
+Inside a beam's `commands`, `dir`, `skip_if`, `condition` clauses, executor config and its own `environment {}` values, `${var.name}` is interpolated with the variable's value (after any `--var` override) and `${param.name}` with the instance's bound value; other `${...}` sequences are left for the shell (and a `shell(...)` command sees previously evaluated environment variables as real environment variables, by name, not as `${...}` tokens).
 
 ### Params: beam signatures, CLI arguments and instantiation
 
@@ -397,6 +397,8 @@ Execution plan for 'deploy[env=staging,version=1.2.3]':
 `build[version=1.2]` and `build[version=1.3]` (from two separate invocations, or two dependents binding different values) are unrelated instances: each hashes, runs and is cached on its own.
 
 **Edge bindings.** A `depends_on` entry can be a bare string (`"fmt"`) or an object binding the dependency's params explicitly: `{ beam = "build", params = { version = "${param.version}" } }`. There is no implicit forwarding: a dependency's param is bound only by an explicit entry in that `params` map (interpolated in the parent's own bindings) or by its own `default`; anything else is a hard error at expansion time, naming the missing param and the exact object form to add.
+
+**Whole-file validation.** Expansion does not only walk the invoked target's dependency closure: every paramless beam in the Beamfile also gets a default instance, so its own `depends_on` edges are bound and validated too. A missing binding on any beam, not just the one you asked to run, is reported at expansion time rather than only surfacing the day someone finally invokes that other beam.
 
 ### Migrating from positional arguments and beam-local variables
 

@@ -82,6 +82,13 @@ pub fn parse(input: &str) -> Result<BeamFile> {
 /// - inside an executor config, a field whose whole value is `var.<name>` is
 ///   replaced.
 ///
+/// The same embedded-token interpolation also reaches `dir`, `skip_if`,
+/// `condition` clauses, bound `depends_on` values and a beam's own
+/// `environment {}` values, so `${var.x}` behaves identically everywhere it
+/// can appear. This pass runs before `expand::instantiate`'s `${param.x}`
+/// pass, and each pass leaves the other's tokens untouched, so the ordering
+/// is safe either way.
+///
 /// An unknown variable reference is a hard error: a silent typo inside a shell
 /// command is a trap.
 pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
@@ -134,6 +141,19 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
         for dep in &mut beam.depends_on {
             for value in dep.params.values_mut() {
                 *value = interpolate_command(value, vars, &beam_name)?;
+            }
+        }
+        // A beam's own `environment {}` overlay may reference `${var.x}` too,
+        // exactly like every other interpolatable field: otherwise a global
+        // variable stays a literal token here while `${param.x}` resolves in
+        // the same block, an inconsistent footgun.
+        if let Some(environment) = &mut beam.environment {
+            for var in &mut environment.vars {
+                match &mut var.value {
+                    EnvValue::Literal(s) | EnvValue::Shell(s) => {
+                        *s = interpolate_command(s, vars, &beam_name)?;
+                    }
+                }
             }
         }
     }
@@ -330,7 +350,22 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
                 beam.condition = Some(parse_condition(field)?);
             }
             Rule::param_block => {
-                beam.params.push(parse_param_block(field)?);
+                let param = parse_param_block(field)?;
+                // A param name is parsed as a quoted string, not the grammar's
+                // `ident` rule, but `${param.x}` only ever resolves an
+                // identifier and the instance id only escapes the *value*
+                // half of each `k=v` binding. A name containing `,`, `=` or
+                // `]` would be unreferenceable and could collide two distinct
+                // instance ids, so it is rejected up front: untrusted input,
+                // hard error over a silent footgun.
+                if !is_ident(&param.name) {
+                    bail!(
+                        "param name '{}' in beam '{}' is not a valid identifier",
+                        param.name,
+                        beam.name
+                    );
+                }
+                beam.params.push(param);
             }
             Rule::environment_block => {
                 beam.environment = Some(parse_environment_block(field)?);

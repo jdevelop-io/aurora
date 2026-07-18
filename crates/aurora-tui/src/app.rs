@@ -526,12 +526,11 @@ impl PickerState {
                 .collect();
             return Some(PickerAction::Launch(names));
         }
-        let (idx, beam) = {
+        let beam = {
             let filtered = self.filtered();
-            let (i, b, _) = filtered.get(self.selected)?;
-            (*i, (*b).clone())
+            let (_, b, _) = filtered.get(self.selected)?;
+            (*b).clone()
         };
-        let _ = idx;
         if beam.requires_args {
             self.notice = Some(format!(
                 "'{}' requires arguments: run `aurora {}`",
