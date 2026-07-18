@@ -5,23 +5,27 @@ aurora {
 
 beam "fmt" {
   description = "Format Rust code"
+  inputs = ["crates/**/*.rs"]
   run { commands = ["cargo fmt --all"] }
 }
 
 beam "clippy" {
   description = "Lint with clippy"
   depends_on = ["fmt"]
-  run { commands = ["cargo clippy --workspace -- -D warnings"] }
+  inputs = ["crates/**/*.rs"]
+  run { commands = ["cargo clippy --workspace --all-targets -- -D warnings"] }
 }
 
 beam "test" {
   description = "Run all tests"
   depends_on = ["fmt"]
+  inputs = ["crates/**/*.rs"]
   run { commands = ["cargo test --workspace"] }
 }
 
 beam "build" {
   description = "Build release binary"
+  inputs = ["crates/**/*.rs"]
   run { commands = ["cargo build --release"] }
 }
 
