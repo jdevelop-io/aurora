@@ -58,6 +58,17 @@ pub fn parse(input: &str) -> Result<BeamFile> {
         }
     }
 
+    // Reject duplicate param names within a beam: they would collide as CLI
+    // positional slots and as `depends_on` binding keys.
+    for beam in &beam_file.beams {
+        let mut seen_params = HashSet::new();
+        for param in &beam.params {
+            if !seen_params.insert(param.name.as_str()) {
+                bail!("duplicate param '{}' in beam '{}'", param.name, beam.name);
+            }
+        }
+    }
+
     Ok(beam_file)
 }
 
@@ -82,31 +93,26 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
 
     for beam in &mut beam_file.beams {
         let beam_name = beam.name.clone();
-        // Effective scope: a beam-local variable shadows a global of the same
-        // name. `--var` only ever changed the globals, so locals stay private.
-        let mut vars = globals.clone();
-        for local in &beam.variables {
-            vars.insert(local.name.clone(), local.default.clone());
-        }
+        let vars = &globals;
 
         if let Some(dir) = &mut beam.dir {
-            *dir = interpolate_command(dir, &vars, &beam_name)?;
+            *dir = interpolate_command(dir, vars, &beam_name)?;
         }
         // Gates run through the shell like `run.commands`, so they take the
         // same `${var.x}` interpolation: otherwise a parameterized gate keeps
         // its literal token, becomes a bad substitution, and silently stops
         // gating.
         if let Some(skip_if) = &mut beam.skip_if {
-            *skip_if = interpolate_command(skip_if, &vars, &beam_name)?;
+            *skip_if = interpolate_command(skip_if, vars, &beam_name)?;
         }
         if let Some(condition) = &mut beam.condition {
             for ConditionClause::Shell(clause) in &mut condition.clauses {
-                *clause = interpolate_command(clause, &vars, &beam_name)?;
+                *clause = interpolate_command(clause, vars, &beam_name)?;
             }
         }
         if let Some(run) = &mut beam.run {
             for cmd in &mut run.commands {
-                *cmd = interpolate_command(cmd, &vars, &beam_name)?;
+                *cmd = interpolate_command(cmd, vars, &beam_name)?;
             }
             if let Some(exec_cfg) = &mut run.executor {
                 for val in exec_cfg.config.values_mut() {
@@ -121,6 +127,13 @@ pub fn resolve_variables(beam_file: &mut BeamFile) -> Result<()> {
                         }
                     }
                 }
+            }
+        }
+        // Bound `depends_on` values may reference `${var.x}`, e.g. forwarding
+        // a global into a dependency's declared param.
+        for dep in &mut beam.depends_on {
+            for value in dep.params.values_mut() {
+                *value = interpolate_command(value, vars, &beam_name)?;
             }
         }
     }
@@ -425,10 +438,7 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
                 beam.description = Some(unquote(field.into_inner().next().unwrap()));
             }
             Rule::beam_depends_on => {
-                beam.depends_on = parse_string_list(field.into_inner().next().unwrap())
-                    .into_iter()
-                    .map(Dependency::named)
-                    .collect();
+                beam.depends_on = parse_dep_list(field.into_inner().next().unwrap())?;
             }
             Rule::beam_inputs => {
                 beam.inputs = parse_string_list(field.into_inner().next().unwrap());
@@ -448,9 +458,17 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
             Rule::beam_condition => {
                 beam.condition = Some(parse_condition(field)?);
             }
-            Rule::variable_block => {
-                beam.variables.push(parse_variable_block(field)?);
+            Rule::param_block => {
+                beam.params.push(parse_param_block(field)?);
             }
+            Rule::environment_block => {
+                beam.environment = Some(parse_environment_block(field)?);
+            }
+            Rule::variable_block => bail!(
+                "beam '{}' declares a `variable {{}}` block: beam-local variables were \
+                 replaced by `param` with a `default`",
+                beam.name
+            ),
             Rule::beam_run => {
                 beam.run = Some(parse_run(field)?);
             }
@@ -458,6 +476,66 @@ fn parse_beam_block(pair: Pair<Rule>) -> Result<Beam> {
         }
     }
     Ok(beam)
+}
+
+fn parse_param_block(pair: Pair<Rule>) -> Result<Param> {
+    let mut inner = pair.into_inner();
+    let name = unquote(inner.next().unwrap());
+    let mut param = Param {
+        name,
+        default: None,
+        description: None,
+    };
+    for field_wrapper in inner {
+        let field = match field_wrapper.as_rule() {
+            Rule::param_field => field_wrapper.into_inner().next().unwrap(),
+            _ => continue,
+        };
+        match field.as_rule() {
+            Rule::param_default => {
+                param.default = Some(unquote(field.into_inner().next().unwrap()));
+            }
+            Rule::param_description => {
+                param.description = Some(unquote(field.into_inner().next().unwrap()));
+            }
+            _ => {}
+        }
+    }
+    Ok(param)
+}
+
+fn parse_dep_list(pair: Pair<Rule>) -> Result<Vec<Dependency>> {
+    let mut deps = vec![];
+    for entry in pair.into_inner() {
+        if entry.as_rule() != Rule::dep_entry {
+            continue;
+        }
+        let inner = entry.into_inner().next().unwrap();
+        match inner.as_rule() {
+            Rule::string => deps.push(Dependency::named(unquote(inner))),
+            Rule::dep_object => {
+                let mut parts = inner.into_inner();
+                let beam = unquote(parts.next().unwrap());
+                let mut params = std::collections::BTreeMap::new();
+                if let Some(dep_params) = parts.next() {
+                    for binding in dep_params.into_inner() {
+                        if binding.as_rule() != Rule::dep_binding {
+                            continue;
+                        }
+                        let mut kv = binding.into_inner();
+                        let key = kv.next().unwrap().as_str().to_string();
+                        let value = unquote(kv.next().unwrap());
+                        if params.insert(key.clone(), value).is_some() {
+                            bail!("param '{key}' bound twice in a depends_on entry for '{beam}'");
+                        }
+                    }
+                }
+                deps.push(Dependency { beam, params });
+            }
+            other => bail!("unexpected depends_on entry: {other:?}"),
+        }
+    }
+    Ok(deps)
 }
 
 fn parse_condition(pair: Pair<Rule>) -> Result<Condition> {

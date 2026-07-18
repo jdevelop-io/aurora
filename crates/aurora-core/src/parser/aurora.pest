@@ -29,6 +29,12 @@ variable_field  = { var_default | var_description }
 var_default     = { "default"     ~ "=" ~ string }
 var_description = { "description" ~ "=" ~ string }
 
+// param "name" { default = "val"  description = "..." }
+param_block       = { "param" ~ string ~ "{" ~ param_field* ~ "}" }
+param_field       = { param_default | param_description }
+param_default     = { "default"     ~ "=" ~ string }
+param_description = { "description" ~ "=" ~ string }
+
 // environment { NAME = shell("...") | NAME = "..." }
 environment_block = { "environment" ~ "{" ~ env_var* ~ "}" }
 env_var           = { ident ~ "=" ~ env_value }
@@ -46,16 +52,25 @@ beam_field = {
     beam_skip_if     |
     beam_allow_failure |
     beam_condition   |
+    param_block      |
+    environment_block |
     variable_block   |
     beam_run
 }
 beam_description = { "description" ~ "=" ~ string }
-beam_depends_on  = { "depends_on"  ~ "=" ~ string_list }
+beam_depends_on  = { "depends_on"  ~ "=" ~ dep_list }
 beam_inputs      = { "inputs"      ~ "=" ~ string_list }
 beam_outputs     = { "outputs"     ~ "=" ~ string_list }
 beam_dir         = { "dir"         ~ "=" ~ string }
 beam_skip_if     = { "skip_if"     ~ "=" ~ string }
 beam_allow_failure = { "allow_failure" ~ "=" ~ bool }
+
+// depends_on = ["fmt", { beam = "build", params = { version = "1.2" } }]
+dep_list    = { "[" ~ (dep_entry ~ ("," ~ dep_entry)* ~ ","?)? ~ "]" }
+dep_entry   = { dep_object | string }
+dep_object  = { "{" ~ "beam" ~ "=" ~ string ~ ("," ~ "params" ~ "=" ~ dep_params)? ~ ","? ~ "}" }
+dep_params  = { "{" ~ (dep_binding ~ ","?)* ~ "}" }
+dep_binding = { ident ~ "=" ~ string }
 
 // condition { any = [...] | all = [...] }
 beam_condition   = { "condition" ~ "{" ~ condition_body ~ "}" }

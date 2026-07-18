@@ -59,6 +59,15 @@ impl Dependency {
     }
 }
 
+/// A declared beam parameter: `param "name" { default = "..." description = "..." }`.
+/// Declaration order is preserved: it doubles as the CLI positional order.
+#[derive(Debug, Clone)]
+pub struct Param {
+    pub name: String,
+    pub default: Option<String>,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Beam {
     pub name: String,
@@ -66,10 +75,14 @@ pub struct Beam {
     pub depends_on: Vec<Dependency>,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
-    /// Beam-local variables. Same `variable {}` syntax as the top level, but
-    /// scoped to this beam: they shadow a global of the same name and are not
-    /// reachable by `--var` (which targets globals only).
-    pub variables: Vec<Variable>,
+    /// Declared named parameters, in declaration order. Replaces beam-local
+    /// `variable {}` blocks: a param may be bound by a dependent through the
+    /// `depends_on` object form, or supplied positionally when this beam is
+    /// the invoked target.
+    pub params: Vec<Param>,
+    /// Beam-scoped `environment {}` block. Evaluated the same way as the
+    /// top-level block, but only visible to this beam's own execution.
+    pub environment: Option<Environment>,
     /// Positional arguments passed to this beam on the command line. Only ever
     /// non-empty on the explicitly invoked target; folded into its cache key.
     pub args: Vec<String>,
