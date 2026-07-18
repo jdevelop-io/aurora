@@ -16,6 +16,16 @@ use tokio::sync::mpsc;
 /// user-facing listing.
 const MULTI_BEAM: &str = "__multi__";
 
+/// Result of the `start_watch` closure handed to the TUI: an opaque watcher
+/// guard (kept alive while armed), its trigger receiver, and the advisory
+/// warnings to surface in the status bar. Aliased to keep the closure and the
+/// TUI signature readable (and off clippy's `type_complexity`).
+type WatchArm = anyhow::Result<(
+    Box<dyn Send>,
+    mpsc::Receiver<aurora_core::events::WatchTrigger>,
+    Vec<String>,
+)>;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = aurora::cli().get_matches();
@@ -279,10 +289,7 @@ async fn main() -> Result<()> {
             .collect::<Vec<_>>();
         let sw_working_dir = working_dir.clone();
         let sw_beamfile = beamfile_path.clone();
-        let start_watch = move |tgt: String| -> anyhow::Result<(
-            Box<dyn Send>,
-            mpsc::Receiver<aurora_core::events::WatchTrigger>,
-        )> {
+        let start_watch = move |tgt: String| -> WatchArm {
             if tgt == MULTI_BEAM {
                 anyhow::bail!(
                     "watch is not available for a multi-beam selection; run a single beam to watch it"
@@ -291,8 +298,12 @@ async fn main() -> Result<()> {
             let closure = aurora::watch::closure_of(&sw_beams, &tgt);
             let set =
                 aurora::watch::build_watch_set(&sw_beams, &closure, &sw_working_dir, &sw_beamfile);
+            // The same advisories the headless loop prints on stderr, returned so
+            // the TUI can surface them in its status bar (stderr is hidden under
+            // the alternate screen).
+            let warnings = aurora::watch::watch_warnings(&tgt, &set, &sw_beams, &closure);
             let (watcher, rx) = aurora::watch::Watcher::start(set, aurora::watch::DEBOUNCE)?;
-            Ok((Box::new(watcher) as Box<dyn Send>, rx))
+            Ok((Box::new(watcher) as Box<dyn Send>, rx, warnings))
         };
 
         let rl_executors = executors.clone();
@@ -367,12 +378,7 @@ async fn main() -> Result<()> {
             let mut closure = aurora::watch::closure_of(&beams, &target);
             let set =
                 aurora::watch::build_watch_set(&beams, &closure, &working_dir, &beamfile_path);
-            if !set.has_inputs {
-                eprintln!(
-                    "aurora: no beam in '{target}' declares inputs; watching the Beamfile only"
-                );
-            }
-            for warning in aurora::watch::detect_output_input_overlap(&beams, &closure) {
+            for warning in aurora::watch::watch_warnings(&target, &set, &beams, &closure) {
                 eprintln!("aurora: {warning}");
             }
             let (mut _watcher, mut trig_rx) =

@@ -66,6 +66,7 @@ pub fn render_execution(
     tick: u64,
     show_help: bool,
     watch_label: Option<&str>,
+    watch_notice: Option<&str>,
 ) {
     let area = f.area();
     let beams_focused = exec.focus == FocusPanel::Beams;
@@ -115,6 +116,11 @@ pub fn render_execution(
         f.render_widget(filter_bar(&exec.beam_filter), footer[1]);
     } else if search.is_active() {
         f.render_widget(search_bar(search), footer[1]);
+    } else if let Some(notice) = watch_notice {
+        // While watching, an advisory (no inputs, output to input overlap)
+        // replaces the hints so the reason a change is not picked up is visible
+        // rather than silent. The hints stay reachable through the help popup.
+        f.render_widget(watch_notice_bar(notice), footer[1]);
     } else {
         crate::widgets::status_bar::render_hints_line(f, footer[1], exec.done);
     }
@@ -131,6 +137,12 @@ pub fn render_execution(
 /// Prompt shown while typing the beam list filter.
 fn filter_bar(filter: &str) -> Paragraph<'static> {
     let text = format!(" /{}   (Enter confirm, Esc clear) ", filter);
+    Paragraph::new(text).style(Style::default().fg(Color::Yellow))
+}
+
+/// Footer line for the armed watch's advisory warnings.
+fn watch_notice_bar(notice: &str) -> Paragraph<'static> {
+    let text = format!(" watch: {notice} ");
     Paragraph::new(text).style(Style::default().fg(Color::Yellow))
 }
 

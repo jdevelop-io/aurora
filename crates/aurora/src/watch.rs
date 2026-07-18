@@ -223,6 +223,29 @@ pub fn detect_output_input_overlap(beams: &[Beam], closure: &HashSet<String>) ->
     warnings
 }
 
+/// The advisory warnings to surface once a watch is armed for `target`: the
+/// "no inputs declared, watching the Beamfile only" fallback (when the closure
+/// declares no usable `inputs`), followed by any output-to-input overlap
+/// warnings. Centralized so the headless loop and the TUI report the same set
+/// (headless prints them on stderr; the TUI shows them in its status bar, since
+/// stderr is hidden under the alternate screen). Messages carry no `aurora:`
+/// prefix; each caller frames them as it sees fit.
+pub fn watch_warnings(
+    target: &str,
+    set: &WatchSet,
+    beams: &[Beam],
+    closure: &HashSet<String>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if !set.has_inputs {
+        warnings.push(format!(
+            "no beam in '{target}' declares inputs; watching the Beamfile only"
+        ));
+    }
+    warnings.extend(detect_output_input_overlap(beams, closure));
+    warnings
+}
+
 /// Decides what `notify` registrations a watch set needs, resolving the overlap
 /// between the recursive roots and the Beamfile's (non-recursive) parent. The
 /// recursive intent always wins: the parent is registered non-recursively only

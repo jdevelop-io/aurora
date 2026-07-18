@@ -195,3 +195,44 @@ fn no_overlap_when_outputs_are_disjoint() {
     let closure = closure_of(&beams, "build");
     assert!(detect_output_input_overlap(&beams, &closure).is_empty());
 }
+
+use aurora::watch::watch_warnings;
+
+#[test]
+fn watch_warnings_reports_no_inputs_and_overlap() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+
+    // No inputs anywhere in the closure: a single "watching the Beamfile only"
+    // warning, so the TUI and headless paths can both surface the same message.
+    let beams = vec![beam("fmt", &[], None, &[])];
+    let closure = closure_of(&beams, "fmt");
+    let set = build_watch_set(&beams, &closure, root, &root.join("Beamfile"));
+    let warnings = watch_warnings("fmt", &set, &beams, &closure);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(
+        warnings[0].contains("fmt"),
+        "names the target: {}",
+        warnings[0]
+    );
+    assert!(
+        warnings[0].contains("Beamfile only"),
+        "explains the fallback: {}",
+        warnings[0]
+    );
+
+    // Inputs present but an output overlaps an input glob: only the overlap
+    // warning, no "no inputs" warning.
+    let overlap = vec![beam_io("gen", &["src/**/*.rs"], &["src/generated.rs"])];
+    let closure = closure_of(&overlap, "gen");
+    let set = build_watch_set(&overlap, &closure, root, &root.join("Beamfile"));
+    let warnings = watch_warnings("gen", &set, &overlap, &closure);
+    assert_eq!(warnings.len(), 1, "only the overlap warning: {warnings:?}");
+    assert!(warnings[0].contains("re-trigger"), "{}", warnings[0]);
+
+    // Inputs present and no overlap: no warnings.
+    let clean = vec![beam("build", &["src/**/*.rs"], None, &[])];
+    let closure = closure_of(&clean, "build");
+    let set = build_watch_set(&clean, &closure, root, &root.join("Beamfile"));
+    assert!(watch_warnings("build", &set, &clean, &closure).is_empty());
+}

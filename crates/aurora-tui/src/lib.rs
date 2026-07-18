@@ -52,7 +52,10 @@ pub async fn run_execution_tui(
         mpsc::Receiver<SchedulerEvent>,
         mpsc::UnboundedSender<String>,
     ),
-    start_watch: impl Fn(String) -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>)>,
+    start_watch: impl Fn(
+        String,
+    )
+        -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>, Vec<String>)>,
     reload: impl Fn() -> anyhow::Result<(
         Vec<(String, Vec<String>)>,
         mpsc::Receiver<SchedulerEvent>,
@@ -77,13 +80,18 @@ pub async fn run_execution_tui(
         let mut watch_guard: Option<Box<dyn Send>> = None;
         let mut watch_trigger_rx: Option<mpsc::Receiver<WatchTrigger>> = None;
         let mut watch_error: Option<String> = None;
+        // Advisory warnings for the armed watch (no inputs declared, output to
+        // input overlap): shown on the footer's second line. Headless prints the
+        // same set on stderr, which is hidden under the alternate screen here.
+        let mut watch_notice: Option<String> = None;
 
         // `-w` presets watch active at launch.
         if watch_preset {
             match start_watch(target.clone()) {
-                Ok((guard, trig_rx)) => {
+                Ok((guard, trig_rx, warnings)) => {
                     watch_guard = Some(guard);
                     watch_trigger_rx = Some(trig_rx);
+                    watch_notice = join_watch_notice(warnings);
                     watch.arm();
                 }
                 Err(e) => watch_error = Some(e.to_string()),
@@ -123,6 +131,7 @@ pub async fn run_execution_tui(
                             &mut cancel_tx,
                             &mut watch_guard,
                             &mut watch_trigger_rx,
+                            &mut watch_notice,
                             &mut watch_error,
                         );
                     }
@@ -152,6 +161,7 @@ pub async fn run_execution_tui(
                             &mut cancel_tx,
                             &mut watch_guard,
                             &mut watch_trigger_rx,
+                            &mut watch_notice,
                             &mut watch_error,
                         );
                     }
@@ -184,6 +194,11 @@ pub async fn run_execution_tui(
                     )
                 });
 
+                let watch_notice_line = if watch.armed {
+                    watch_notice.as_deref()
+                } else {
+                    None
+                };
                 terminal.draw(|f| {
                     split_layout::render_execution(
                         f,
@@ -193,6 +208,7 @@ pub async fn run_execution_tui(
                         tick,
                         show_help,
                         watch_label,
+                        watch_notice_line,
                     );
                 })?;
                 tick += 1;
@@ -300,11 +316,13 @@ pub async fn run_execution_tui(
                                     watch.disarm();
                                     watch_guard = None;
                                     watch_trigger_rx = None;
+                                    watch_notice = None;
                                 } else {
                                     match start_watch(target.clone()) {
-                                        Ok((guard, trig_rx)) => {
+                                        Ok((guard, trig_rx, warnings)) => {
                                             watch_guard = Some(guard);
                                             watch_trigger_rx = Some(trig_rx);
+                                            watch_notice = join_watch_notice(warnings);
                                             watch.arm();
                                             watch_error = None;
                                         }
@@ -555,7 +573,10 @@ fn handle_execution_key(
 fn apply_watch_trigger(
     trigger: WatchTrigger,
     target: &str,
-    start_watch: &impl Fn(String) -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>)>,
+    start_watch: &impl Fn(
+        String,
+    )
+        -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>, Vec<String>)>,
     reload: &impl Fn() -> anyhow::Result<(
         Vec<(String, Vec<String>)>,
         mpsc::Receiver<SchedulerEvent>,
@@ -575,6 +596,7 @@ fn apply_watch_trigger(
     cancel_tx: &mut mpsc::UnboundedSender<String>,
     watch_guard: &mut Option<Box<dyn Send>>,
     watch_trigger_rx: &mut Option<mpsc::Receiver<WatchTrigger>>,
+    watch_notice: &mut Option<String>,
     watch_error: &mut Option<String>,
 ) {
     if trigger.beamfile_changed {
@@ -590,9 +612,10 @@ fn apply_watch_trigger(
                 // watches the old set. Mirror the headless loop, which re-arms on
                 // a Beamfile change. Keep the previous watcher if re-arming fails.
                 match start_watch(target.to_string()) {
-                    Ok((guard, new_trig_rx)) => {
+                    Ok((guard, new_trig_rx, warnings)) => {
                         *watch_guard = Some(guard);
                         *watch_trigger_rx = Some(new_trig_rx);
+                        *watch_notice = join_watch_notice(warnings);
                         *watch_error = None;
                     }
                     Err(e) => *watch_error = Some(e.to_string()),
@@ -608,6 +631,17 @@ fn apply_watch_trigger(
         let (new_rx, new_cancel) = rerun(target.to_string(), vec![]);
         *rx = new_rx;
         *cancel_tx = new_cancel;
+    }
+}
+
+/// Joins the advisory watch warnings into a single status-bar line, or `None`
+/// when there are none. Kept next to the watch wiring so arming and re-arming
+/// format the notice the same way.
+fn join_watch_notice(warnings: Vec<String>) -> Option<String> {
+    if warnings.is_empty() {
+        None
+    } else {
+        Some(warnings.join("; "))
     }
 }
 
