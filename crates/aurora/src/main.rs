@@ -134,16 +134,19 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Positional arguments belong to the explicitly invoked target. Resolve
-    // `${arg.N}` / `${args}` now that the target is known; a value that must
-    // reach a dependency is a global variable, not an argument.
+    // Positional arguments belong to the explicitly invoked target. Expand
+    // `target` (bound with `args`) and its transitive dependencies into
+    // instances now that the target is known; a value that must reach a
+    // dependency is a global variable or a bound param, not a positional
+    // argument.
     let args: Vec<String> = matches
         .get_many::<String>("args")
         .map(|values| values.cloned().collect())
         .unwrap_or_default();
-    if let Err(e) = aurora_core::parser::resolve_arguments(&mut beam_file, &target, &args) {
-        fail_prerun(json, "argument", &e);
-    }
+    let expansion = match aurora_core::expand::expand(&beam_file, &target, &args) {
+        Ok(expansion) => expansion,
+        Err(e) => fail_prerun(json, "argument", &e),
+    };
 
     // Register each executor under the name it reports, so the registry key and
     // Executor::name() cannot drift apart.
@@ -198,8 +201,8 @@ async fn main() -> Result<()> {
     // The sidebar lists every declared beam (minus the virtual __multi__): it
     // doubles as a launcher, so a run of one target must still let you reach the
     // others.
-    let beam_info: Vec<(String, Vec<String>)> = beam_file
-        .beams
+    let beam_info: Vec<(String, Vec<String>)> = expansion
+        .instances
         .iter()
         .filter(|b| b.name != MULTI_BEAM)
         .map(|b| (b.name.clone(), b.dependency_names()))
@@ -210,12 +213,12 @@ async fn main() -> Result<()> {
     // __multi__ sentinel anchors the closure of a multi-select run but is
     // dropped from the set itself.
     let run_set = {
-        let all: Vec<(String, Vec<String>)> = beam_file
-            .beams
+        let all: Vec<(String, Vec<String>)> = expansion
+            .instances
             .iter()
             .map(|b| (b.name.clone(), b.dependency_names()))
             .collect();
-        aurora::run_closure_names(&all, &target, MULTI_BEAM)
+        aurora::run_closure_names(&all, &expansion.target_id, MULTI_BEAM)
     };
 
     let no_cache = matches.get_flag("no-cache");
@@ -226,7 +229,7 @@ async fn main() -> Result<()> {
         .map(|values| values.cloned().collect())
         .unwrap_or_default();
 
-    let beams = beam_file.beams.clone();
+    let beams = expansion.instances.clone();
     let scheduler = aurora::build_scheduler(
         beams,
         executors.clone(),
@@ -240,7 +243,7 @@ async fn main() -> Result<()> {
 
     if interactive {
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
-        let target_clone = target.clone();
+        let target_clone = expansion.target_id.clone();
         tokio::spawn(async move {
             if let Err(e) = scheduler
                 .run_cancellable(&target_clone, &[], cancel_rx)
@@ -250,8 +253,8 @@ async fn main() -> Result<()> {
             }
         });
 
-        let rerun_beams: Vec<_> = beam_file
-            .beams
+        let rerun_beams: Vec<_> = expansion
+            .instances
             .iter()
             .filter(|b| b.name != MULTI_BEAM)
             .cloned()
@@ -291,8 +294,8 @@ async fn main() -> Result<()> {
             (rx, cancel_tx)
         };
 
-        let sw_beams = beam_file
-            .beams
+        let sw_beams = expansion
+            .instances
             .iter()
             .filter(|b| b.name != MULTI_BEAM)
             .cloned()
@@ -367,7 +370,7 @@ async fn main() -> Result<()> {
 
         aurora_tui::run_execution_tui(
             beam_info,
-            target.clone(),
+            expansion.target_id.clone(),
             run_set,
             watch,
             rx,
@@ -381,15 +384,17 @@ async fn main() -> Result<()> {
         if watch {
             use std::sync::atomic::{AtomicBool, Ordering};
 
-            let mut beams = beam_file.beams.clone();
+            let mut beams = expansion.instances.clone();
             let mut env = env;
             let mut declared_env = declared_env;
             let mut max_parallelism = max_parallelism;
 
-            let mut closure = aurora::watch::closure_of(&beams, &target);
+            let mut closure = aurora::watch::closure_of(&beams, &expansion.target_id);
             let set =
                 aurora::watch::build_watch_set(&beams, &closure, &working_dir, &beamfile_path);
-            for warning in aurora::watch::watch_warnings(&target, &set, &beams, &closure) {
+            for warning in
+                aurora::watch::watch_warnings(&expansion.target_id, &set, &beams, &closure)
+            {
                 eprintln!("aurora: {warning}");
             }
             let (mut _watcher, mut trig_rx) =
@@ -427,7 +432,7 @@ async fn main() -> Result<()> {
                 });
 
                 let scheduler = scheduler.with_shutdown(sd_rx);
-                let target_clone = target.clone();
+                let target_clone = expansion.target_id.clone();
                 let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
                 let out_color =
@@ -529,7 +534,7 @@ async fn main() -> Result<()> {
         });
 
         let scheduler = scheduler.with_shutdown(shutdown_rx);
-        let target_clone = target.clone();
+        let target_clone = expansion.target_id.clone();
         let handle = tokio::spawn(async move { scheduler.run(&target_clone, &[]).await });
 
         let beam_names: Vec<String> = beam_info.iter().map(|(name, _)| name.clone()).collect();
@@ -539,7 +544,7 @@ async fn main() -> Result<()> {
         let json_beams: Vec<String> = if json {
             aurora_core::dag::BeamGraph::from_deps(beam_info.clone())
                 .ok()
-                .and_then(|graph| graph.execution_levels(&target).ok())
+                .and_then(|graph| graph.execution_levels(&expansion.target_id).ok())
                 .map(|levels| levels.into_iter().flatten().collect())
                 .unwrap_or_else(|| beam_names.clone())
         } else {
@@ -554,7 +559,7 @@ async fn main() -> Result<()> {
         use aurora::reporter::Reporter;
         let mut reporter: Box<dyn Reporter> = if json {
             Box::new(aurora::json::JsonReporter::new(
-                target.clone(),
+                expansion.target_id.clone(),
                 json_beams,
                 &mut stdout,
             ))

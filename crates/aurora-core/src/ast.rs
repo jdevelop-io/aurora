@@ -83,9 +83,10 @@ pub struct Beam {
     /// Beam-scoped `environment {}` block. Evaluated the same way as the
     /// top-level block, but only visible to this beam's own execution.
     pub environment: Option<Environment>,
-    /// Positional arguments passed to this beam on the command line. Only ever
-    /// non-empty on the explicitly invoked target; folded into its cache key.
-    pub args: Vec<String>,
+    /// Resolved param bindings of this instance. Empty before expansion and for
+    /// a beam that declares no params. Sorted, so the instance id and the cache
+    /// key derive from it deterministically.
+    pub bindings: BTreeMap<String, String>,
     /// Working directory for this beam. When set, the beam's run commands,
     /// inputs/outputs and gates all resolve against this directory. Relative
     /// paths join onto the Beamfile directory; absolute paths replace it.

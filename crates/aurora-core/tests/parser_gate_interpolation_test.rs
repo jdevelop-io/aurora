@@ -4,7 +4,7 @@
 //! bad substitution and silently disables the gate.
 
 use aurora_core::ast::ConditionClause;
-use aurora_core::parser::{parse, resolve_arguments, resolve_variables};
+use aurora_core::parser::{parse, resolve_variables};
 
 #[test]
 fn skip_if_interpolates_variables() {
@@ -59,44 +59,4 @@ beam "build" {
 "#;
     let mut bf = parse(input).unwrap();
     assert!(resolve_variables(&mut bf).is_err());
-}
-
-#[test]
-fn target_dir_and_gates_interpolate_arguments() {
-    let input = r#"
-beam "build" {
-  dir = "packages/${arg.1}"
-  skip_if = "test -f ${arg.1}.lock"
-  run {
-    commands = ["make"]
-  }
-}
-"#;
-    let mut bf = parse(input).unwrap();
-    resolve_arguments(&mut bf, "build", &["api".to_string()]).unwrap();
-    assert_eq!(bf.beams[0].dir.as_deref(), Some("packages/api"));
-    assert_eq!(bf.beams[0].skip_if.as_deref(), Some("test -f api.lock"));
-}
-
-#[test]
-fn dependency_gate_referencing_arguments_is_rejected() {
-    let input = r#"
-beam "target" {
-  depends_on = ["dep"]
-  run {
-    commands = ["echo target"]
-  }
-}
-beam "dep" {
-  skip_if = "test -f ${arg.1}"
-  run {
-    commands = ["echo dep"]
-  }
-}
-"#;
-    let mut bf = parse(input).unwrap();
-    assert!(
-        resolve_arguments(&mut bf, "target", &["x".to_string()]).is_err(),
-        "a dependency referencing arguments in a gate must be rejected"
-    );
 }

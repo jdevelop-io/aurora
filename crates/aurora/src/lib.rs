@@ -332,7 +332,7 @@ pub fn resolve_run_inputs(
     let mut beam_file = aurora_core::parser::parse(&content)?;
     apply_var_overrides(&mut beam_file, var_overrides.iter())?;
     aurora_core::parser::resolve_variables(&mut beam_file)?;
-    aurora_core::parser::resolve_arguments(&mut beam_file, target, args)?;
+    let expansion = aurora_core::expand::expand(&beam_file, target, args)?;
 
     let env = match &beam_file.environment {
         Some(env_block) => aurora_core::env::evaluate(env_block, working_dir)?,
@@ -342,7 +342,7 @@ pub fn resolve_run_inputs(
     let max_parallelism = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
 
     Ok(RunInputs {
-        beams: beam_file.beams,
+        beams: expansion.instances,
         env,
         declared_env,
         max_parallelism,
