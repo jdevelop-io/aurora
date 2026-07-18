@@ -384,6 +384,7 @@ fn test_definition_hash_is_stable_across_calls() {
     let cmds = vec!["make build".to_string()];
     let cfg: HashMap<String, String> = [("image".to_string(), "rust".to_string())].into();
     let env: BTreeMap<String, String> = [("SHA".to_string(), "abc".to_string())].into();
+    let bindings: BTreeMap<String, String> = [("version".to_string(), "1.2".to_string())].into();
     let build = || {
         BeamCache::hash_with_definition(
             "inputs-hash",
@@ -393,8 +394,30 @@ fn test_definition_hash_is_stable_across_calls() {
                 executor_config: Some(&cfg),
                 dir: Some("api"),
                 env: Some(&env),
+                bindings: Some(&bindings),
             },
         )
     };
     assert_eq!(build(), build(), "an unchanged definition keeps its key");
+}
+
+#[test]
+fn bindings_change_the_definition_hash() {
+    use std::collections::BTreeMap;
+    let mut a = BTreeMap::new();
+    a.insert("version".to_string(), "1.2".to_string());
+    let mut b = BTreeMap::new();
+    b.insert("version".to_string(), "1.3".to_string());
+    let commands = vec!["echo constant".to_string()];
+    let with = |bindings| {
+        aurora_core::cache::BeamDefinition {
+            commands: &commands,
+            bindings,
+            ..Default::default()
+        }
+        .hash()
+    };
+    assert_ne!(with(Some(&a)), with(Some(&b)));
+    assert_ne!(with(Some(&a)), with(None));
+    assert_eq!(with(Some(&a)), with(Some(&a.clone())));
 }

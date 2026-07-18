@@ -226,6 +226,11 @@ pub struct BeamDefinition<'a> {
     /// and between machines, defeating the cache locally and ruling out the
     /// shared cache this key is meant to grow into.
     pub env: Option<&'a BTreeMap<String, String>>,
+    /// The instance's resolved param bindings. Theoretically redundant (the
+    /// bindings are interpolated into the hashed commands/dir/env), but folding
+    /// them keeps the invariant trivial: an instance's key always covers its
+    /// bindings, even for a param no hashed field references.
+    pub bindings: Option<&'a BTreeMap<String, String>>,
 }
 
 impl BeamDefinition<'_> {
@@ -266,6 +271,13 @@ impl BeamDefinition<'_> {
             for (key, value) in env {
                 field("env", key);
                 field("env-val", value);
+            }
+        }
+
+        if let Some(bindings) = self.bindings {
+            for (key, value) in bindings {
+                field("param", key);
+                field("param-val", value);
             }
         }
 

@@ -633,6 +633,7 @@ async fn run_beam_task(
         executor_config: executor_config.map(|e| &e.config),
         dir: beam.dir.as_deref(),
         env: Some(&declared_env),
+        bindings: Some(&beam.bindings),
     }
     .hash();
 
