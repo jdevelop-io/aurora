@@ -1,16 +1,26 @@
-use aurora_tui::app::{PickerAction, PickerState};
+use aurora_tui::app::{PickerAction, PickerBeam, PickerState};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
+fn beam(name: &str, description: Option<&str>, depends_on: Vec<&str>) -> PickerBeam {
+    PickerBeam {
+        name: name.to_string(),
+        description: description.map(str::to_string),
+        depends_on: depends_on.into_iter().map(str::to_string).collect(),
+        signature: name.to_string(),
+        requires_args: false,
+    }
+}
+
 #[test]
 fn picker_fuzzy_filters_results() {
     let mut state = PickerState::new(vec![
-        ("build-release".to_string(), None, vec![]),
-        ("test-unit".to_string(), None, vec![]),
-        ("lint".to_string(), None, vec![]),
+        beam("build-release", None, vec![]),
+        beam("test-unit", None, vec![]),
+        beam("lint", None, vec![]),
     ]);
     // `/` opens the filter input, then "bld" → only "build-release" matches.
     state.handle_key(key(KeyCode::Char('/')));
@@ -25,8 +35,8 @@ fn picker_fuzzy_filters_results() {
 #[test]
 fn picker_enter_locks_filter_then_commands_resume() {
     let mut state = PickerState::new(vec![
-        ("build".to_string(), None, vec![]),
-        ("test".to_string(), None, vec![]),
+        beam("build", None, vec![]),
+        beam("test", None, vec![]),
     ]);
     state.handle_key(key(KeyCode::Char('/')));
     state.handle_key(key(KeyCode::Char('b')));
@@ -44,7 +54,7 @@ fn picker_enter_locks_filter_then_commands_resume() {
 
 #[test]
 fn picker_esc_clears_filter_before_quitting() {
-    let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
+    let mut state = PickerState::new(vec![beam("build", None, vec![])]);
     state.handle_key(key(KeyCode::Char('/')));
     state.handle_key(key(KeyCode::Char('b')));
     state.handle_key(key(KeyCode::Enter)); // filter locked
@@ -61,8 +71,8 @@ fn picker_esc_clears_filter_before_quitting() {
 #[test]
 fn picker_multi_select_accumulates() {
     let mut state = PickerState::new(vec![
-        ("build".to_string(), None, vec![]),
-        ("test".to_string(), None, vec![]),
+        beam("build", None, vec![]),
+        beam("test", None, vec![]),
     ]);
     state.handle_key(key(KeyCode::Char(' '))); // check "build"
     state.handle_key(key(KeyCode::Down)); // move to "test"
@@ -74,8 +84,8 @@ fn picker_multi_select_accumulates() {
 #[test]
 fn picker_filter_input_captures_letters() {
     let mut state = PickerState::new(vec![
-        ("queue".to_string(), None, vec![]),
-        ("build".to_string(), None, vec![]),
+        beam("queue", None, vec![]),
+        beam("build", None, vec![]),
     ]);
     // In input mode (`/`), typing "q" filters instead of triggering a command.
     state.handle_key(key(KeyCode::Char('/')));
@@ -88,7 +98,7 @@ fn picker_filter_input_captures_letters() {
 
 #[test]
 fn picker_esc_quits() {
-    let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
+    let mut state = PickerState::new(vec![beam("build", None, vec![])]);
     assert!(matches!(
         state.handle_key(key(KeyCode::Esc)),
         Some(PickerAction::Quit)
@@ -97,14 +107,14 @@ fn picker_esc_quits() {
 
 #[test]
 fn picker_ctrl_c_quits() {
-    let mut state = PickerState::new(vec![("build".to_string(), None, vec![])]);
+    let mut state = PickerState::new(vec![beam("build", None, vec![])]);
     let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
     assert!(matches!(state.handle_key(ctrl_c), Some(PickerAction::Quit)));
 }
 
 #[test]
 fn picker_d_toggles_deps() {
-    let mut state = PickerState::new(vec![("build".to_string(), None, vec!["lint".to_string()])]);
+    let mut state = PickerState::new(vec![beam("build", None, vec!["lint"])]);
     // Visible by default, `d` collapses it then reopens it (consistent with the runner).
     assert!(state.show_deps);
     state.handle_key(key(KeyCode::Char('d')));

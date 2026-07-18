@@ -1,15 +1,27 @@
-use aurora_tui::app::{ExecutionAction, ExecutionState, FocusPanel, PickerAction, PickerState};
+use aurora_tui::app::{
+    ExecutionAction, ExecutionState, FocusPanel, PickerAction, PickerBeam, PickerState,
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
+fn beam(name: &str, description: Option<&str>, depends_on: Vec<&str>) -> PickerBeam {
+    PickerBeam {
+        name: name.to_string(),
+        description: description.map(str::to_string),
+        depends_on: depends_on.into_iter().map(str::to_string).collect(),
+        signature: name.to_string(),
+        requires_args: false,
+    }
+}
+
 #[test]
 fn picker_enter_with_selection_returns_beam_name() {
     let mut picker = PickerState::new(vec![
-        ("build".to_string(), None, vec![]),
-        ("test".to_string(), None, vec![]),
+        beam("build", None, vec![]),
+        beam("test", None, vec![]),
     ]);
     let result = picker.handle_key(key(KeyCode::Enter));
     assert_eq!(
@@ -20,7 +32,7 @@ fn picker_enter_with_selection_returns_beam_name() {
 
 #[test]
 fn picker_esc_returns_quit() {
-    let mut picker = PickerState::new(vec![("build".to_string(), None, vec![])]);
+    let mut picker = PickerState::new(vec![beam("build", None, vec![])]);
     let result = picker.handle_key(key(KeyCode::Esc));
     assert_eq!(result, Some(PickerAction::Quit));
 }

@@ -62,16 +62,27 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
             .map(|(display_i, (orig_idx, beam, _score))| {
                 let is_selected = display_i == state.selected;
                 let is_checked = state.checked[*orig_idx];
+                // A beam requiring arguments has no way to receive them here
+                // (no value input in the picker): its row is dimmed to signal
+                // it cannot be launched or checked from this view.
+                let dimmed = beam.requires_args;
                 let checkbox = if is_checked { "[x] " } else { "[ ] " };
                 let prefix = if is_selected { "▶ " } else { "  " };
+                let prefix_style = if dimmed {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
 
                 let name_spans = if !state.search.is_empty() {
                     let indices = match_indices(&state.search, &beam.name);
-                    highlight_name(&beam.name, &indices, is_selected)
+                    highlight_name(&beam.name, &indices, is_selected && !dimmed)
                 } else {
                     vec![Span::styled(
                         beam.name.clone(),
-                        if is_selected {
+                        if dimmed {
+                            Style::default().fg(Color::DarkGray)
+                        } else if is_selected {
                             Style::default()
                                 .fg(Color::White)
                                 .add_modifier(Modifier::BOLD)
@@ -81,8 +92,20 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
                     )]
                 };
 
-                let mut spans = vec![Span::raw(format!("{}{}", prefix, checkbox))];
+                let mut spans = vec![Span::styled(
+                    format!("{}{}", prefix, checkbox),
+                    prefix_style,
+                )];
                 spans.extend(name_spans);
+                // Param signature suffix (e.g. " <version> [env=staging]"):
+                // informational, dimmed, and not part of the fuzzy-matched name.
+                let suffix = &beam.signature[beam.name.len()..];
+                if !suffix.is_empty() {
+                    spans.push(Span::styled(
+                        suffix.to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
                 if let Some(desc) = &beam.description {
                     spans.push(Span::styled(
                         format!("  {}", desc),
@@ -125,11 +148,23 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
 
     let status = status_line(state, &filtered, selected_count);
     f.render_widget(Paragraph::new(status), footer[0]);
-    if state.search_input {
+    // The notice (a parameterized beam refused at Enter/Space) takes priority
+    // for the one frame it is shown: it is a direct answer to the key the
+    // user just pressed, ahead of the filter prompt or the static hints.
+    if let Some(notice) = &state.notice {
+        f.render_widget(notice_bar(notice), footer[1]);
+    } else if state.search_input {
         f.render_widget(search_bar(&state.search), footer[1]);
     } else {
         crate::widgets::status_bar::render_hints(f, footer[1], &hints);
     }
+}
+
+/// Advisory line shown when a parameterized beam is refused at Enter/Space.
+/// Same footer slot and color family as the search prompt, so it reads as
+/// part of the same status area rather than an unrelated overlay.
+fn notice_bar(message: &str) -> Paragraph<'static> {
+    Paragraph::new(format!(" ⚠ {} ", message)).style(Style::default().fg(Color::Yellow))
 }
 
 /// Search prompt shown in the footer while typing the filter.

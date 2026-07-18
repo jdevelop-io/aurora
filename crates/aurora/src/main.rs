@@ -107,7 +107,13 @@ async fn main() -> Result<()> {
             beam_file
                 .beams
                 .iter()
-                .map(|b| (b.name.clone(), b.description.clone(), b.dependency_names()))
+                .map(|b| aurora_tui::PickerBeam {
+                    name: b.name.clone(),
+                    description: b.description.clone(),
+                    depends_on: b.dependency_names(),
+                    signature: aurora_core::expand::signature(b),
+                    requires_args: aurora_core::expand::has_required_params(b),
+                })
                 .collect(),
         )? {
             if picker_results.len() == 1 {

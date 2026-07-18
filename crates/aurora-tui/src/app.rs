@@ -341,6 +341,12 @@ pub struct PickerBeam {
     pub name: String,
     pub description: Option<String>,
     pub depends_on: Vec<String>,
+    /// Display form with the param signature (`deploy <version> [env=staging]`);
+    /// equals `name` for a param-less beam.
+    pub signature: String,
+    /// True when the beam declares a param without a default: it cannot be
+    /// launched from the picker (no value input here), only from the CLI.
+    pub requires_args: bool,
 }
 
 pub struct PickerState {
@@ -352,26 +358,23 @@ pub struct PickerState {
     pub search_input: bool,
     pub show_deps: bool,
     pub checked: Vec<bool>,
+    /// Transient advisory shown in the footer (e.g. a parameterized beam
+    /// cannot be launched/checked from here). Cleared on the next keypress.
+    pub notice: Option<String>,
 }
 
 impl PickerState {
-    pub fn new(beam_info: Vec<(String, Option<String>, Vec<String>)>) -> Self {
-        let len = beam_info.len();
+    pub fn new(beams: Vec<PickerBeam>) -> Self {
+        let len = beams.len();
         PickerState {
-            beams: beam_info
-                .into_iter()
-                .map(|(name, description, depends_on)| PickerBeam {
-                    name,
-                    description,
-                    depends_on,
-                })
-                .collect(),
+            beams,
             selected: 0,
             search: String::new(),
             search_input: false,
             // Dependency panel visible from the start; `d` collapses it.
             show_deps: true,
             checked: vec![false; len],
+            notice: None,
         }
     }
 
@@ -418,6 +421,10 @@ impl PickerState {
         if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
             return Some(PickerAction::Quit);
         }
+
+        // Any other key clears a previously shown notice: it is a one-frame
+        // advisory, not a persistent banner.
+        self.notice = None;
 
         let count = self.filtered().len();
 
@@ -470,7 +477,14 @@ impl PickerState {
             KeyCode::End => self.selected = count.saturating_sub(1),
             KeyCode::Char(' ') => {
                 if let Some(idx) = self.filtered().get(self.selected).map(|(i, _, _)| *i) {
-                    self.checked[idx] = !self.checked[idx];
+                    if self.beams[idx].requires_args {
+                        self.notice = Some(format!(
+                            "'{}' requires arguments: run `aurora {}`",
+                            self.beams[idx].name, self.beams[idx].signature
+                        ));
+                    } else {
+                        self.checked[idx] = !self.checked[idx];
+                    }
                 }
             }
             KeyCode::Char('d') => self.show_deps = !self.show_deps,
@@ -500,8 +514,10 @@ impl PickerState {
     }
 
     /// Launch action: the checked beams if any exist, otherwise the beam
-    /// selected in the filtered list.
-    fn launch(&self) -> Option<PickerAction> {
+    /// selected in the filtered list. A beam that requires arguments cannot be
+    /// launched from here (no value input in the picker): a notice is set
+    /// instead, pointing at the CLI invocation.
+    fn launch(&mut self) -> Option<PickerAction> {
         let checked = self.selected_beam_indices();
         if !checked.is_empty() {
             let names = checked
@@ -510,9 +526,20 @@ impl PickerState {
                 .collect();
             return Some(PickerAction::Launch(names));
         }
-        self.filtered()
-            .get(self.selected)
-            .map(|(_, b, _)| PickerAction::Launch(vec![b.name.clone()]))
+        let (idx, beam) = {
+            let filtered = self.filtered();
+            let (i, b, _) = filtered.get(self.selected)?;
+            (*i, (*b).clone())
+        };
+        let _ = idx;
+        if beam.requires_args {
+            self.notice = Some(format!(
+                "'{}' requires arguments: run `aurora {}`",
+                beam.name, beam.signature
+            ));
+            return None;
+        }
+        Some(PickerAction::Launch(vec![beam.name]))
     }
 }
 

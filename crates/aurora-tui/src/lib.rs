@@ -5,6 +5,7 @@ pub mod picker;
 pub mod widgets;
 
 use anyhow::Result;
+pub use app::PickerBeam;
 use app::{
     ExecutionAction, ExecutionState, FocusPanel, LogSearch, LogViewState, PickerAction,
     PickerState, WatchUiState,
@@ -352,9 +353,7 @@ pub async fn run_execution_tui(
     })
 }
 
-pub fn run_picker(
-    beam_info: Vec<(String, Option<String>, Vec<String>)>,
-) -> Result<Option<Vec<String>>> {
+pub fn run_picker(beams: Vec<PickerBeam>) -> Result<Option<Vec<String>>> {
     tokio::task::block_in_place(|| {
         install_terminal_panic_hook();
         enable_raw_mode()?;
@@ -363,7 +362,7 @@ pub fn run_picker(
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
-        let mut state = PickerState::new(beam_info);
+        let mut state = PickerState::new(beams);
 
         let result = (|| -> Result<Option<Vec<String>>> {
             loop {
