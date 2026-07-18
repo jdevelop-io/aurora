@@ -297,6 +297,53 @@ fn instance_id_format_is_stable_and_escaped() {
 }
 
 #[test]
+fn params_interpolate_into_non_command_fields() {
+    // `instantiate()` must resolve `${param.x}` in every interpolatable field,
+    // not just `run.commands`: `dir` and the `skip_if` gate reach a shell too,
+    // so a literal token left there would become a bad substitution.
+    let bf = parsed(
+        r#"
+beam "build" {
+  param "target" {}
+  dir = "packages/${param.target}"
+  skip_if = "test -f ${param.target}.lock"
+  run { commands = ["make"] }
+}
+"#,
+    );
+    let expansion = expand(&bf, "build", &["api".into()]).unwrap();
+    let build = expansion
+        .instances
+        .iter()
+        .find(|b| b.name == expansion.target_id)
+        .unwrap();
+    assert_eq!(build.dir.as_deref(), Some("packages/api"));
+    assert_eq!(build.skip_if.as_deref(), Some("test -f api.lock"));
+}
+
+#[test]
+fn unknown_dependency_is_preserved_verbatim_without_panicking() {
+    // A dependency on a name that is not a declared beam must not panic
+    // expansion: the raw name flows through unchanged so `BeamGraph::from_deps`
+    // reports the unknown dependency exactly as before.
+    let bf = parsed(
+        r#"
+beam "deploy" {
+  depends_on = ["ghost"]
+  run { commands = ["echo deploy"] }
+}
+"#,
+    );
+    let expansion = expand(&bf, "deploy", &[]).unwrap();
+    let deploy = expansion
+        .instances
+        .iter()
+        .find(|b| b.name == "deploy")
+        .unwrap();
+    assert_eq!(deploy.dependency_names(), vec!["ghost"]);
+}
+
+#[test]
 fn signature_renders_required_and_defaulted_params() {
     let bf = parsed(PIPELINE);
     let deploy = bf.beams.iter().find(|b| b.name == "deploy").unwrap();
