@@ -1,4 +1,4 @@
-use crate::ast::{EnvValue, Environment};
+use crate::ast::{EnvValue, EnvVar, Environment};
 use anyhow::{bail, Result};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -75,42 +75,75 @@ pub fn evaluate(env_block: &Environment, working_dir: &Path) -> Result<HashMap<S
     let mut result = base_env();
 
     for var in &env_block.vars {
-        let value = match &var.value {
-            EnvValue::Literal(s) => s.clone(),
-            EnvValue::Shell(cmd) => {
-                let output = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(cmd)
-                    .current_dir(working_dir)
-                    .env_clear()
-                    .envs(&result)
-                    .output()?;
-                // A non-zero exit is a configuration error: failing here beats
-                // silently binding an empty variable that would break the beams
-                // relying on it in ways that are hard to diagnose.
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    bail!(
-                        "environment variable '{}': shell command `{}` failed ({}){}",
-                        var.name,
-                        cmd,
-                        output.status,
-                        if stderr.trim().is_empty() {
-                            String::new()
-                        } else {
-                            format!(": {}", stderr.trim())
-                        }
-                    );
-                }
-                String::from_utf8_lossy(&output.stdout)
-                    .trim_end_matches('\n')
-                    .to_string()
-            }
-        };
+        let value = eval_value(var, &result, working_dir)?;
         result.insert(var.name.clone(), value);
     }
 
     Ok(result)
+}
+
+/// Evaluates a single `environment {}` entry: a literal is copied as is, a
+/// `shell(...)` command is executed on the host with `visible` as its
+/// environment. Shared by [`evaluate`] (the global block) and
+/// [`evaluate_overlay`] (a beam's per-instance block), so the two stay
+/// consistent on how a `shell()` value is resolved and how its failure is
+/// reported.
+fn eval_value(
+    var: &EnvVar,
+    visible: &HashMap<String, String>,
+    working_dir: &Path,
+) -> Result<String> {
+    match &var.value {
+        EnvValue::Literal(s) => Ok(s.clone()),
+        EnvValue::Shell(cmd) => {
+            let output = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(cmd)
+                .current_dir(working_dir)
+                .env_clear()
+                .envs(visible)
+                .output()?;
+            // A non-zero exit is a configuration error: failing here beats
+            // silently binding an empty variable that would break the beams
+            // relying on it in ways that are hard to diagnose.
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                bail!(
+                    "environment variable '{}': shell command `{}` failed ({}){}",
+                    var.name,
+                    cmd,
+                    output.status,
+                    if stderr.trim().is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {}", stderr.trim())
+                    }
+                );
+            }
+            Ok(String::from_utf8_lossy(&output.stdout)
+                .trim_end_matches('\n')
+                .to_string())
+        }
+    }
+}
+
+/// Evaluates a beam's `environment {}` block per instance: sequential, on
+/// the host, with `base` (the global environment, ambient plus declared)
+/// visible to its `shell()` commands. Returns only the overlay: its values
+/// shadow the global ones for this instance and leak nowhere else.
+pub fn evaluate_overlay(
+    env_block: &Environment,
+    base: &HashMap<String, String>,
+    working_dir: &Path,
+) -> Result<BTreeMap<String, String>> {
+    let mut visible = base.clone();
+    let mut overlay = BTreeMap::new();
+    for var in &env_block.vars {
+        let value = eval_value(var, &visible, working_dir)?;
+        visible.insert(var.name.clone(), value.clone());
+        overlay.insert(var.name.clone(), value);
+    }
+    Ok(overlay)
 }
 
 /// Picks out of `evaluated` the variables the Beamfile's `environment {}` block

@@ -95,6 +95,10 @@ pub struct Beam {
     pub condition: Option<Condition>,
     pub run: Option<Run>,
     pub allow_failure: bool,
+    /// Evaluated per-instance `environment {}` overlay (filled after
+    /// expansion, empty when the beam declares no block). Shadows the global
+    /// environment for this instance only, in execution and in the cache key.
+    pub env_overlay: BTreeMap<String, String>,
 }
 
 impl Beam {

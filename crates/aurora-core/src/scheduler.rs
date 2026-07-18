@@ -454,6 +454,21 @@ async fn run_beam_task(
         working_dir,
     } = task_env;
 
+    // The per-instance `environment {}` overlay shadows the global
+    // environment for this beam only: applied before the gates, so
+    // `skip_if`/`condition` see it too, and folded into the declared half
+    // that feeds the cache key, so an overlay change busts the cache exactly
+    // like a global environment change would.
+    let (env, declared_env) = if beam.env_overlay.is_empty() {
+        (env, declared_env)
+    } else {
+        let mut env = env;
+        env.extend(beam.env_overlay.iter().map(|(k, v)| (k.clone(), v.clone())));
+        let mut declared_env = declared_env;
+        declared_env.extend(beam.env_overlay.clone());
+        (env, declared_env)
+    };
+
     let _permit = match sem {
         // The semaphore is owned by the scheduler and never closed while the
         // run is in flight, so acquisition cannot fail here. Racing the wait

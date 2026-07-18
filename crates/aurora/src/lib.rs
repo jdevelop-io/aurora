@@ -299,6 +299,22 @@ pub fn build_scheduler(
     }
 }
 
+/// Evaluates each instance's `environment {}` block (params already
+/// interpolated by expansion) against the global environment. One `shell()`
+/// there runs once per instance: the instance is the unit of execution.
+pub fn apply_env_overlays(
+    beams: &mut [Beam],
+    env: &HashMap<String, String>,
+    working_dir: &Path,
+) -> Result<()> {
+    for beam in beams.iter_mut() {
+        if let Some(block) = &beam.environment {
+            beam.env_overlay = aurora_core::env::evaluate_overlay(block, env, working_dir)?;
+        }
+    }
+    Ok(())
+}
+
 /// The per-cycle run data produced by re-parsing a Beamfile: the beams (with
 /// variables and arguments already interpolated into their commands), the full
 /// evaluated environment, the declared subset that feeds cache keys, and the
@@ -343,8 +359,11 @@ pub fn resolve_run_inputs(
     let declared_env = aurora_core::env::declared_only(beam_file.environment.as_ref(), &env);
     let max_parallelism = beam_file.config.as_ref().and_then(|c| c.max_parallelism);
 
+    let mut instances = expansion.instances;
+    apply_env_overlays(&mut instances, &env, working_dir)?;
+
     Ok(RunInputs {
-        beams: expansion.instances,
+        beams: instances,
         env,
         declared_env,
         max_parallelism,

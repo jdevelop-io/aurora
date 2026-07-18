@@ -226,6 +226,14 @@ async fn main() -> Result<()> {
     // stays out of the key (see `env::declared_only`).
     let declared_env = aurora_core::env::declared_only(beam_file.environment.as_ref(), &env);
 
+    // Evaluate each instance's own `environment {}` block (params already
+    // interpolated by expansion) against the global environment, before it
+    // feeds the sidebar listing, the run set, or the scheduler below.
+    let mut instances = instances;
+    if let Err(e) = aurora::apply_env_overlays(&mut instances, &env, &working_dir) {
+        fail_prerun(json, "beamfile", &e);
+    }
+
     let (tx, rx) = mpsc::channel(128);
     // The sidebar lists every declared beam (minus the virtual __multi__): it
     // doubles as a launcher, so a run of one target must still let you reach the
