@@ -76,7 +76,7 @@ pub fn render_picker(f: &mut Frame, state: &PickerState) {
 
                 let name_spans = if !state.search.is_empty() {
                     let indices = match_indices(&state.search, &beam.name);
-                    highlight_name(&beam.name, &indices, is_selected && !dimmed)
+                    highlight_name(&beam.name, &indices, is_selected, dimmed)
                 } else {
                     vec![Span::styled(
                         beam.name.clone(),
@@ -202,11 +202,14 @@ fn status_line(
             selected_count, selected_count
         )
     } else {
-        let name = filtered
-            .get(state.selected)
-            .map(|(_, b, _)| b.name.clone())
-            .unwrap_or_default();
-        format!("Enter runs « {} »", name)
+        match filtered.get(state.selected).map(|(_, b, _)| *b) {
+            // A beam that requires arguments cannot be launched here: Enter only
+            // surfaces its usage notice, so the preview says so rather than
+            // promising a run that will not happen.
+            Some(beam) if beam.requires_args => "Enter shows usage".to_string(),
+            Some(beam) => format!("Enter runs « {} »", beam.name),
+            None => String::new(),
+        }
     };
 
     Line::from(vec![
@@ -217,7 +220,22 @@ fn status_line(
     ])
 }
 
-fn highlight_name(name: &str, indices: &[usize], selected: bool) -> Vec<Span<'static>> {
+fn highlight_name(
+    name: &str,
+    indices: &[usize],
+    selected: bool,
+    dimmed: bool,
+) -> Vec<Span<'static>> {
+    // A dimmed row (a beam that requires arguments) reads as uniformly
+    // DarkGray: the match highlight is suppressed too, so the whole row keeps
+    // the same "cannot launch from here" look whether or not the filter is
+    // active.
+    if dimmed {
+        return name
+            .chars()
+            .map(|ch| Span::styled(ch.to_string(), Style::default().fg(Color::DarkGray)))
+            .collect();
+    }
     let base_style = if selected {
         Style::default()
             .fg(Color::White)
