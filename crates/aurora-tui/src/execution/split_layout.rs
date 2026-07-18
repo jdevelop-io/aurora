@@ -91,11 +91,17 @@ pub fn render_execution(
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(layout.footer);
 
-    let total = exec.beams.len();
+    // Count only the beams the current run executes (the launched target's
+    // closure). Beams outside it appear in the sidebar as available-but-idle;
+    // folding them into the denominator would keep the bar below 100%.
+    let total = exec.run_total();
     // Breakdown by status: success (cache included), warnings (tolerated failures),
     // failures, cancelled (neutral category, distinct from failures), skipped.
     let breakdown = crate::widgets::status_bar::StatusBreakdown::from_statuses(
-        exec.beams.iter().map(|b| &b.status),
+        exec.beams
+            .iter()
+            .filter(|b| exec.is_in_run(&b.name))
+            .map(|b| &b.status),
     );
     let done_count = breakdown.done_count();
 

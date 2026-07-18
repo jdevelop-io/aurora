@@ -14,7 +14,7 @@ use aurora_core::events::SchedulerEvent;
 use aurora_core::scheduler::Scheduler;
 use aurora_executor_api::Executor;
 use clap::{Arg, Command};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -140,6 +140,49 @@ pub fn resolve_target(beam_file: &BeamFile, explicit: Option<&str>) -> Result<St
     };
     ensure_beam_exists(beam_file, &target)?;
     Ok(target)
+}
+
+/// Names of the beams in the transitive closure of `target` (root plus its
+/// transitive dependencies): the beams the scheduler will actually run.
+/// Declaration order is preserved.
+///
+/// This is what keeps the execution view's progress honest. The status bar
+/// counts only these beams; folding in every declared beam makes its
+/// denominator count beams that never run, so a run of a small target (say
+/// `check` in a Beamfile that also defines `build`, `bench` and `install`)
+/// shows `4/7` and its progress bar never reaches 100%. The full list still
+/// appears in the sidebar (the rest is dimmed as available but idle); only the
+/// count and the breakdown are scoped to this set.
+///
+/// The virtual multi-beam sentinel (`multi_beam`) anchors the closure but is
+/// always dropped from the result: it is an implementation detail of a
+/// multi-select run, not a beam the user picked. A malformed graph (a cycle)
+/// falls back to every declared beam minus the sentinel: a display concern must
+/// never abort a run the scheduler will report on anyway.
+pub fn run_closure_names(
+    all: &[(String, Vec<String>)],
+    target: &str,
+    multi_beam: &str,
+) -> Vec<String> {
+    let graph = match aurora_core::dag::BeamGraph::from_deps(
+        all.iter()
+            .map(|(name, deps)| (name.clone(), deps.clone()))
+            .collect(),
+    ) {
+        Ok(graph) => graph,
+        Err(_) => {
+            return all
+                .iter()
+                .map(|(name, _)| name.clone())
+                .filter(|name| name != multi_beam)
+                .collect()
+        }
+    };
+    let closure: HashSet<String> = graph.transitive_deps(target).into_iter().collect();
+    all.iter()
+        .map(|(name, _)| name.clone())
+        .filter(|name| name != multi_beam && closure.contains(name))
+        .collect()
 }
 
 /// Fails when `target` is not a declared beam, suggesting the closest name.

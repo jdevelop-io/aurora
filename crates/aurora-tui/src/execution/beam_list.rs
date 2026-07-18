@@ -29,14 +29,27 @@ pub fn render_beam_list(
         .into_iter()
         .map(|i| {
             let beam = &state.beams[i];
+            // Beams outside the current run (the launched target's closure) are
+            // shown but dimmed: reachable as launchers, not part of this run's
+            // progress. An idle dot replaces their status glyph.
+            let in_run = state.is_in_run(&beam.name);
             let symbol = match &beam.status {
+                _ if !in_run => "·",
                 BeamStatus::Running => {
                     SPINNER_FRAMES[(tick / 2 % SPINNER_FRAMES.len() as u64) as usize]
                 }
                 _ => beam.status_symbol(),
             };
-            let color = status_color(&beam.status);
-            let duration_str = duration_label(&beam.status, beam);
+            let color = if in_run {
+                status_color(&beam.status)
+            } else {
+                Color::DarkGray
+            };
+            let duration_str = if in_run {
+                duration_label(&beam.status, beam)
+            } else {
+                String::new()
+            };
 
             // Inner width of the panel: we reserve the duration on the right and
             // adjust the name so the line never overflows the border.
@@ -55,8 +68,12 @@ pub fn render_beam_list(
                         Style::default()
                             .fg(Color::White)
                             .add_modifier(Modifier::BOLD)
-                    } else {
+                    } else if in_run {
                         Style::default().fg(Color::Gray)
+                    } else {
+                        Style::default()
+                            .fg(Color::DarkGray)
+                            .add_modifier(Modifier::DIM)
                     },
                 ),
                 Span::styled(duration_str, Style::default().fg(Color::DarkGray)),

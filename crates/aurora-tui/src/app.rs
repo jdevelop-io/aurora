@@ -571,10 +571,17 @@ pub struct ExecutionState {
     pub beam_filter: String,
     /// Beam filter input mode active.
     pub filter_input: bool,
+    /// Names of the beams the current run actually executes: the transitive
+    /// closure of the launched target. The progress count and the status
+    /// breakdown are scoped to this set, and the sidebar dims the rest as
+    /// available-but-idle. Defaults to every beam so an unscoped state counts
+    /// the whole list.
+    run_set: HashSet<String>,
 }
 
 impl ExecutionState {
     pub fn new(beam_info: Vec<(String, Vec<String>)>) -> Self {
+        let run_set = beam_info.iter().map(|(name, _)| name.clone()).collect();
         ExecutionState {
             beams: beam_info
                 .into_iter()
@@ -586,7 +593,63 @@ impl ExecutionState {
             show_deps: false,
             beam_filter: String::new(),
             filter_input: false,
+            run_set,
         }
+    }
+
+    /// Whether `name` belongs to the current run (see `run_set`). Beams outside
+    /// it are shown in the sidebar but dimmed and left out of the progress
+    /// count.
+    pub fn is_in_run(&self, name: &str) -> bool {
+        self.run_set.contains(name)
+    }
+
+    /// Number of beams in the current run: the status bar's denominator.
+    pub fn run_total(&self) -> usize {
+        self.beams
+            .iter()
+            .filter(|b| self.run_set.contains(&b.name))
+            .count()
+    }
+
+    /// Replaces the run scope with an explicit set of beam names. Used at launch
+    /// with the closure computed by the composition root, which also covers the
+    /// virtual multi-beam selection the TUI cannot resolve on its own.
+    pub fn set_run_set(&mut self, names: impl IntoIterator<Item = String>) {
+        self.run_set = names.into_iter().collect();
+    }
+
+    /// Scopes the run to `root`'s transitive closure over `depends_on`, computed
+    /// from the beams already known to the view. Used when a rerun (or a watch
+    /// reload) makes `root` the target actually being executed.
+    pub fn focus_run_on(&mut self, root: &str) {
+        self.run_set = self.closure_of(root);
+    }
+
+    /// Transitive closure of `root` (root plus its transitive dependencies) over
+    /// the view's own `depends_on` edges. An unknown `root` yields just itself.
+    fn closure_of(&self, root: &str) -> HashSet<String> {
+        let index: std::collections::HashMap<&str, usize> = self
+            .beams
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.name.as_str(), i))
+            .collect();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut stack = vec![root.to_string()];
+        while let Some(name) = stack.pop() {
+            if !seen.insert(name.clone()) {
+                continue;
+            }
+            if let Some(&i) = index.get(name.as_str()) {
+                for dep in &self.beams[i].depends_on {
+                    if !seen.contains(dep) {
+                        stack.push(dep.clone());
+                    }
+                }
+            }
+        }
+        seen
     }
 
     /// Every beam's name in declaration order. Used by a watch re-run, which

@@ -200,13 +200,28 @@ async fn main() -> Result<()> {
     let declared_env = aurora_core::env::declared_only(beam_file.environment.as_ref(), &env);
 
     let (tx, rx) = mpsc::channel(128);
-    // Exclude the virtual beam __multi__ from the displayed list / prefixes
+    // The sidebar lists every declared beam (minus the virtual __multi__): it
+    // doubles as a launcher, so a run of one target must still let you reach the
+    // others.
     let beam_info: Vec<(String, Vec<String>)> = beam_file
         .beams
         .iter()
         .filter(|b| b.name != MULTI_BEAM)
         .map(|b| (b.name.clone(), b.depends_on.clone()))
         .collect();
+    // The set the scheduler actually runs (the target's transitive closure).
+    // The TUI scopes its progress count and breakdown to this set and dims the
+    // rest, so the bar reaches 100% instead of stalling at, say, 4/7. The
+    // __multi__ sentinel anchors the closure of a multi-select run but is
+    // dropped from the set itself.
+    let run_set = {
+        let all: Vec<(String, Vec<String>)> = beam_file
+            .beams
+            .iter()
+            .map(|b| (b.name.clone(), b.depends_on.clone()))
+            .collect();
+        aurora::run_closure_names(&all, &target, MULTI_BEAM)
+    };
 
     let no_cache = matches.get_flag("no-cache");
     let watch = matches.get_flag("watch");
@@ -358,6 +373,7 @@ async fn main() -> Result<()> {
         aurora_tui::run_execution_tui(
             beam_info,
             target.clone(),
+            run_set,
             watch,
             rx,
             cancel_tx,

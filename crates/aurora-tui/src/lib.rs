@@ -42,6 +42,7 @@ pub fn install_terminal_panic_hook() {
 pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
     target: String,
+    run_set: Vec<String>,
     watch_preset: bool,
     mut rx: mpsc::Receiver<SchedulerEvent>,
     mut cancel_tx: mpsc::UnboundedSender<String>,
@@ -71,6 +72,10 @@ pub async fn run_execution_tui(
         let mut terminal = Terminal::new(backend)?;
 
         let mut exec = ExecutionState::new(beam_info);
+        // Scope the progress count to the beams the scheduler actually runs (the
+        // launched target's closure), computed by the composition root so it
+        // also covers a multi-select selection the view cannot resolve alone.
+        exec.set_run_set(run_set);
         let mut log_state = LogViewState::new(0);
         let mut search = LogSearch::new();
         let mut show_help = false;
@@ -307,6 +312,11 @@ pub async fn run_execution_tui(
                             ExecKeyOutcome::Rerun { root, pre_success } => {
                                 log_state = LogViewState::new(exec.selected);
                                 search.clear();
+                                // Re-scope the progress count to what is now
+                                // being executed: `root`'s closure. Launching a
+                                // beam outside the previous run (via the sidebar)
+                                // makes it, not the old target, the run.
+                                exec.focus_run_on(&root);
                                 let (new_rx, new_cancel) = rerun(root, pre_success);
                                 rx = new_rx;
                                 cancel_tx = new_cancel;
@@ -603,6 +613,10 @@ fn apply_watch_trigger(
         match reload() {
             Ok((beam_info, new_rx, new_cancel)) => {
                 *exec = ExecutionState::new(beam_info);
+                // Re-scope the progress count to the target's closure on the
+                // rebuilt graph. Watch reload only runs for a single beam, so
+                // the target is always a real beam the view can resolve.
+                exec.focus_run_on(target);
                 *log_state = LogViewState::new(0);
                 search.clear();
                 *rx = new_rx;
