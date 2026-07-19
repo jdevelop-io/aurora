@@ -201,6 +201,66 @@ fn test_hash_inputs_none_when_no_file_matches() {
     assert!(hash.is_none());
 }
 
+#[test]
+fn test_directory_input_hashes_its_files_recursively() {
+    let tmp = tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("tests/integration")).unwrap();
+    fs::write(tmp.path().join("tests/a.rs"), b"// a").unwrap();
+    fs::write(tmp.path().join("tests/integration/b.rs"), b"// b").unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+
+    // A bare directory input must hash every file underneath it, so declaring
+    // "tests" covers the whole tree without an explicit recursive glob.
+    let hash = cache
+        .hash_inputs_at(tmp.path(), &["tests".to_string()])
+        .unwrap();
+    assert!(
+        hash.is_some(),
+        "a directory input with files must produce a key"
+    );
+}
+
+#[test]
+fn test_directory_input_invalidates_when_a_nested_file_is_added() {
+    let tmp = tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("tests")).unwrap();
+    fs::write(tmp.path().join("tests/a.rs"), b"// a").unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+    let inputs = vec!["tests".to_string()];
+
+    let before = cache.hash_inputs_at(tmp.path(), &inputs).unwrap();
+    // A new test file appears in a subdirectory of the declared directory.
+    fs::create_dir_all(tmp.path().join("tests/integration")).unwrap();
+    fs::write(tmp.path().join("tests/integration/new.rs"), b"// new").unwrap();
+    let after = cache.hash_inputs_at(tmp.path(), &inputs).unwrap();
+
+    assert_ne!(
+        before, after,
+        "adding a nested test file must change a directory input's hash"
+    );
+}
+
+#[test]
+fn test_directory_and_file_input_do_not_double_count_overlap() {
+    let tmp = tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("src")).unwrap();
+    fs::write(tmp.path().join("src/main.rs"), b"fn main() {}").unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+
+    // "src" (recursed) and "src/main.rs" resolve to the same file; it must be
+    // hashed once, so the pair equals hashing the directory alone.
+    let both = cache
+        .hash_inputs_at(tmp.path(), &["src".to_string(), "src/main.rs".to_string()])
+        .unwrap();
+    let dir_only = cache
+        .hash_inputs_at(tmp.path(), &["src".to_string()])
+        .unwrap();
+    assert_eq!(
+        both, dir_only,
+        "an overlapping file must not be counted twice"
+    );
+}
+
 /// A definition running `cmd`, everything else left at its default.
 fn definition(commands: &[String]) -> BeamDefinition<'_> {
     BeamDefinition {

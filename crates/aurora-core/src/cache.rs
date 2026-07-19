@@ -131,7 +131,10 @@ impl BeamCache {
         }
     }
 
-    /// Hashes the files matched by `patterns` (resolved against `base_dir`).
+    /// Hashes the files matched by `patterns` (resolved against `base_dir`). A
+    /// pattern that resolves to a directory is walked recursively, so listing a
+    /// directory as an input covers its whole subtree; each file is hashed once
+    /// even when several patterns match it.
     ///
     /// Returns `None` when no file matches: with declared inputs but nothing on
     /// disk, hashing yields the empty-hasher constant, which combined with
@@ -153,6 +156,25 @@ impl BeamCache {
                 let path = entry?;
                 if path.is_file() {
                     files.push(path);
+                } else if path.is_dir() {
+                    // A directory input means "the whole subtree": walk it and
+                    // hash every file underneath. Without this, `glob` yields
+                    // the directory path, `is_file()` drops it, and the input
+                    // contributes nothing to the key, so editing or adding a
+                    // file under a directory listed as an input would never
+                    // invalidate the cache (a stale hit). The walk is iterative
+                    // (explicit stack) to stay safe on deep trees.
+                    let mut stack = vec![path];
+                    while let Some(dir) = stack.pop() {
+                        for child in fs::read_dir(&dir)? {
+                            let child = child?.path();
+                            if child.is_dir() {
+                                stack.push(child);
+                            } else if child.is_file() {
+                                files.push(child);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -161,7 +183,11 @@ impl BeamCache {
             return Ok(None);
         }
 
+        // Sort for a stable, order-independent hash and dedup so a file matched
+        // by several patterns (for example a directory and a file inside it) is
+        // hashed exactly once.
         files.sort();
+        files.dedup();
         for file in files {
             let content = fs::read(&file)?;
             hasher.update(file.to_string_lossy().as_bytes());
