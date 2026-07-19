@@ -73,6 +73,54 @@ async fn run_once_with_env(
         .expect("the beam should have completed")
 }
 
+/// A declared input pattern that matches no file silently protects nothing in
+/// the cache. The scheduler must surface it as a `Warning` naming the pattern,
+/// so a typo cannot cause a stale hit to pass unnoticed.
+#[tokio::test]
+async fn a_dead_input_pattern_emits_a_warning() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("in.txt"), "x").unwrap();
+    let out = dir.path().join("out.txt");
+    let beam = Beam {
+        name: "build".to_string(),
+        inputs: vec!["in.txt".to_string(), "missing/*.rs".to_string()],
+        outputs: vec!["out.txt".to_string()],
+        run: Some(Run {
+            commands: vec![format!("echo done > {}", out.display())],
+            executor: None,
+        }),
+        ..Beam::default()
+    };
+
+    let (tx, mut rx) = mpsc::channel(64);
+    Scheduler::new(
+        vec![beam],
+        local_executors(),
+        tx,
+        None,
+        dir.path().to_path_buf(),
+        HashMap::new(),
+    )
+    .run("build", &[])
+    .await
+    .unwrap();
+
+    let mut events = vec![];
+    while let Ok(e) = rx.try_recv() {
+        events.push(e);
+    }
+
+    let warning = events.iter().find_map(|e| match e {
+        SchedulerEvent::Warning { name, message } if name == "build" => Some(message.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        warning.as_deref(),
+        Some("input pattern matched no files: missing/*.rs"),
+        "a dead input pattern must produce a warning naming it"
+    );
+}
+
 /// The bug this cache key exists to prevent: the beam's `inputs` are untouched,
 /// but its command changed. Hashing only the inputs served the previous run's
 /// result, silently leaving the stale artifact on disk.

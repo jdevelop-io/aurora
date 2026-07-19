@@ -42,6 +42,13 @@ pub enum SchedulerEvent {
         line: String,
         is_stderr: bool,
     },
+    /// A non-fatal advisory about a beam, surfaced to the user but never
+    /// affecting the run's outcome. Emitted, for example, when a declared input
+    /// pattern matches no file and so silently protects nothing in the cache.
+    Warning {
+        name: String,
+        message: String,
+    },
     AllDone {
         success: bool,
     },

@@ -17,6 +17,16 @@ pub struct BeamCache {
     cache_dir: PathBuf,
 }
 
+/// The outcome of hashing a beam's declared `inputs`.
+pub struct InputsHash {
+    /// The combined hash of every matched file, or `None` when no input file
+    /// matched at all (the beam cannot be keyed and must run).
+    pub hash: Option<String>,
+    /// The declared patterns that matched no file (typo, wrong path, empty
+    /// directory). Empty on the common path.
+    pub dead_patterns: Vec<String>,
+}
+
 /// Turns a beam name (potentially controlled by an untrusted Beamfile) into a
 /// safe file name, confined to the cache directory.
 ///
@@ -136,13 +146,20 @@ impl BeamCache {
     /// directory as an input covers its whole subtree; each file is hashed once
     /// even when several patterns match it.
     ///
-    /// Returns `None` when no file matches: with declared inputs but nothing on
-    /// disk, hashing yields the empty-hasher constant, which combined with
-    /// present outputs would make the beam permanently cached. `None` means
-    /// "cannot key the cache", i.e. a miss, so the beam runs.
-    pub fn hash_inputs_at(&self, base_dir: &Path, patterns: &[String]) -> Result<Option<String>> {
-        let mut hasher = Sha256::new();
+    /// The returned [`InputsHash::hash`] is `None` when no file matches at all:
+    /// with declared inputs but nothing on disk, hashing yields the
+    /// empty-hasher constant, which combined with present outputs would make
+    /// the beam permanently cached. `None` means "cannot key the cache", i.e. a
+    /// miss, so the beam runs.
+    ///
+    /// [`InputsHash::dead_patterns`] lists the individual patterns that
+    /// contributed no file (a typo, a wrong path, an empty directory). A single
+    /// dead pattern among live ones is otherwise invisible: the live patterns
+    /// keep keying the cache while the dead one silently protects nothing, so
+    /// it is surfaced to the caller as a warning.
+    pub fn hash_inputs_at(&self, base_dir: &Path, patterns: &[String]) -> Result<InputsHash> {
         let mut files: Vec<PathBuf> = vec![];
+        let mut dead_patterns: Vec<String> = vec![];
 
         for pattern in patterns {
             // Confine inputs to the Beamfile directory: an absolute pattern or
@@ -152,6 +169,7 @@ impl BeamCache {
                 anyhow::bail!("input pattern escapes the Beamfile directory: {pattern}");
             }
             let full_pattern = base_dir.join(pattern).to_string_lossy().to_string();
+            let before = files.len();
             for entry in glob::glob(&full_pattern)? {
                 let path = entry?;
                 if path.is_file() {
@@ -177,10 +195,19 @@ impl BeamCache {
                     }
                 }
             }
+            // A pattern that added no file protects nothing: report it. This is
+            // measured per pattern, before deduplication, so an overlap between
+            // a file and a directory pattern never masks a genuinely dead one.
+            if files.len() == before {
+                dead_patterns.push(pattern.clone());
+            }
         }
 
         if files.is_empty() {
-            return Ok(None);
+            return Ok(InputsHash {
+                hash: None,
+                dead_patterns,
+            });
         }
 
         // Sort for a stable, order-independent hash and dedup so a file matched
@@ -188,6 +215,7 @@ impl BeamCache {
         // hashed exactly once.
         files.sort();
         files.dedup();
+        let mut hasher = Sha256::new();
         for file in files {
             let content = fs::read(&file)?;
             hasher.update(file.to_string_lossy().as_bytes());
@@ -195,7 +223,10 @@ impl BeamCache {
             hasher.update(&content);
         }
 
-        Ok(Some(format!("{:x}", hasher.finalize())))
+        Ok(InputsHash {
+            hash: Some(format!("{:x}", hasher.finalize())),
+            dead_patterns,
+        })
     }
 
     /// Folds a beam's definition into the hash of its `inputs` files, yielding

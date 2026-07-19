@@ -195,3 +195,38 @@ async fn stderr_color_gated_independently_of_stdout() {
         "stdout prefix must not be coloured: {stdout_line:?}"
     );
 }
+
+#[tokio::test]
+async fn warning_is_prefixed_and_routed_to_stderr() {
+    let (tx, rx) = mpsc::channel(16);
+    let beams = vec!["build".to_string()];
+
+    tx.send(SchedulerEvent::Warning {
+        name: "build".into(),
+        message: "input pattern matched no files: missing/*.rs".into(),
+    })
+    .await
+    .unwrap();
+    tx.send(SchedulerEvent::AllDone { success: true })
+        .await
+        .unwrap();
+    drop(tx);
+
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    HeadlessReporter::new(beams, false, false, &mut out, &mut err)
+        .run(rx)
+        .await
+        .unwrap();
+    let out = String::from_utf8(out).unwrap();
+    let err = String::from_utf8(err).unwrap();
+
+    assert!(
+        err.contains("[build] warning: input pattern matched no files: missing/*.rs"),
+        "warning must be prefixed and on stderr:\n{err}"
+    );
+    assert!(
+        !out.contains("warning:"),
+        "warning must not leak to stdout:\n{out}"
+    );
+}

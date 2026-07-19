@@ -737,6 +737,12 @@ impl ExecutionState {
                     }
                 }
             }
+            SchedulerEvent::Warning { name, message } => {
+                if let Some(b) = self.beams.iter_mut().find(|b| b.name == name) {
+                    b.stderr
+                        .push(sanitize_log_line(&format!("warning: {message}")));
+                }
+            }
             SchedulerEvent::AllDone { success } => {
                 self.done = Some(success);
             }

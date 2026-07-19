@@ -641,7 +641,7 @@ async fn run_beam_task(
     // hashes the inputs (reading whole files) and stats the outputs, so it runs
     // on a blocking thread rather than stalling the async runtime.
     let inputs_hash = if cache_enabled && !beam.inputs.is_empty() {
-        match cache_lookup_blocking(
+        let (lookup, dead_patterns) = cache_lookup_blocking(
             &cache,
             &beam.name,
             &beam.inputs,
@@ -649,8 +649,19 @@ async fn run_beam_task(
             &definition_hash,
             &working_dir,
         )
-        .await
-        {
+        .await;
+        // A pattern that matched no file silently protects nothing in the
+        // cache: warn once per run so a typo'd input surfaces instead of
+        // masking a stale hit.
+        for pattern in dead_patterns {
+            let _ = tx
+                .send(SchedulerEvent::Warning {
+                    name: beam.name.clone(),
+                    message: format!("input pattern matched no files: {pattern}"),
+                })
+                .await;
+        }
+        match lookup {
             CacheLookup::Hit { stdout, stderr } => {
                 replay_cached_lines(&tx, &beam.name, stdout, stderr).await;
                 let _ = tx
@@ -828,7 +839,7 @@ async fn cache_lookup_blocking(
     outputs: &[String],
     definition_hash: &str,
     working_dir: &Path,
-) -> CacheLookup {
+) -> (CacheLookup, Vec<String>) {
     let cache = cache.clone();
     let beam_name = beam_name.to_string();
     let inputs = inputs.to_vec();
@@ -836,24 +847,26 @@ async fn cache_lookup_blocking(
     let definition_hash = definition_hash.to_string();
     let working_dir = working_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        // `hash_inputs_at` yields `None` when no input file matches: the beam
-        // cannot be keyed and must run. The definition alone must never key an
-        // entry, or a beam whose inputs vanished would stay cached forever.
-        let hash = cache
-            .hash_inputs_at(&working_dir, &inputs)
-            .ok()
-            .flatten()
-            .map(|h| BeamCache::key(&h, &definition_hash));
+        // `hash_inputs_at` yields a `None` hash when no input file matches: the
+        // beam cannot be keyed and must run. The definition alone must never
+        // key an entry, or a beam whose inputs vanished would stay cached
+        // forever. `dead_patterns` carries the individual patterns that matched
+        // nothing, surfaced as a warning by the caller.
+        let Ok(inputs) = cache.hash_inputs_at(&working_dir, &inputs) else {
+            return (CacheLookup::Miss { hash: None }, vec![]);
+        };
+        let dead_patterns = inputs.dead_patterns;
+        let hash = inputs.hash.map(|h| BeamCache::key(&h, &definition_hash));
         if let Some(ref hash) = hash {
             if cache.is_valid(&beam_name, hash, &outputs, &working_dir) {
                 let (stdout, stderr) = cache.load_logs(&beam_name);
-                return CacheLookup::Hit { stdout, stderr };
+                return (CacheLookup::Hit { stdout, stderr }, dead_patterns);
             }
         }
-        CacheLookup::Miss { hash }
+        (CacheLookup::Miss { hash }, dead_patterns)
     })
     .await
-    .unwrap_or(CacheLookup::Miss { hash: None })
+    .unwrap_or((CacheLookup::Miss { hash: None }, vec![]))
 }
 
 /// Persists a beam's cache entry on a blocking thread. Failures are ignored:

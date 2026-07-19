@@ -263,3 +263,26 @@ async fn cancelled_beam_omits_extra_fields() {
         "cancelled has no duration_ms"
     );
 }
+
+#[tokio::test]
+async fn emits_a_warning_event_for_a_dead_input_pattern() {
+    let (lines, _success) = run_reporter(
+        "build",
+        vec!["build".into()],
+        vec![
+            SchedulerEvent::Warning {
+                name: "build".into(),
+                message: "input pattern matched no files: missing/*.rs".into(),
+            },
+            SchedulerEvent::AllDone { success: true },
+        ],
+    )
+    .await;
+
+    let warning = lines.iter().find(|l| l["event"] == "warning").unwrap();
+    assert_eq!(warning["beam"], "build");
+    assert_eq!(
+        warning["message"],
+        "input pattern matched no files: missing/*.rs"
+    );
+}

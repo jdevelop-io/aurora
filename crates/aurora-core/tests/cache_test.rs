@@ -166,11 +166,13 @@ fn test_hash_files() {
     let cache = BeamCache::new(tmp.path().to_path_buf());
     let hash = cache
         .hash_inputs_at(tmp.path(), &["file.txt".to_string()])
-        .unwrap();
+        .unwrap()
+        .hash;
     assert!(hash.is_some());
     let hash2 = cache
         .hash_inputs_at(tmp.path(), &["file.txt".to_string()])
-        .unwrap();
+        .unwrap()
+        .hash;
     assert_eq!(hash, hash2);
 }
 
@@ -197,7 +199,8 @@ fn test_hash_inputs_none_when_no_file_matches() {
     // nothing that would keep the beam permanently cached.
     let hash = cache
         .hash_inputs_at(tmp.path(), &["does-not-exist-*.txt".to_string()])
-        .unwrap();
+        .unwrap()
+        .hash;
     assert!(hash.is_none());
 }
 
@@ -213,7 +216,8 @@ fn test_directory_input_hashes_its_files_recursively() {
     // "tests" covers the whole tree without an explicit recursive glob.
     let hash = cache
         .hash_inputs_at(tmp.path(), &["tests".to_string()])
-        .unwrap();
+        .unwrap()
+        .hash;
     assert!(
         hash.is_some(),
         "a directory input with files must produce a key"
@@ -228,11 +232,11 @@ fn test_directory_input_invalidates_when_a_nested_file_is_added() {
     let cache = BeamCache::new(tmp.path().to_path_buf());
     let inputs = vec!["tests".to_string()];
 
-    let before = cache.hash_inputs_at(tmp.path(), &inputs).unwrap();
+    let before = cache.hash_inputs_at(tmp.path(), &inputs).unwrap().hash;
     // A new test file appears in a subdirectory of the declared directory.
     fs::create_dir_all(tmp.path().join("tests/integration")).unwrap();
     fs::write(tmp.path().join("tests/integration/new.rs"), b"// new").unwrap();
-    let after = cache.hash_inputs_at(tmp.path(), &inputs).unwrap();
+    let after = cache.hash_inputs_at(tmp.path(), &inputs).unwrap().hash;
 
     assert_ne!(
         before, after,
@@ -251,14 +255,54 @@ fn test_directory_and_file_input_do_not_double_count_overlap() {
     // hashed once, so the pair equals hashing the directory alone.
     let both = cache
         .hash_inputs_at(tmp.path(), &["src".to_string(), "src/main.rs".to_string()])
-        .unwrap();
+        .unwrap()
+        .hash;
     let dir_only = cache
         .hash_inputs_at(tmp.path(), &["src".to_string()])
-        .unwrap();
+        .unwrap()
+        .hash;
     assert_eq!(
         both, dir_only,
         "an overlapping file must not be counted twice"
     );
+}
+
+#[test]
+fn test_hash_inputs_reports_dead_patterns() {
+    let tmp = tempdir().unwrap();
+    fs::write(tmp.path().join("live.txt"), b"x").unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+
+    // One pattern matches a file, the other matches nothing on disk. The live
+    // one still keys the cache; the dead one is reported so a typo'd pattern
+    // silently protecting nothing can be surfaced.
+    let result = cache
+        .hash_inputs_at(
+            tmp.path(),
+            &["live.txt".to_string(), "missing/*.rs".to_string()],
+        )
+        .unwrap();
+    assert!(result.hash.is_some(), "a live pattern still produces a key");
+    assert_eq!(
+        result.dead_patterns,
+        vec!["missing/*.rs".to_string()],
+        "the pattern contributing no file is reported, the live one is not"
+    );
+}
+
+#[test]
+fn test_hash_inputs_empty_directory_pattern_is_dead() {
+    let tmp = tempdir().unwrap();
+    fs::create_dir_all(tmp.path().join("empty")).unwrap();
+    let cache = BeamCache::new(tmp.path().to_path_buf());
+
+    // The pattern matches a directory, but it holds no file: it contributes
+    // nothing to the key and must count as dead.
+    let result = cache
+        .hash_inputs_at(tmp.path(), &["empty".to_string()])
+        .unwrap();
+    assert!(result.hash.is_none());
+    assert_eq!(result.dead_patterns, vec!["empty".to_string()]);
 }
 
 /// A definition running `cmd`, everything else left at its default.

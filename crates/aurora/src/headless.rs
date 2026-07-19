@@ -142,6 +142,11 @@ async fn render_headless(
                     writeln!(out, "{prefix} {line}")?;
                 }
             }
+            SchedulerEvent::Warning { name, message } => {
+                let prefix = paint(&format!("[{name:<width$}]"), "90", err_color);
+                let tag = paint("warning:", "33", err_color);
+                writeln!(err, "{prefix} {tag} {message}")?;
+            }
             SchedulerEvent::BeamCompleted { name, status } => recap.push((name, status)),
             SchedulerEvent::BeamStarted { .. } => {}
             SchedulerEvent::AllDone { success } => {

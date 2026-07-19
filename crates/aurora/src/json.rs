@@ -47,6 +47,10 @@ enum WireEvent {
         duration_ms: u128,
         at: String,
     },
+    Warning {
+        beam: String,
+        message: String,
+    },
     Error {
         kind: String,
         message: String,
@@ -193,6 +197,12 @@ impl<W: Write + Send> Reporter for JsonReporter<'_, W> {
                         status,
                         duration_ms,
                         at: now_iso8601(),
+                    }))?
+                }
+                SchedulerEvent::Warning { name, message } => {
+                    stop_on_broken_pipe(self.emit(&WireEvent::Warning {
+                        beam: name,
+                        message,
                     }))?
                 }
                 SchedulerEvent::AllDone { success } => {
