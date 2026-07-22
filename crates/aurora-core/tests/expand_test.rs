@@ -349,3 +349,60 @@ fn signature_renders_required_and_defaulted_params() {
     let deploy = bf.beams.iter().find(|b| b.name == "deploy").unwrap();
     assert_eq!(signature(deploy), "deploy <version> [env=staging]");
 }
+
+#[test]
+fn out_of_closure_binding_error_explains_upfront_validation() {
+    // `lint` is invoked, but `orphan` (an unrelated, param-less beam that still
+    // gets a default instance) depends on a beam requiring an unbound param.
+    // Aurora validates every declared beam up front, so this aborts even the
+    // `lint` run: the message must name the faulty beam and say why an
+    // unrelated run is being stopped, not just dump a bare "requires param".
+    let bf = parsed(
+        r#"
+beam "lint" { run { commands = ["echo lint"] } }
+beam "orphan" {
+  depends_on = ["needs"]
+  run { commands = ["echo orphan"] }
+}
+beam "needs" {
+  param "req" {}
+  run { commands = ["echo ${param.req}"] }
+}
+"#,
+    );
+    let err = expand(&bf, "lint", &[]).unwrap_err().to_string();
+    assert!(err.contains("orphan"), "must name the faulty beam:\n{err}");
+    assert!(
+        err.contains("requires param 'req'"),
+        "must keep the underlying cause:\n{err}"
+    );
+    assert!(
+        err.contains("before running"),
+        "must explain the up-front validation stopping an unrelated run:\n{err}"
+    );
+}
+
+#[test]
+fn invoked_target_binding_error_stays_unadorned() {
+    // The invoked target's own closure fails with the plain message, without
+    // the up-front-validation preface: the error is directly about the run the
+    // user asked for.
+    let bf = parsed(
+        r#"
+beam "build" {
+  param "version" {}
+  run { commands = ["echo"] }
+}
+beam "deploy" {
+  depends_on = ["build"]
+  run { commands = ["echo"] }
+}
+"#,
+    );
+    let err = expand(&bf, "deploy", &[]).unwrap_err().to_string();
+    assert!(err.contains("requires param 'version'"), "got: {err}");
+    assert!(
+        !err.contains("before running"),
+        "the invoked target must not get the up-front-validation preface:\n{err}"
+    );
+}

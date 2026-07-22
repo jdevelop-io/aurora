@@ -236,10 +236,91 @@ fn instantiate(source: &Beam, id: &str, bindings: &BTreeMap<String, String>) -> 
     Ok(beam)
 }
 
+/// Adds the up-front-validation context to an error raised while
+/// default-instantiating a beam outside the invoked target's closure.
+///
+/// Aurora instantiates every declared beam before running so a binding mistake
+/// is caught early, but that also means a misconfigured beam aborts a run that
+/// never touches it. Without this preface the user invoking `lint` would see a
+/// bare "beam 'orphan' requires param ..." and have no idea why an unrelated
+/// beam is failing their command. `upfront` is the declared beam whose
+/// validation failed (`None` for the invoked target's own closure, reported
+/// verbatim).
+fn adorn_upfront(upfront: Option<&str>, err: anyhow::Error) -> anyhow::Error {
+    match upfront {
+        None => err,
+        Some(beam) => anyhow!(
+            "beam '{beam}' has an invalid configuration; Aurora validates every declared \
+             beam before running, so this aborts the run even though '{beam}' was not \
+             requested: {err}"
+        ),
+    }
+}
+
+/// Drains a worklist of `(beam name, bindings, depth)` into `instances`,
+/// resolving each beam's `depends_on` edges and pushing the resulting child
+/// instances. `seen` deduplicates across calls (by instance id), so the invoked
+/// closure and every default instance share one identity space. Errors raised
+/// for an out-of-closure default instance are prefaced through `adorn_upfront`.
+fn drain_worklist(
+    by_name: &HashMap<&str, &Beam>,
+    instances: &mut Vec<Beam>,
+    seen: &mut HashSet<String>,
+    mut worklist: Vec<(String, BTreeMap<String, String>, usize)>,
+    upfront: Option<&str>,
+) -> Result<()> {
+    while let Some((name, bindings, depth)) = worklist.pop() {
+        let id = instance_id(&name, &bindings);
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        if depth > MAX_INSTANTIATION_DEPTH {
+            return Err(adorn_upfront(
+                upfront,
+                anyhow!(
+                    "instantiation depth exceeded ({MAX_INSTANTIATION_DEPTH}): divergent \
+                     parameter cycle involving beam '{name}'"
+                ),
+            ));
+        }
+        // The target came from `by_name`; every other name was pushed from a
+        // known beam's edge or the declaration list, except an unknown
+        // dependency name, which is left to the DAG's error reporting.
+        let Some(source) = by_name.get(name.as_str()) else {
+            continue;
+        };
+        let mut instance =
+            instantiate(source, &id, &bindings).map_err(|e| adorn_upfront(upfront, e))?;
+        let mut edges: Vec<Dependency> = vec![];
+        for dep in &source.depends_on {
+            let Some(child) = by_name.get(dep.beam.as_str()) else {
+                // Unknown dependency: keep the raw name so `BeamGraph::from_deps`
+                // reports it exactly as before.
+                edges.push(Dependency::named(dep.beam.clone()));
+                continue;
+            };
+            let child_bindings = bind_edge(&source.name, &bindings, dep, child)
+                .map_err(|e| adorn_upfront(upfront, e))?;
+            let child_id = instance_id(&child.name, &child_bindings);
+            edges.push(Dependency::named(child_id));
+            worklist.push((child.name.clone(), child_bindings, depth + 1));
+        }
+        instance.depends_on = edges;
+        instances.push(instance);
+    }
+    Ok(())
+}
+
 /// Expands `target` (bound with `args`) and its transitive dependencies into
 /// instances, then default-instantiates every remaining beam without required
 /// params so the TUI sidebar can still launch it. Identical `(beam, bindings)`
 /// pairs deduplicate into one instance.
+///
+/// The invoked target's closure is expanded first (its errors are reported
+/// verbatim), then the default instances of every other param-less beam. Doing
+/// the closure first means a beam shared by both is attributed to the run the
+/// user asked for, so only a genuinely unrelated beam carries the
+/// up-front-validation preface.
 pub fn expand(beam_file: &BeamFile, target: &str, args: &[String]) -> Result<Expansion> {
     let by_name: HashMap<&str, &Beam> = beam_file
         .beams
@@ -254,53 +335,30 @@ pub fn expand(beam_file: &BeamFile, target: &str, args: &[String]) -> Result<Exp
 
     let mut instances: Vec<Beam> = vec![];
     let mut seen: HashSet<String> = HashSet::new();
-    let mut worklist: Vec<(String, BTreeMap<String, String>, usize)> =
-        vec![(target.to_string(), root_bindings, 0)];
 
-    // Default instances for the launcher: pushed at depth 0 behind the run's
-    // own closure. A beam with required params cannot be instantiated without
-    // values, so it simply has no default instance.
+    // The invoked target's own closure: errors here are about the requested run.
+    drain_worklist(
+        &by_name,
+        &mut instances,
+        &mut seen,
+        vec![(target.to_string(), root_bindings, 0)],
+        None,
+    )?;
+
+    // Default instances for the launcher. A beam with required params cannot be
+    // instantiated without values, so it simply has no default instance.
     for beam in &beam_file.beams {
         if beam.name == target || has_required_params(beam) {
             continue;
         }
         let bindings = bind_cli_args(beam, &[])?;
-        worklist.push((beam.name.clone(), bindings, 0));
-    }
-
-    while let Some((name, bindings, depth)) = worklist.pop() {
-        let id = instance_id(&name, &bindings);
-        if !seen.insert(id.clone()) {
-            continue;
-        }
-        if depth > MAX_INSTANTIATION_DEPTH {
-            bail!(
-                "instantiation depth exceeded ({MAX_INSTANTIATION_DEPTH}): divergent \
-                 parameter cycle involving beam '{name}'"
-            );
-        }
-        // The target came from `by_name`; every other name was pushed from a
-        // known beam's edge or the declaration list, except an unknown
-        // dependency name, which is left to the DAG's error reporting.
-        let Some(source) = by_name.get(name.as_str()) else {
-            continue;
-        };
-        let mut instance = instantiate(source, &id, &bindings)?;
-        let mut edges: Vec<Dependency> = vec![];
-        for dep in &source.depends_on {
-            let Some(child) = by_name.get(dep.beam.as_str()) else {
-                // Unknown dependency: keep the raw name so `BeamGraph::from_deps`
-                // reports it exactly as before.
-                edges.push(Dependency::named(dep.beam.clone()));
-                continue;
-            };
-            let child_bindings = bind_edge(&source.name, &bindings, dep, child)?;
-            let child_id = instance_id(&child.name, &child_bindings);
-            edges.push(Dependency::named(child_id));
-            worklist.push((child.name.clone(), child_bindings, depth + 1));
-        }
-        instance.depends_on = edges;
-        instances.push(instance);
+        drain_worklist(
+            &by_name,
+            &mut instances,
+            &mut seen,
+            vec![(beam.name.clone(), bindings, 0)],
+            Some(&beam.name),
+        )?;
     }
 
     Ok(Expansion {
