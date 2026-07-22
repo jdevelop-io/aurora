@@ -173,10 +173,16 @@ impl Executor for LocalExecutor {
         // env_clear(): the child process must NOT inherit Aurora's ambient
         // environment (CI secrets, keys, etc.). The env provided in
         // `input.env` is authoritative (see aurora-core/src/env.rs).
+        // stdin is detached, never inherited: a beam is a batch task whose
+        // output we capture, not an interactive session. A command that probes
+        // for a terminal (docker, git, npm) would otherwise switch to
+        // interactive mode and contend with the execution TUI for the very
+        // terminal it holds in raw mode.
         command
             .current_dir(&input.working_dir)
             .env_clear()
             .envs(&input.env)
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true);
