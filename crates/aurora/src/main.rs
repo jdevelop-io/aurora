@@ -365,12 +365,7 @@ async fn main() -> Result<()> {
         let rl_args = args.clone();
         let rl_var_overrides = var_overrides.clone();
         let rl_no_cache = no_cache;
-        #[allow(clippy::type_complexity)]
-        let reload = move || -> anyhow::Result<(
-            Vec<(String, Vec<String>)>,
-            mpsc::Receiver<SchedulerEvent>,
-            mpsc::UnboundedSender<String>,
-        )> {
+        let reload = move || -> anyhow::Result<aurora_tui::ReloadResult> {
             let loaded = aurora::resolve_run_inputs(
                 &rl_beamfile,
                 &rl_working_dir,
@@ -409,7 +404,12 @@ async fn main() -> Result<()> {
                     eprintln!("Scheduler error: {}", e);
                 }
             });
-            Ok((beam_info, rx, cancel_tx))
+            Ok(aurora_tui::ReloadResult {
+                beam_info,
+                target_id: loaded.target_id,
+                rx,
+                cancel_tx,
+            })
         };
 
         aurora_tui::run_execution_tui(

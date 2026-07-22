@@ -39,6 +39,19 @@ pub fn install_terminal_panic_hook() {
     }));
 }
 
+/// The result of a Beamfile reload under watch: the rebuilt sidebar, the freshly
+/// recomputed target instance id (which drifts when a param default changes), the
+/// declared beams that have no runnable instance, and the new event/cancel
+/// channels for the run the reload spawned.
+pub struct ReloadResult {
+    pub beam_info: Vec<(String, Vec<String>)>,
+    /// The invoked target's instance id after the reload. May differ from the
+    /// launch-time id (a changed param default rebinds the target).
+    pub target_id: String,
+    pub rx: mpsc::Receiver<SchedulerEvent>,
+    pub cancel_tx: mpsc::UnboundedSender<String>,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
@@ -58,12 +71,10 @@ pub async fn run_execution_tui(
         String,
     )
         -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>, Vec<String>)>,
-    reload: impl Fn() -> anyhow::Result<(
-        Vec<(String, Vec<String>)>,
-        mpsc::Receiver<SchedulerEvent>,
-        mpsc::UnboundedSender<String>,
-    )>,
+    reload: impl Fn() -> anyhow::Result<ReloadResult>,
 ) -> Result<()> {
+    // Adopted from the reload path when a Beamfile change rebinds the target.
+    let mut target = target;
     tokio::task::block_in_place(move || {
         install_terminal_panic_hook();
         enable_raw_mode()?;
@@ -126,7 +137,7 @@ pub async fn run_execution_tui(
                     if let Some(trigger) = watch.take_pending() {
                         apply_watch_trigger(
                             trigger,
-                            &target,
+                            &mut target,
                             &start_watch,
                             &reload,
                             &rerun,
@@ -156,7 +167,7 @@ pub async fn run_execution_tui(
                     if watch.on_trigger(trigger, run_in_progress) {
                         apply_watch_trigger(
                             trigger,
-                            &target,
+                            &mut target,
                             &start_watch,
                             &reload,
                             &rerun,
@@ -581,16 +592,12 @@ fn handle_execution_key(
 #[allow(clippy::too_many_arguments)]
 fn apply_watch_trigger(
     trigger: WatchTrigger,
-    target: &str,
+    target: &mut String,
     start_watch: &impl Fn(
         String,
     )
         -> anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>, Vec<String>)>,
-    reload: &impl Fn() -> anyhow::Result<(
-        Vec<(String, Vec<String>)>,
-        mpsc::Receiver<SchedulerEvent>,
-        mpsc::UnboundedSender<String>,
-    )>,
+    reload: &impl Fn() -> anyhow::Result<ReloadResult>,
     rerun: &impl Fn(
         String,
         Vec<String>,
@@ -610,21 +617,27 @@ fn apply_watch_trigger(
 ) {
     if trigger.beamfile_changed {
         match reload() {
-            Ok((beam_info, new_rx, new_cancel)) => {
-                *exec = ExecutionState::new(beam_info);
+            Ok(result) => {
+                *exec = ExecutionState::new(result.beam_info);
+                // Adopt the freshly recomputed target id: a changed param default
+                // rebinds the target, so the id drifts (e.g. `deploy[env=staging]`
+                // → `deploy[env=prod]`). The reload already scheduled the run on
+                // this id; scoping or re-arming on the stale one would match no
+                // beam, dimming the whole sidebar and stalling the progress count.
+                *target = result.target_id;
                 // Re-scope the progress count to the target's closure on the
                 // rebuilt graph. Watch reload only runs for a single beam, so
                 // the target is always a real beam the view can resolve.
                 exec.focus_run_on(target);
                 *log_state = LogViewState::new(0);
                 search.clear();
-                *rx = new_rx;
-                *cancel_tx = new_cancel;
+                *rx = result.rx;
+                *cancel_tx = result.cancel_tx;
                 // Re-arm the watcher on the rebuilt closure: a Beamfile edit can
                 // add or rename input globs, and the previous watcher still
                 // watches the old set. Mirror the headless loop, which re-arms on
                 // a Beamfile change. Keep the previous watcher if re-arming fails.
-                match start_watch(target.to_string()) {
+                match start_watch(target.clone()) {
                     Ok((guard, new_trig_rx, warnings)) => {
                         *watch_guard = Some(guard);
                         *watch_trigger_rx = Some(new_trig_rx);
@@ -641,7 +654,7 @@ fn apply_watch_trigger(
         exec.reset_for_rerun(&all);
         *log_state = LogViewState::new(exec.selected);
         search.clear();
-        let (new_rx, new_cancel) = rerun(target.to_string(), vec![]);
+        let (new_rx, new_cancel) = rerun(target.clone(), vec![]);
         *rx = new_rx;
         *cancel_tx = new_cancel;
     }
@@ -702,10 +715,97 @@ fn copy_logs_to_clipboard(beam: &app::BeamView) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aurora_core::events::WatchTrigger;
     use crossterm::event::{KeyEvent, KeyModifiers};
+
+    /// The `start_watch` closure's return type, aliased to keep the watch-reload
+    /// test's stub off clippy's `type_complexity` lint (mirrors `main`'s alias).
+    type WatchArm = anyhow::Result<(Box<dyn Send>, mpsc::Receiver<WatchTrigger>, Vec<String>)>;
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    // Regression (#1): after a Beamfile change under watch, the reloaded run is
+    // scheduled on the freshly recomputed target id. If a param default changed,
+    // that id drifts (e.g. `deploy[env=staging]` → `deploy[env=prod]`). The view
+    // must adopt the fresh id and scope the run to it; using the stale
+    // launch-time id would dim the whole sidebar and stall the progress count.
+    #[test]
+    fn beamfile_reload_adopts_the_fresh_target_id_and_rescopes() {
+        let mut exec = ExecutionState::new(vec![
+            ("prep".to_string(), vec![]),
+            ("deploy[env=prod]".to_string(), vec!["prep".to_string()]),
+        ]);
+        exec.set_run_set(["deploy[env=staging]".to_string()]); // stale scope
+        let mut target = "deploy[env=staging]".to_string();
+        let mut log_state = LogViewState::new(0);
+        let mut search = LogSearch::new();
+        let (_tx, mut rx) = mpsc::channel(1);
+        let (mut cancel_tx, _cr) = mpsc::unbounded_channel::<String>();
+        let mut watch_guard: Option<Box<dyn Send>> = None;
+        let mut watch_trigger_rx: Option<mpsc::Receiver<WatchTrigger>> = None;
+        let mut watch_notice: Option<String> = None;
+        let mut watch_error: Option<String> = None;
+
+        let reload = || -> anyhow::Result<ReloadResult> {
+            let (_t, r) = mpsc::channel(1);
+            let (c, _cr) = mpsc::unbounded_channel::<String>();
+            Ok(ReloadResult {
+                beam_info: vec![
+                    ("prep".to_string(), vec![]),
+                    ("deploy[env=prod]".to_string(), vec!["prep".to_string()]),
+                ],
+                target_id: "deploy[env=prod]".to_string(),
+                rx: r,
+                cancel_tx: c,
+            })
+        };
+        let start_watch = |_t: String| -> WatchArm {
+            let (_t, r) = mpsc::channel(1);
+            Ok((Box::new(()) as Box<dyn Send>, r, vec![]))
+        };
+        let rerun = |_root: String,
+                     _pre: Vec<String>|
+         -> (
+            mpsc::Receiver<SchedulerEvent>,
+            mpsc::UnboundedSender<String>,
+        ) {
+            let (_t, r) = mpsc::channel(1);
+            let (c, _cr) = mpsc::unbounded_channel::<String>();
+            (r, c)
+        };
+
+        apply_watch_trigger(
+            WatchTrigger {
+                beamfile_changed: true,
+            },
+            &mut target,
+            &start_watch,
+            &reload,
+            &rerun,
+            &mut exec,
+            &mut log_state,
+            &mut search,
+            &mut rx,
+            &mut cancel_tx,
+            &mut watch_guard,
+            &mut watch_trigger_rx,
+            &mut watch_notice,
+            &mut watch_error,
+        );
+
+        assert_eq!(target, "deploy[env=prod]", "adopts the fresh target id");
+        assert!(exec.is_in_run("deploy[env=prod]"));
+        assert!(exec.is_in_run("prep"));
+        assert!(
+            !exec.is_in_run("deploy[env=staging]"),
+            "the stale scope must be dropped"
+        );
+        assert!(
+            watch_error.is_none(),
+            "re-arm should succeed: {watch_error:?}"
+        );
     }
 
     fn ctrl(c: char) -> KeyEvent {
