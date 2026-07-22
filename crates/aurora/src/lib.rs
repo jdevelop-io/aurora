@@ -299,6 +299,30 @@ pub fn build_scheduler(
     }
 }
 
+/// Sidebar rows for declared beams that produced no instance. A beam declaring a
+/// required param has no value to bind and so no default instance, yet it still
+/// belongs in the execution sidebar as a (dimmed, non-launchable) entry, exactly
+/// as the picker lists it. Returned as `(name, dependency_names)`.
+///
+/// A beam is "instantiated" when its name matches an instance's source name. An
+/// instance id is `name` or `name[bindings]`, and a beam name is an identifier
+/// with no `[`, so the source name is the id up to the first `[`.
+pub fn phantom_beams(
+    declared: &[Beam],
+    instances: &[Beam],
+    exclude: &str,
+) -> Vec<(String, Vec<String>)> {
+    let instantiated: HashSet<&str> = instances
+        .iter()
+        .map(|b| b.name.split('[').next().unwrap_or(b.name.as_str()))
+        .collect();
+    declared
+        .iter()
+        .filter(|b| b.name != exclude && !instantiated.contains(b.name.as_str()))
+        .map(|b| (b.name.clone(), b.dependency_names()))
+        .collect()
+}
+
 /// Evaluates each instance's `environment {}` block (params already
 /// interpolated by expansion) against the global environment. One `shell()`
 /// there runs once per instance: the instance is the unit of execution.
@@ -327,6 +351,9 @@ pub struct RunInputs {
     pub max_parallelism: Option<usize>,
     /// Instance id of the invoked target: the scheduler root and TUI target.
     pub target_id: String,
+    /// Sidebar rows for declared beams with no runnable instance (a required
+    /// param). Listed but non-launchable; see [`phantom_beams`].
+    pub phantom_beams: Vec<(String, Vec<String>)>,
 }
 
 /// Re-reads and re-parses the Beamfile at `beamfile_path` into a [`RunInputs`],
@@ -362,11 +389,16 @@ pub fn resolve_run_inputs(
     let mut instances = expansion.instances;
     apply_env_overlays(&mut instances, &env, working_dir)?;
 
+    // A reloaded Beamfile carries no virtual multi-beam sentinel (watch runs a
+    // single beam), so nothing is excluded.
+    let phantom_beams = phantom_beams(&beam_file.beams, &instances, "");
+
     Ok(RunInputs {
         beams: instances,
         env,
         declared_env,
         max_parallelism,
         target_id: expansion.target_id,
+        phantom_beams,
     })
 }

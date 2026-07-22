@@ -48,6 +48,9 @@ pub struct ReloadResult {
     /// The invoked target's instance id after the reload. May differ from the
     /// launch-time id (a changed param default rebinds the target).
     pub target_id: String,
+    /// Declared beams listed in the sidebar but not launchable (required param
+    /// with no value to bind).
+    pub non_launchable: Vec<String>,
     pub rx: mpsc::Receiver<SchedulerEvent>,
     pub cancel_tx: mpsc::UnboundedSender<String>,
 }
@@ -57,6 +60,7 @@ pub async fn run_execution_tui(
     beam_info: Vec<(String, Vec<String>)>,
     target: String,
     run_set: Vec<String>,
+    non_launchable: Vec<String>,
     watch_preset: bool,
     mut rx: mpsc::Receiver<SchedulerEvent>,
     mut cancel_tx: mpsc::UnboundedSender<String>,
@@ -88,6 +92,9 @@ pub async fn run_execution_tui(
         // launched target's closure), computed by the composition root so it
         // also covers a multi-select selection the view cannot resolve alone.
         exec.set_run_set(run_set);
+        // Declared beams with no runnable instance still appear in the sidebar
+        // (see the composition root), but pressing `r` on one is refused.
+        exec.set_non_launchable(non_launchable);
         let mut log_state = LogViewState::new(0);
         let mut search = LogSearch::new();
         let mut show_help = false;
@@ -448,6 +455,10 @@ fn handle_execution_key(
         width: log_w,
         height: log_h,
     } = metrics;
+    // Any key clears a previously shown notice: it is a one-frame advisory (a
+    // refused rerun), not a persistent banner. The handler below may set a new
+    // one for this key.
+    exec.notice = None;
     match key.code {
         KeyCode::Char('q') => {
             let beam = &exec.beams[exec.selected];
@@ -625,6 +636,7 @@ fn apply_watch_trigger(
                 // this id; scoping or re-arming on the stale one would match no
                 // beam, dimming the whole sidebar and stalling the progress count.
                 *target = result.target_id;
+                exec.set_non_launchable(result.non_launchable);
                 // Re-scope the progress count to the target's closure on the
                 // rebuilt graph. Watch reload only runs for a single beam, so
                 // the target is always a real beam the view can resolve.
@@ -757,6 +769,7 @@ mod tests {
                     ("deploy[env=prod]".to_string(), vec!["prep".to_string()]),
                 ],
                 target_id: "deploy[env=prod]".to_string(),
+                non_launchable: vec![],
                 rx: r,
                 cancel_tx: c,
             })

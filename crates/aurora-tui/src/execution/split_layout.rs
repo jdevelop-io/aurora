@@ -122,6 +122,10 @@ pub fn render_execution(
         f.render_widget(filter_bar(&exec.beam_filter), footer[1]);
     } else if search.is_active() {
         f.render_widget(search_bar(search), footer[1]);
+    } else if let Some(notice) = &exec.notice {
+        // A direct answer to the key just pressed (e.g. a refused rerun) takes
+        // priority over the static hints and the watch advisory for its frame.
+        f.render_widget(notice_bar(notice), footer[1]);
     } else if let Some(notice) = watch_notice {
         // While watching, an advisory (no inputs, output to input overlap)
         // replaces the hints so the reason a change is not picked up is visible
@@ -144,6 +148,13 @@ pub fn render_execution(
 fn filter_bar(filter: &str) -> Paragraph<'static> {
     let text = format!(" /{}   (Enter confirm, Esc clear) ", filter);
     Paragraph::new(text).style(Style::default().fg(Color::Yellow))
+}
+
+/// Advisory line answering the key just pressed (e.g. a rerun refused because
+/// the beam needs CLI arguments). Same slot and color family as the picker's
+/// notice, so the two views read consistently.
+fn notice_bar(notice: &str) -> Paragraph<'static> {
+    Paragraph::new(format!(" ⚠ {notice} ")).style(Style::default().fg(Color::Yellow))
 }
 
 /// Footer line for the armed watch's advisory warnings.

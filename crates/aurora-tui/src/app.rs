@@ -603,6 +603,14 @@ pub struct ExecutionState {
     /// available-but-idle. Defaults to every beam so an unscoped state counts
     /// the whole list.
     run_set: HashSet<String>,
+    /// Beams listed in the sidebar that cannot be launched from it: a beam
+    /// declaring a required param has no default instance to run, so pressing
+    /// `r` on it surfaces a notice instead of spawning an empty run. Empty by
+    /// default (every beam launchable).
+    non_launchable: HashSet<String>,
+    /// Transient advisory shown in the footer (e.g. a beam cannot be rerun from
+    /// the sidebar). Cleared on the next keypress, like the picker's notice.
+    pub notice: Option<String>,
 }
 
 impl ExecutionState {
@@ -620,6 +628,8 @@ impl ExecutionState {
             beam_filter: String::new(),
             filter_input: false,
             run_set,
+            non_launchable: HashSet::new(),
+            notice: None,
         }
     }
 
@@ -628,6 +638,19 @@ impl ExecutionState {
     /// count.
     pub fn is_in_run(&self, name: &str) -> bool {
         self.run_set.contains(name)
+    }
+
+    /// Marks the given beams as non-launchable from the sidebar. Used at launch
+    /// with the declared beams that have no runnable instance (a required param
+    /// with no value to bind), so the sidebar can still list them.
+    pub fn set_non_launchable(&mut self, names: impl IntoIterator<Item = String>) {
+        self.non_launchable = names.into_iter().collect();
+    }
+
+    /// Whether `name` can be launched (rerun) from the sidebar. False for a beam
+    /// declaring a required param: it has no default instance to run.
+    pub fn is_launchable(&self, name: &str) -> bool {
+        !self.non_launchable.contains(name)
     }
 
     /// Number of beams in the current run: the status bar's denominator.
@@ -833,14 +856,26 @@ impl ExecutionState {
             KeyCode::Char('r') => {
                 if self.done.is_some() {
                     let beam = &self.beams[self.selected];
-                    if matches!(
+                    let rerunnable = matches!(
                         beam.status,
                         BeamStatus::Failed { .. }
                             | BeamStatus::FailedAllowed { .. }
                             | BeamStatus::Cancelled
                             | BeamStatus::Success { .. }
                             | BeamStatus::Skipped { .. }
-                    ) {
+                    );
+                    let name = beam.name.clone();
+                    if rerunnable {
+                        // A beam with a required param has no runnable instance:
+                        // rerunning it would schedule an unknown root and reset
+                        // the view to an empty run. Refuse with a notice instead.
+                        if !self.is_launchable(&name) {
+                            self.notice = Some(format!(
+                                "'{name}' declares a required param and cannot be launched \
+                                 here; run it from the CLI with its arguments"
+                            ));
+                            return None;
+                        }
                         let (root, to_rerun, pre_success) = self.compute_rerun(self.selected);
                         self.reset_for_rerun(&to_rerun);
                         return Some(ExecutionAction::Rerun { root, pre_success });

@@ -243,11 +243,15 @@ async fn main() -> Result<()> {
     let (tx, rx) = mpsc::channel(128);
     // The sidebar lists every declared beam (minus the virtual __multi__): it
     // doubles as a launcher, so a run of one target must still let you reach the
-    // others.
+    // others. Beams with a required param have no runnable instance, so they are
+    // appended as phantom rows: listed (dimmed) but not launchable from here.
+    let phantoms = aurora::phantom_beams(&beam_file.beams, &instances, MULTI_BEAM);
+    let non_launchable: Vec<String> = phantoms.iter().map(|(name, _)| name.clone()).collect();
     let beam_info: Vec<(String, Vec<String>)> = instances
         .iter()
         .filter(|b| b.name != MULTI_BEAM)
         .map(|b| (b.name.clone(), b.dependency_names()))
+        .chain(phantoms)
         .collect();
     // The set the scheduler actually runs (the target's transitive closure).
     // The TUI scopes its progress count and breakdown to this set and dims the
@@ -373,10 +377,16 @@ async fn main() -> Result<()> {
                 &rl_target,
                 &rl_args,
             )?;
+            let non_launchable: Vec<String> = loaded
+                .phantom_beams
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
             let beam_info: Vec<(String, Vec<String>)> = loaded
                 .beams
                 .iter()
                 .map(|b| (b.name.clone(), b.dependency_names()))
+                .chain(loaded.phantom_beams.iter().cloned())
                 .collect();
             let (tx, rx) = mpsc::channel(128);
             let (cancel_tx, cancel_rx) = mpsc::unbounded_channel::<String>();
@@ -407,6 +417,7 @@ async fn main() -> Result<()> {
             Ok(aurora_tui::ReloadResult {
                 beam_info,
                 target_id: loaded.target_id,
+                non_launchable,
                 rx,
                 cancel_tx,
             })
@@ -416,6 +427,7 @@ async fn main() -> Result<()> {
             beam_info,
             target_id.clone(),
             run_set,
+            non_launchable,
             watch,
             rx,
             cancel_tx,
